@@ -81,12 +81,13 @@
   scene.add(dirLight);
   scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
   
+  const GROUND_Y = -10;
   // Ground
   const groundGeom = new THREE.PlaneGeometry(800, 600);
   const groundMat = new THREE.MeshStandardMaterial({color: 0x66aa44});
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -10;
+  ground.position.y = GROUND_Y;
   ground.receiveShadow = true;
   scene.add(ground);
 
@@ -97,7 +98,7 @@
   scene.add(gridHelper);
   
   // Hexapod body - ellipsoid (stretched sphere) for realistic proportions
-  let defaultBodyY = 60; // Higher off ground for realistic leg extension (adjustable)
+  let defaultBodyY = 80; // Higher off ground for realistic leg extension (adjustable)
   const bodyGeom = new THREE.SphereGeometry(50, 32, 32); // Sphere base
   const bodyMat = new THREE.MeshStandardMaterial({
     color: 0x333333,
@@ -126,6 +127,24 @@
 
   // Array of configs, one per leg (all legs share same dimensions from backend)
   let legConfigs = Array(6).fill(null).map(() => ({...DEFAULT_LEG_CONFIG}));
+
+  const NEUTRAL_FOOT_CLEARANCE = 2; // Keep foot a hair above the visual ground
+
+  function computeNeutralAngles(legConfig) {
+    const femurLength = legConfig?.femurLength ?? DEFAULT_LEG_CONFIG.femurLength;
+    const tibiaLength = legConfig?.tibiaLength ?? DEFAULT_LEG_CONFIG.tibiaLength;
+
+    const desiredFootY = GROUND_Y + NEUTRAL_FOOT_CLEARANCE;
+    const targetDrop = Math.max(10, defaultBodyY - desiredFootY);
+    const maxReach = Math.max(20, femurLength + tibiaLength - 1);
+    const clampedDrop = Math.min(targetDrop, maxReach);
+
+    const cosKnee = (femurLength*femurLength + tibiaLength*tibiaLength - clampedDrop*clampedDrop) / (2 * femurLength * tibiaLength);
+    const kneeAngle = Math.PI - Math.acos(Math.max(-1, Math.min(1, cosKnee)));
+    const femurAngle = -Math.atan2(tibiaLength * Math.sin(kneeAngle), femurLength + tibiaLength * Math.cos(kneeAngle));
+
+    return { femur: femurAngle, tibia: kneeAngle };
+  }
 
   // Load config from backend API
   async function loadConfigFromBackend() {
@@ -156,6 +175,7 @@
       // Rebuild all legs with new dimensions
       if (typeof rebuildAllLegs === 'function') {
         rebuildAllLegs();
+        applyNeutralPose();
       }
     } catch(e) {
       console.error('Failed to load config from backend:', e);
@@ -201,7 +221,7 @@
   const legTargets = [];
 
   // Track manual control for each leg (timestamp of last manual adjustment)
-  const manualControlTimestamps = Array(6).fill(0);
+  const manualControlTimestamps = Array(6).fill(-Infinity);
   const MANUAL_CONTROL_TIMEOUT = 5000; // 5 seconds in milliseconds
 
   for(let i = 0; i < 6; i++){
@@ -212,6 +232,7 @@
 
     // Use this leg's specific config
     const legConfig = legConfigs[i];
+    const neutralAngles = computeNeutralAngles(legConfig);
 
     // Coxa joint and segment (base rotation)
     const coxaJoint = new THREE.Group();
@@ -292,6 +313,10 @@
     footMesh.castShadow = true;
     tibiaJoint.add(footMesh);
 
+    // Set a neutral, ground-touching pose before telemetry arrives
+    femurJoint.rotation.x = neutralAngles.femur;
+    tibiaJoint.rotation.x = neutralAngles.tibia;
+
     // Build hierarchy: tibia -> femur -> coxa -> leg group
     femurJoint.add(tibiaJoint);
     coxaJoint.add(femurJoint);
@@ -321,14 +346,13 @@
       isRightSide: isRightSide
     });
 
-    // Initialize interpolation targets to safe neutral position
-    // All angles at 0 = legs pointing horizontally (above ground)
-    // Backend telemetry will immediately provide correct IK values
-    // Smoothing will transition from this safe position to actual pose
+      // Initialize interpolation targets to a neutral, ground-touching position
+      // Backend telemetry will immediately provide correct IK values
+      // Smoothing will transition from this safe position to actual pose
     legTargets.push({
       coxa: 0,      // Neutral (pointing straight out)
-      femur: 0,     // Neutral (horizontal)
-      tibia: 0      // Neutral (straight continuation of femur)
+      femur: neutralAngles.femur,
+      tibia: neutralAngles.tibia
     });
 
   }
@@ -732,6 +756,8 @@
     legs.forEach((leg, i) => {
       leg.group.position.y = height;
     });
+
+    applyNeutralPose();
 
     // Send body height to backend via WebSocket
     // Backend will calculate IK and send angles back via telemetry
@@ -1172,6 +1198,24 @@
     }
   }
 
+  function applyNeutralPose() {
+    const now = performance.now();
+
+    for (let i = 0; i < legs.length; i++) {
+      const neutralAngles = computeNeutralAngles(legConfigs[i]);
+      legTargets[i].coxa = 0;
+      legTargets[i].femur = neutralAngles.femur;
+      legTargets[i].tibia = neutralAngles.tibia;
+
+      const underManualControl = (now - manualControlTimestamps[i]) < MANUAL_CONTROL_TIMEOUT;
+      if (!underManualControl) {
+        legs[i].coxaJoint.rotation.y = 0;
+        legs[i].femurJoint.rotation.x = neutralAngles.femur;
+        legs[i].tibiaJoint.rotation.x = neutralAngles.tibia;
+      }
+    }
+  }
+
   // Rebuild all legs with current config
   function rebuildAllLegs() {
     for (let i = 0; i < 6; i++) {
@@ -1212,6 +1256,7 @@
 
     // Rebuild all legs with new dimensions (backend config is uniform)
     rebuildAllLegs();
+    applyNeutralPose();
 
     logMsg(`Updated ${part} length to ${value}mm (all legs)`);
   }
@@ -1430,6 +1475,7 @@
     });
 
     rebuildAllLegs();
+    applyNeutralPose();
     logMsg('All legs reset to defaults');
   }
 
@@ -1456,10 +1502,12 @@
     ground.receiveShadow = e.target.checked;
     // Update all leg segments
     legs.forEach(leg => {
-      leg.coxa.castShadow = e.target.checked;
-      leg.femur.castShadow = e.target.checked;
-      leg.tibia.castShadow = e.target.checked;
-      leg.foot.castShadow = e.target.checked;
+      leg.group.traverse(obj => {
+        if (obj.isMesh) {
+          obj.castShadow = e.target.checked;
+          obj.receiveShadow = e.target.checked;
+        }
+      });
     });
     // Force shadow map update
     renderer.shadowMap.needsUpdate = true;
