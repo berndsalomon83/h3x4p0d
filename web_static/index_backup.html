@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexapod Simulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+      background: #222;
+    }
+    #c {
+      display: block;
+      width: 100%;
+      height: 100vh;
+    }
+    #ui {
+      position: fixed;
+      left: 10px;
+      top: 10px;
+      z-index: 100;
+      background: rgba(30, 30, 30, 0.95);
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #444;
+      color: #fff;
+      font-size: 14px;
+      min-width: 280px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+    .ui-section {
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #444;
+    }
+    .ui-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .ui-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #aaa;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    select, input, button {
+      font-family: inherit;
+      font-size: 13px;
+    }
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    select:hover {
+      border-color: #777;
+    }
+    select:focus {
+      outline: none;
+      border-color: #0099ff;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 6px;
+      background: #51cf66;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #63db7f;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(81, 207, 102, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    button.stop-btn {
+      background: #ff6b6b;
+    }
+    button.stop-btn:hover {
+      background: #ff8787;
+      box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .status-label {
+      color: #aaa;
+    }
+    .status-value {
+      color: #0099ff;
+      font-weight: 600;
+    }
+    #log {
+      width: 100%;
+      height: 120px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 8px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #0f0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      line-height: 1.4;
+      resize: none;
+    }
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .control-btn {
+      padding: 8px 6px;
+      background: #444;
+      color: #fff;
+      border: 1px solid #666;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.1s;
+      font-size: 12px;
+    }
+    .control-btn:hover {
+      background: #555;
+      border-color: #888;
+    }
+    .control-btn:active {
+      background: #666;
+      transform: scale(0.95);
+    }
+    .speed-control {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .speed-control input {
+      flex: 1;
+      height: 6px;
+      cursor: pointer;
+    }
+    .speed-label {
+      color: #aaa;
+      font-size: 12px;
+      min-width: 30px;
+      text-align: right;
+    }
+    .heading-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+    #settingsPanel {
+      position: fixed;
+      right: 10px;
+      top: 10px;
+      z-index: 100;
+      background: rgba(30, 30, 30, 0.95);
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #444;
+      color: #fff;
+      font-size: 14px;
+      min-width: 300px;
+      max-width: 350px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      display: none;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    #settingsPanel.open {
+      display: block;
+    }
+    .settings-tabs {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #444;
+    }
+    .settings-tab {
+      padding: 8px 12px;
+      background: transparent;
+      color: #aaa;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .settings-tab:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .settings-tab.active {
+      color: #0099ff;
+      border-bottom-color: #0099ff;
+    }
+    .settings-content {
+      display: none;
+    }
+    .settings-content.active {
+      display: block;
+    }
+    .gear-btn {
+      position: fixed;
+      right: 10px;
+      top: 10px;
+      z-index: 99;
+      width: 50px;
+      height: 50px;
+      background: rgba(30, 30, 30, 0.95);
+      border: 2px solid #444;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    .gear-btn:hover {
+      background: rgba(50, 50, 50, 0.95);
+      border-color: #666;
+      transform: rotate(90deg);
+    }
+    .leg-config-item {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: rgba(50, 50, 50, 0.5);
+      border-radius: 4px;
+      border: 1px solid #555;
+    }
+    .leg-config-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #0099ff;
+    }
+    .leg-preview {
+      width: 100%;
+      height: 120px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      margin: 8px 0;
+    }
+    .config-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 4px 0;
+      font-size: 12px;
+    }
+    .config-input {
+      width: 60px;
+      padding: 4px 6px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .reset-btn {
+      background: #ff6b6b;
+      color: #fff;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .reset-btn:hover {
+      background: #ff8787;
+    }
+    .leg-reset-btn {
+      background: #ffa500;
+      color: #fff;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .leg-reset-btn:hover {
+      background: #ffb733;
+    }
+    #webcamFeed {
+      width: 100%;
+      max-height: 200px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #000;
+      object-fit: cover;
+    }
+    .webcam-controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .webcam-btn {
+      flex: 1;
+      padding: 6px 10px;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .webcam-btn:hover {
+      background: #555;
+    }
+    .webcam-btn.active {
+      background: #51cf66;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <!-- Gear button for settings -->
+  <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
+
+  <!-- Settings Panel -->
+  <div id="settingsPanel">
+    <div class="settings-tabs">
+      <button class="settings-tab active" data-tab="legs">Legs</button>
+      <button class="settings-tab" data-tab="visual">Visual</button>
+      <button class="settings-tab" data-tab="camera">Camera</button>
+      <button class="settings-tab" data-tab="advanced">Advanced</button>
+    </div>
+
+    <!-- Legs Tab -->
+    <div class="settings-content active" id="tab-legs">
+      <div class="ui-section">
+        <label class="ui-label">Leg Configuration</label>
+        <div id="legConfigContainer"></div>
+        <button class="reset-btn" id="resetAllLegs">Reset All Legs to Defaults</button>
+      </div>
+    </div>
+
+    <!-- Visual Tab -->
+    <div class="settings-content" id="tab-visual">
+      <div class="ui-section">
+        <label class="ui-label">Visualization Settings</label>
+
+        <div class="config-row">
+          <span>Ground Contact Indicators:</span>
+          <input type="checkbox" id="showGroundContact" checked>
+        </div>
+
+        <div class="config-row">
+          <span>Show Shadows:</span>
+          <input type="checkbox" id="showShadows" checked>
+        </div>
+
+        <div class="config-row">
+          <span>Body Color:</span>
+          <input type="color" id="bodyColor" value="#333333" class="config-input">
+        </div>
+
+        <div class="config-row">
+          <span>Ground Color:</span>
+          <input type="color" id="groundColor" value="#66aa44" class="config-input">
+        </div>
+
+        <div class="config-row">
+          <span>Sky Color:</span>
+          <input type="color" id="skyColor" value="#87ceeb" class="config-input">
+        </div>
+      </div>
+    </div>
+
+    <!-- Camera Tab -->
+    <div class="settings-content" id="tab-camera">
+      <div class="ui-section">
+        <label class="ui-label">Webcam Feed</label>
+        <video id="webcamFeed" autoplay playsinline muted></video>
+        <div class="webcam-controls">
+          <button class="webcam-btn" id="startWebcam">Start Camera</button>
+          <button class="webcam-btn" id="stopWebcam">Stop Camera</button>
+        </div>
+        <div class="config-row" style="margin-top: 10px;">
+          <span>Overlay on 3D View:</span>
+          <input type="checkbox" id="overlayWebcam">
+        </div>
+        <div class="config-row">
+          <span>Opacity:</span>
+          <input type="range" id="webcamOpacity" min="10" max="100" value="70" style="width: 120px;">
+          <span id="webcamOpacityValue">70%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Advanced Tab -->
+    <div class="settings-content" id="tab-advanced">
+      <div class="ui-section">
+        <label class="ui-label">Advanced Settings</label>
+
+        <div class="config-row">
+          <span>Animation Smoothing:</span>
+          <input type="range" id="smoothing" min="1" max="50" value="20" style="width: 120px;">
+          <span id="smoothingValue">20%</span>
+        </div>
+
+        <div class="config-row">
+          <span>Camera FOV:</span>
+          <input type="range" id="cameraFOV" min="30" max="90" value="45" style="width: 120px;">
+          <span id="cameraFOVValue">45°</span>
+        </div>
+
+        <div class="config-row">
+          <span>Show FPS:</span>
+          <input type="checkbox" id="showFPS">
+        </div>
+
+        <button class="reset-btn" style="margin-top: 15px;" id="resetAllSettings">Reset All Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ui">
+    <div class="ui-section">
+      <label class="ui-label">Movement Controls</label>
+      <div class="control-grid">
+        <div style="grid-column: 2"><button class="control-btn" id="btn-up">↑ FWD</button></div>
+        <div style="grid-column: 1"><button class="control-btn" id="btn-left">← LEFT</button></div>
+        <div style="grid-column: 3"><button class="control-btn" id="btn-right">RIGHT →</button></div>
+        <div style="grid-column: 2"><button class="control-btn" id="btn-down">↓ BACK</button></div>
+      </div>
+      <div style="text-align: center; font-size: 11px; color: #666; margin-top: 4px;">
+        Arrow keys or WASD
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Gait Mode</label>
+      <select id="gait">
+        <option value="tripod">Tripod (fast, stable)</option>
+        <option value="wave">Wave (smooth, slow)</option>
+        <option value="ripple">Ripple (medium)</option>
+      </select>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Speed</label>
+      <div class="speed-control">
+        <input type="range" id="speedSlider" min="0" max="100" value="50" style="accent-color: #0099ff;">
+        <span class="speed-label" id="speedValue">50%</span>
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Body Height</label>
+      <div class="speed-control">
+        <input type="range" id="bodyHeightSlider" min="30" max="100" value="60" style="accent-color: #0099ff;">
+        <span class="speed-label" id="bodyHeightValue">60mm</span>
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Status</label>
+      <div class="status-row">
+        <span class="status-label">Connection:</span>
+        <span class="status-value" id="connectionStatus" style="color: #ff6b6b;">Disconnected</span>
+      </div>
+      <div class="heading-info">
+        <span>Direction: <span id="dirValue" style="color: #0099ff;">0°</span></span>
+        <span>Speed: <span id="spdValue" style="color: #0099ff;">0%</span></span>
+      </div>
+      <button id="run">Start Walking</button>
+    </div>
+
+    <div class="ui-section">
+      <div class="status-row">
+        <span class="status-label">Temperature:</span>
+        <span class="status-value" id="temp">25.0 °C</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Battery:</span>
+        <span class="status-value" id="batt">12.00 V</span>
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Log</label>
+      <textarea id="log" readonly></textarea>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

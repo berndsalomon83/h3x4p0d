@@ -1,0 +1,1245 @@
+(function(){
+  // Three.js 3D simulator
+  const canvas = document.getElementById('c');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
+  renderer.shadowMap.enabled = true;
+  const fov = 45;
+  const aspect = window.innerWidth / window.innerHeight;
+  const near = 0.1;
+  const far = 2000;
+  const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+  camera.position.set(200, 150, 200);
+  camera.lookAt(0, 0, 0);
+
+  // Simple camera controls
+  let cameraDistance = 300;
+  let cameraAngleY = Math.PI / 4;
+  let cameraAngleX = Math.PI / 6;
+  let isDragging = false;
+  let lastMouseX = 0;
+  let lastMouseY = 0;
+
+  function updateCameraPosition() {
+    const radius = cameraDistance;
+    camera.position.x = radius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX);
+    camera.position.y = radius * Math.sin(cameraAngleX);
+    camera.position.z = radius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX);
+    camera.lookAt(0, 0, 0);
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      const deltaX = e.clientX - lastMouseX;
+      const deltaY = e.clientY - lastMouseY;
+
+      cameraAngleY += deltaX * 0.01;
+      cameraAngleX += deltaY * 0.01;
+
+      // Clamp vertical angle
+      cameraAngleX = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, cameraAngleX));
+
+      updateCameraPosition();
+
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    cameraDistance += e.deltaY * 0.1;
+    cameraDistance = Math.max(100, Math.min(500, cameraDistance));
+    updateCameraPosition();
+  });
+
+  updateCameraPosition();
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 500, 1000);
+  
+  // Lighting
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(200, 200, 200);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.far = 500;
+  dirLight.shadow.camera.left = -200;
+  dirLight.shadow.camera.right = 200;
+  dirLight.shadow.camera.top = 200;
+  dirLight.shadow.camera.bottom = -200;
+  scene.add(dirLight);
+  scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
+  
+  // Ground
+  const groundGeom = new THREE.PlaneGeometry(800, 600);
+  const groundMat = new THREE.MeshStandardMaterial({color: 0x66aa44});
+  const ground = new THREE.Mesh(groundGeom, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -10;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  
+  // Hexapod body - ellipsoid (stretched sphere) for realistic proportions
+  let defaultBodyY = 60; // Higher off ground for realistic leg extension (adjustable)
+  const bodyGeom = new THREE.SphereGeometry(50, 32, 32); // Sphere base
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x333333,
+    metalness: 0.4,
+    roughness: 0.6
+  });
+  const body = new THREE.Mesh(bodyGeom, bodyMat);
+  body.scale.set(1.0, 0.3, 1.2); // Ellipsoid: compressed height, stretched length
+  body.position.y = defaultBodyY;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  scene.add(body);
+
+  // Configurable leg dimensions (in mm, matching backend)
+  // Load from localStorage or use defaults
+  const DEFAULT_LEG_CONFIG = {
+    coxaLength: 15,
+    femurLength: 50,
+    tibiaLength: 55,
+    coxaRadius: 4,
+    femurRadius: 4,
+    tibiaRadius: 3.5,
+    jointRadius: 5,
+    footRadius: 4
+  };
+
+  let LEG_CONFIG = {...DEFAULT_LEG_CONFIG};
+
+  // Load saved config from localStorage
+  function loadLegConfig() {
+    const saved = localStorage.getItem('hexapod_leg_config');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        LEG_CONFIG = {...DEFAULT_LEG_CONFIG, ...parsed};
+        console.log('Loaded leg config from localStorage:', LEG_CONFIG);
+      } catch(e) {
+        console.error('Failed to load leg config:', e);
+      }
+    }
+  }
+
+  // Save config to localStorage
+  function saveLegConfig() {
+    localStorage.setItem('hexapod_leg_config', JSON.stringify(LEG_CONFIG));
+    console.log('Saved leg config to localStorage');
+  }
+
+  loadLegConfig();
+
+  // Leg objects: store references for animation with proper hierarchy
+  const legs = [];
+  const legPositions = [
+    [60, 50],    // leg 0: front-right
+    [0, 60],     // leg 1: mid-right
+    [-60, 50],   // leg 2: rear-right
+    [-60, -50],  // leg 3: rear-left
+    [0, -60],    // leg 4: mid-left
+    [60, -50],   // leg 5: front-left
+  ];
+
+  // Interpolation targets for smooth animation
+  const legTargets = [];
+
+  for(let i = 0; i < 6; i++){
+    const legGroup = new THREE.Group();
+
+    // Determine if this is a right-side leg (positive Z) or left-side leg (negative Z)
+    const isRightSide = legPositions[i][1] > 0;
+
+    // Coxa joint and segment (base rotation)
+    const coxaJoint = new THREE.Group();
+    const coxaGeom = new THREE.CapsuleGeometry(LEG_CONFIG.coxaRadius, LEG_CONFIG.coxaLength, 4, 8);
+    const coxaMat = new THREE.MeshStandardMaterial({
+      color: 0xaa6633,
+      metalness: 0.4,
+      roughness: 0.6
+    });
+    const coxaMesh = new THREE.Mesh(coxaGeom, coxaMat);
+    // Orient coxa to point outward from body
+    coxaMesh.rotation.z = Math.PI / 2;
+    coxaMesh.castShadow = true;
+    coxaMesh.receiveShadow = true;
+    coxaJoint.add(coxaMesh);
+
+    // Joint sphere at coxa end
+    const coxaJointSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(LEG_CONFIG.jointRadius, 8, 8),
+      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
+    );
+    coxaJointSphere.position.x = LEG_CONFIG.coxaLength;
+    coxaJointSphere.castShadow = true;
+    coxaJoint.add(coxaJointSphere);
+
+    // Femur joint and segment (attach to end of coxa)
+    const femurJoint = new THREE.Group();
+    femurJoint.position.x = LEG_CONFIG.coxaLength; // Position at end of coxa
+
+    const femurGeom = new THREE.CapsuleGeometry(LEG_CONFIG.femurRadius, LEG_CONFIG.femurLength, 4, 8);
+    const femurMat = new THREE.MeshStandardMaterial({
+      color: 0xbb88ff,
+      metalness: 0.3,
+      roughness: 0.7
+    });
+    const femurMesh = new THREE.Mesh(femurGeom, femurMat);
+    femurMesh.position.y = -LEG_CONFIG.femurLength / 2;
+    femurMesh.castShadow = true;
+    femurMesh.receiveShadow = true;
+    femurJoint.add(femurMesh);
+
+    // Joint sphere at femur end
+    const femurJointSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(LEG_CONFIG.jointRadius, 8, 8),
+      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
+    );
+    femurJointSphere.position.y = -LEG_CONFIG.femurLength;
+    femurJointSphere.castShadow = true;
+    femurJoint.add(femurJointSphere);
+
+    // Tibia joint and segment (attach to end of femur)
+    const tibiaJoint = new THREE.Group();
+    tibiaJoint.position.y = -LEG_CONFIG.femurLength; // Position at end of femur
+
+    const tibiaGeom = new THREE.CapsuleGeometry(LEG_CONFIG.tibiaRadius, LEG_CONFIG.tibiaLength, 4, 8);
+    const tibiaMat = new THREE.MeshStandardMaterial({
+      color: 0x44dd88,
+      metalness: 0.3,
+      roughness: 0.7
+    });
+    const tibiaMesh = new THREE.Mesh(tibiaGeom, tibiaMat);
+    tibiaMesh.position.y = -LEG_CONFIG.tibiaLength / 2;
+    tibiaMesh.castShadow = true;
+    tibiaMesh.receiveShadow = true;
+    tibiaJoint.add(tibiaMesh);
+
+    // Foot tip
+    const footGeom = new THREE.SphereGeometry(LEG_CONFIG.footRadius, 8, 8);
+    const footMat = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      metalness: 0.8,
+      roughness: 0.3
+    });
+    const footMesh = new THREE.Mesh(footGeom, footMat);
+    footMesh.position.y = -LEG_CONFIG.tibiaLength;
+    footMesh.castShadow = true;
+    tibiaJoint.add(footMesh);
+
+    // Build hierarchy: tibia -> femur -> coxa -> leg group
+    femurJoint.add(tibiaJoint);
+    coxaJoint.add(femurJoint);
+    legGroup.add(coxaJoint);
+
+    // Position leg around body
+    legGroup.position.x = legPositions[i][0];
+    legGroup.position.z = legPositions[i][1];
+    legGroup.position.y = defaultBodyY;
+
+    // Orient leg to point outward from body center
+    // Calculate angle from body center to leg position
+    // Add PI/2 to rotate the leg group so coxa extends outward correctly
+    let angle = Math.atan2(legPositions[i][1], legPositions[i][0]);
+    legGroup.rotation.y = angle + Math.PI / 2;
+
+    scene.add(legGroup);
+    legs.push({
+      group: legGroup,
+      coxaJoint: coxaJoint,
+      femurJoint: femurJoint,
+      tibiaJoint: tibiaJoint,
+      isRightSide: isRightSide
+    });
+
+    // Initialize interpolation targets
+    legTargets.push({
+      coxa: 0,
+      femur: 0,
+      tibia: 0
+    });
+  }
+
+  // UI controls
+  const runBtn = document.getElementById('run');
+  const gaitSelect = document.getElementById('gait');
+  const speedSlider = document.getElementById('speedSlider');
+  const log = document.getElementById('log');
+  
+  // Movement state
+  let walking = false;
+  let currentSpeed = 0.5;    // 0-1
+  let currentHeading = 0;    // 0-360 degrees
+  let keysPressed = {};
+
+  function logMsg(msg){
+    const timestamp = new Date().toLocaleTimeString();
+    log.textContent = `[${timestamp}] ${msg}\n` + log.textContent;
+    if(log.textContent.split('\n').length > 10){
+      log.textContent = log.textContent.split('\n').slice(0,10).join('\n');
+    }
+  }
+
+  // WebSocket connection
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(protocol + '//' + location.host + '/ws');
+  
+  let backendConnected = false;
+  let fallbackTime = 0;
+
+  ws.onopen = () => {
+    logMsg('Connected to hexapod controller');
+    backendConnected = true;
+    document.getElementById('connectionStatus').textContent = 'Connected (Backend)';
+    document.getElementById('connectionStatus').style.color = '#51cf66';
+    console.log('WebSocket connected successfully');
+  };
+  
+  let telemetryCount = 0;
+  ws.onmessage = (ev) => {
+    try{
+      const m = JSON.parse(ev.data);
+      if(m.type === 'telemetry'){
+        // Debug: log first few telemetry messages
+        if(telemetryCount < 5){
+          console.log('Telemetry #' + telemetryCount + ':', {
+            running: m.running,
+            speed: m.speed,
+            heading: m.heading,
+            hasAngles: !!m.angles,
+            angleCount: m.angles ? m.angles.length : 0,
+            firstLeg: m.angles ? m.angles[0] : null
+          });
+          telemetryCount++;
+        }
+
+        // Update target angles for smooth interpolation
+        const angles = m.angles;
+        if(angles && angles.length === 6){
+          for(let i = 0; i < 6; i++){
+            const [c, f, t] = angles[i];
+            // Convert servo angles (0-180°) to radians centered at 90°
+            // Coxa: direct conversion for yaw rotation
+            legTargets[i].coxa = (c - 90) * Math.PI / 180;
+            // Femur and tibia: convert to rotation (90° = 0 rotation)
+            legTargets[i].femur = (f - 90) * Math.PI / 180;
+            legTargets[i].tibia = (t - 90) * Math.PI / 180;
+          }
+
+          // Log when angles change significantly
+          if(telemetryCount === 5){
+            console.log('Sample angle conversion - Leg 0:', {
+              servo: [c, f, t],
+              radians: [legTargets[0].coxa, legTargets[0].femur, legTargets[0].tibia]
+            });
+          }
+        } else {
+          console.warn('Telemetry received but no angles!', m);
+        }
+        // Update walking state for body animation
+        walking = m.running || false;
+
+        // Update status display
+        if(m.temperature_c !== undefined){
+          document.getElementById('temp').textContent = m.temperature_c.toFixed(1) + ' °C';
+        }
+        if(m.battery_v !== undefined){
+          document.getElementById('batt').textContent = m.battery_v.toFixed(2) + ' V';
+        }
+      }
+    }catch(e){
+      console.error('Telemetry parse error:', e);
+    }
+  };
+  
+  ws.onerror = (e) => {
+    logMsg('WebSocket error: ' + e);
+    document.getElementById('connectionStatus').textContent = 'Error';
+    document.getElementById('connectionStatus').style.color = '#ff6b6b';
+  };
+
+  ws.onclose = () => {
+    logMsg('Disconnected from server');
+    backendConnected = false;
+    document.getElementById('connectionStatus').textContent = 'Standalone Mode';
+    document.getElementById('connectionStatus').style.color = '#ffa500';
+  };
+
+  // Send movement command to server
+  function sendMovement(){
+    if(!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    // Send both move and walk messages to ensure backend stays in sync
+    ws.send(JSON.stringify({
+      type: 'walk',
+      walking: walking
+    }));
+
+    ws.send(JSON.stringify({
+      type: 'move',
+      speed: currentSpeed,
+      heading: currentHeading,
+      walking: walking
+    }));
+  }
+
+  // Update current heading based on keys pressed
+  function updateHeading(){
+    let dx = 0, dy = 0;
+
+    if(keysPressed['ArrowUp'] || keysPressed['w'] || keysPressed['W']) dy += 1;
+    if(keysPressed['ArrowDown'] || keysPressed['s'] || keysPressed['S']) dy -= 1;
+    if(keysPressed['ArrowLeft'] || keysPressed['a'] || keysPressed['A']) dx -= 1;
+    if(keysPressed['ArrowRight'] || keysPressed['d'] || keysPressed['D']) dx += 1;
+
+    if(dx === 0 && dy === 0){
+      currentSpeed = 0;
+      // Auto-stop when no keys pressed
+      if(walking){
+        walking = false;
+        runBtn.textContent = 'Start Walking';
+        runBtn.style.background = '#51cf66';
+        console.log('Auto-stopped walking');
+      }
+    } else {
+      // Calculate heading (in degrees, 0 = forward)
+      currentHeading = Math.atan2(dx, dy) * 180 / Math.PI;
+      // Use full speed (100%) for single direction, sqrt(2) for diagonal
+      currentSpeed = Math.min(1.0, Math.sqrt(dx*dx + dy*dy));
+      // Auto-start walking when keys pressed
+      if(!walking){
+        walking = true;
+        runBtn.textContent = 'Stop Walking';
+        runBtn.style.background = '#ff6b6b';
+        console.log('Auto-started walking - speed:', currentSpeed, 'heading:', currentHeading);
+      }
+    }
+
+    updateUI();
+    sendMovement();
+  }
+
+  // UI update helper
+  function updateUI(){
+    document.getElementById('dirValue').textContent = currentHeading.toFixed(0) + '°';
+    document.getElementById('spdValue').textContent = (currentSpeed * 100).toFixed(0) + '%';
+  }
+
+  // Control button handlers
+  document.getElementById('btn-up').addEventListener('mousedown', () => {
+    keysPressed['ArrowUp'] = true;
+    updateHeading();
+  });
+  document.getElementById('btn-up').addEventListener('mouseup', () => {
+    keysPressed['ArrowUp'] = false;
+    updateHeading();
+  });
+  
+  document.getElementById('btn-down').addEventListener('mousedown', () => {
+    keysPressed['ArrowDown'] = true;
+    updateHeading();
+  });
+  document.getElementById('btn-down').addEventListener('mouseup', () => {
+    keysPressed['ArrowDown'] = false;
+    updateHeading();
+  });
+  
+  document.getElementById('btn-left').addEventListener('mousedown', () => {
+    keysPressed['ArrowLeft'] = true;
+    updateHeading();
+  });
+  document.getElementById('btn-left').addEventListener('mouseup', () => {
+    keysPressed['ArrowLeft'] = false;
+    updateHeading();
+  });
+  
+  document.getElementById('btn-right').addEventListener('mousedown', () => {
+    keysPressed['ArrowRight'] = true;
+    updateHeading();
+  });
+  document.getElementById('btn-right').addEventListener('mouseup', () => {
+    keysPressed['ArrowRight'] = false;
+    updateHeading();
+  });
+
+  // Keyboard support
+  document.addEventListener('keydown', (e) => {
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D'].includes(e.key)){
+      keysPressed[e.key] = true;
+      updateHeading();
+    }
+  });
+  
+  document.addEventListener('keyup', (e) => {
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D'].includes(e.key)){
+      keysPressed[e.key] = false;
+      updateHeading();
+    }
+  });
+
+  // Speed slider
+  speedSlider.addEventListener('input', (e) => {
+    const sliderSpeed = parseFloat(e.target.value) / 100;
+    // Only apply slider if no movement keys are pressed
+    if(currentSpeed === 0){
+      currentSpeed = sliderSpeed;
+      document.getElementById('speedValue').textContent = e.target.value + '%';
+      updateUI();
+      sendMovement();
+    }
+  });
+
+  // Body height slider
+  const bodyHeightSlider = document.getElementById('bodyHeightSlider');
+  bodyHeightSlider.addEventListener('input', (e) => {
+    const height = parseFloat(e.target.value);
+    defaultBodyY = height;
+    document.getElementById('bodyHeightValue').textContent = height + 'mm';
+
+    // Update body position
+    body.position.y = height;
+
+    // Update all leg positions to match new body height
+    legs.forEach(leg => {
+      leg.group.position.y = height;
+    });
+  });
+
+  // Start/Stop button
+  runBtn.addEventListener('click', () => {
+    walking = !walking;
+    runBtn.textContent = walking ? 'Stop Walking' : 'Start Walking';
+    runBtn.style.background = walking ? '#ff6b6b' : '#51cf66';
+
+    // If starting to walk with no movement keys pressed, use slider speed
+    if(walking && currentSpeed === 0){
+      currentSpeed = parseFloat(speedSlider.value) / 100;
+    }
+
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({
+        type: 'walk',
+        walking: walking
+      }));
+    }
+
+    logMsg(walking ? 'Walking started' : 'Walking stopped');
+    sendMovement();
+  });
+
+  // Gait selection
+  gaitSelect.addEventListener('change', (ev) => {
+    const mode = ev.target.value;
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({type: 'set_gait', mode}));
+    }
+    logMsg(`Gait mode: ${mode}`);
+  });
+
+  // Responsive canvas
+  function resizeRenderer(){
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if(canvas.width !== w || canvas.height !== h){
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  // Animation loop with smooth interpolation
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let lastFPSUpdate = performance.now();
+  let currentFPS = 0;
+
+  function lerpAngle(a, b, t){
+    // Handle angle wrapping for smooth interpolation
+    let diff = b - a;
+    while(diff > Math.PI) diff -= 2 * Math.PI;
+    while(diff < -Math.PI) diff += 2 * Math.PI;
+    return a + diff * t;
+  }
+
+  // Create FPS display element
+  const fpsDisplay = document.createElement('div');
+  fpsDisplay.style.position = 'fixed';
+  fpsDisplay.style.bottom = '10px';
+  fpsDisplay.style.left = '10px';
+  fpsDisplay.style.color = '#0f0';
+  fpsDisplay.style.fontFamily = 'monospace';
+  fpsDisplay.style.fontSize = '16px';
+  fpsDisplay.style.textShadow = '1px 1px 2px #000';
+  fpsDisplay.style.zIndex = '1000';
+  fpsDisplay.style.display = 'none';
+  fpsDisplay.style.pointerEvents = 'none';
+  document.body.appendChild(fpsDisplay);
+
+  function render(time){
+    resizeRenderer();
+
+    const dt = (time - lastTime) / 1000;
+    lastTime = time;
+
+    // FPS calculation
+    frameCount++;
+    if (time - lastFPSUpdate >= 1000) {
+      currentFPS = frameCount;
+      frameCount = 0;
+      lastFPSUpdate = time;
+    }
+
+    // Fallback animation if no backend telemetry received
+    if(walking && telemetryCount === 0){
+      fallbackTime += dt * currentSpeed;
+
+      // Simple tripod gait animation
+      for(let i = 0; i < 6; i++){
+        const phase = (i % 2 === 0 ? 0 : 0.5) + fallbackTime;
+        const t = (phase % 1.0);
+
+        // Swing phase (0-0.5): lift leg up and forward
+        // Stance phase (0.5-1.0): push down and backward
+        const swing = t < 0.5;
+        const cyclePos = swing ? t * 2 : (t - 0.5) * 2;
+
+        // Coxa: slight forward/backward swing
+        legTargets[i].coxa = swing ? Math.sin(cyclePos * Math.PI) * 0.2 : -0.1;
+
+        // Femur: lift leg during swing, lower during stance
+        legTargets[i].femur = swing ? -0.5 - Math.sin(cyclePos * Math.PI) * 0.4 : -0.3;
+
+        // Tibia: bend more during swing to lift foot, extend during stance
+        legTargets[i].tibia = swing ? 0.8 : 0.5;
+      }
+    }
+
+    // Smooth interpolation for leg joints
+    const smoothing = settingsValues.smoothing; // Use settings value
+    for(let i = 0; i < 6; i++){
+      const leg = legs[i];
+      const target = legTargets[i];
+
+      // Interpolate each joint
+      // Coxa: Y-axis rotation (horizontal/yaw)
+      // Femur & Tibia: X-axis rotation (vertical/pitch)
+      const currentCoxa = leg.coxaJoint.rotation.y;
+      const currentFemur = leg.femurJoint.rotation.x;
+      const currentTibia = leg.tibiaJoint.rotation.x;
+
+      leg.coxaJoint.rotation.y = lerpAngle(currentCoxa, target.coxa, smoothing);
+      leg.femurJoint.rotation.x = lerpAngle(currentFemur, target.femur, smoothing);
+      leg.tibiaJoint.rotation.x = lerpAngle(currentTibia, target.tibia, smoothing);
+
+      // Update ground contact indicator position and visibility
+      if (groundContactIndicators[i]) {
+        // Calculate foot world position
+        const footPos = new THREE.Vector3();
+        leg.tibiaJoint.getWorldPosition(footPos);
+        footPos.y -= LEG_CONFIG.tibiaLength;
+
+        // Update indicator position
+        groundContactIndicators[i].position.x = footPos.x;
+        groundContactIndicators[i].position.z = footPos.z;
+
+        // Show indicator when foot is near or on ground
+        const isOnGround = footPos.y < 5;
+        groundContactIndicators[i].visible = settingsValues.showGroundContact && isOnGround;
+
+        // Change color based on contact strength
+        if (isOnGround) {
+          const contactStrength = Math.max(0, 1 - footPos.y / 5);
+          groundContactIndicators[i].material.color.setRGB(
+            1 - contactStrength,
+            contactStrength,
+            0
+          );
+        }
+      }
+    }
+
+    // Keep body stable - no bobbing to avoid disturbing movement
+    body.position.y = defaultBodyY;
+    body.rotation.x = 0;
+    body.rotation.z = 0;
+
+    // Update webcam overlay texture if active
+    if (webcamOverlay && webcamOverlay.visible) {
+      webcamOverlay.material.map.needsUpdate = true;
+    }
+
+    renderer.render(scene, camera);
+
+    // Display FPS if enabled (after rendering to avoid interfering with WebGL)
+    if (settingsValues.showFPS) {
+      fpsDisplay.style.display = 'block';
+      fpsDisplay.textContent = `FPS: ${currentFPS}`;
+    } else {
+      fpsDisplay.style.display = 'none';
+    }
+
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+
+  logMsg('Hexapod simulator loaded - Ready!');
+
+  // Show standalone mode message after a short delay if not connected
+  setTimeout(() => {
+    if(!backendConnected){
+      logMsg('Running in standalone mode - using fallback animation');
+      logMsg('Start the Python backend for full IK-based walking');
+    }
+  }, 2000);
+
+  // ========== Settings Panel ==========
+
+  const gearBtn = document.getElementById('gearBtn');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const legConfigContainer = document.getElementById('legConfigContainer');
+
+  // Mini preview scenes for each leg
+  const legPreviews = [];
+
+  // Ground contact indicators for each leg
+  const groundContactIndicators = [];
+
+  // Settings values
+  let settingsValues = {
+    smoothing: 0.2,
+    showGroundContact: true,
+    showShadows: true,
+    showFPS: false
+  };
+
+  // Toggle settings panel
+  gearBtn.addEventListener('click', () => {
+    settingsPanel.classList.toggle('open');
+    if (settingsPanel.classList.contains('open')) {
+      // Initialize previews when opening
+      initializeLegPreviews();
+    }
+  });
+
+  // Close panel when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!settingsPanel.contains(e.target) && !gearBtn.contains(e.target)) {
+      settingsPanel.classList.remove('open');
+    }
+  });
+
+  // Tab switching
+  document.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetTab = tab.dataset.tab;
+
+      // Update active tab
+      document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Update active content
+      document.querySelectorAll('.settings-content').forEach(c => c.classList.remove('active'));
+      document.getElementById(`tab-${targetTab}`).classList.add('active');
+    });
+  });
+
+  // Initialize leg configuration UI
+  function initializeConfigUI() {
+    const legNames = ['Front Right', 'Mid Right', 'Rear Right', 'Rear Left', 'Mid Left', 'Front Left'];
+
+    legConfigContainer.innerHTML = '';
+
+    legNames.forEach((name, index) => {
+      const item = document.createElement('div');
+      item.className = 'leg-config-item';
+      item.innerHTML = `
+        <div class="leg-config-header">
+          <span>${name} (Leg ${index})</span>
+          <button class="leg-reset-btn" id="resetLeg${index}">Reset</button>
+        </div>
+        <canvas class="leg-preview" id="legPreview${index}"></canvas>
+        <div class="config-row">
+          <span>Coxa Length:</span>
+          <input type="number" class="config-input" id="coxa${index}" value="${LEG_CONFIG.coxaLength}" min="5" max="50" step="1">
+          <span>mm</span>
+        </div>
+        <div class="config-row">
+          <span>Femur Length:</span>
+          <input type="number" class="config-input" id="femur${index}" value="${LEG_CONFIG.femurLength}" min="20" max="100" step="1">
+          <span>mm</span>
+        </div>
+        <div class="config-row">
+          <span>Tibia Length:</span>
+          <input type="number" class="config-input" id="tibia${index}" value="${LEG_CONFIG.tibiaLength}" min="20" max="100" step="1">
+          <span>mm</span>
+        </div>
+      `;
+      legConfigContainer.appendChild(item);
+
+      // Add input listeners
+      ['coxa', 'femur', 'tibia'].forEach(part => {
+        const input = document.getElementById(`${part}${index}`);
+        input.addEventListener('input', (e) => {
+          updateLegConfig(index, part, parseFloat(e.target.value));
+        });
+      });
+
+      // Individual leg reset button
+      document.getElementById(`resetLeg${index}`).addEventListener('click', () => {
+        resetSingleLeg(index);
+      });
+
+      // Create ground contact indicator for this leg
+      const contactIndicator = new THREE.Mesh(
+        new THREE.RingGeometry(8, 12, 16),
+        new THREE.MeshBasicMaterial({color: 0x00ff00, transparent: true, opacity: 0.6, side: THREE.DoubleSide})
+      );
+      contactIndicator.rotation.x = -Math.PI / 2;
+      contactIndicator.position.y = -9;
+      contactIndicator.visible = false;
+      scene.add(contactIndicator);
+      groundContactIndicators.push(contactIndicator);
+    });
+  }
+
+  // Update leg configuration
+  function updateLegConfig(legIndex, part, value) {
+    // Update global config
+    if (part === 'coxa') {
+      LEG_CONFIG.coxaLength = value;
+    } else if (part === 'femur') {
+      LEG_CONFIG.femurLength = value;
+    } else if (part === 'tibia') {
+      LEG_CONFIG.tibiaLength = value;
+    }
+
+    // Save to localStorage
+    saveLegConfig();
+
+    // Update the specific leg geometry
+    rebuildLeg(legIndex);
+
+    // Update preview
+    if (legPreviews[legIndex]) {
+      updateLegPreview(legIndex);
+    }
+
+    logMsg(`Updated ${part} for leg ${legIndex} to ${value}mm`);
+  }
+
+  // Rebuild a specific leg with new dimensions
+  function rebuildLeg(legIndex) {
+    const oldLeg = legs[legIndex];
+    const legPos = legPositions[legIndex];
+
+    // Remove old leg from scene
+    scene.remove(oldLeg.group);
+
+    // Create new leg with updated dimensions
+    const legGroup = new THREE.Group();
+    const isRightSide = legPos[1] > 0;
+
+    // Coxa
+    const coxaJoint = new THREE.Group();
+    const coxaGeom = new THREE.CapsuleGeometry(LEG_CONFIG.coxaRadius, LEG_CONFIG.coxaLength, 4, 8);
+    const coxaMat = new THREE.MeshStandardMaterial({color: 0xaa6633, metalness: 0.4, roughness: 0.6});
+    const coxaMesh = new THREE.Mesh(coxaGeom, coxaMat);
+    coxaMesh.rotation.z = Math.PI / 2;
+    coxaMesh.castShadow = true;
+    coxaMesh.receiveShadow = true;
+    coxaJoint.add(coxaMesh);
+
+    const coxaJointSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(LEG_CONFIG.jointRadius, 8, 8),
+      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
+    );
+    coxaJointSphere.position.x = LEG_CONFIG.coxaLength;
+    coxaJointSphere.castShadow = true;
+    coxaJoint.add(coxaJointSphere);
+
+    // Femur
+    const femurJoint = new THREE.Group();
+    femurJoint.position.x = LEG_CONFIG.coxaLength;
+    const femurGeom = new THREE.CapsuleGeometry(LEG_CONFIG.femurRadius, LEG_CONFIG.femurLength, 4, 8);
+    const femurMat = new THREE.MeshStandardMaterial({color: 0xbb88ff, metalness: 0.3, roughness: 0.7});
+    const femurMesh = new THREE.Mesh(femurGeom, femurMat);
+    femurMesh.position.y = -LEG_CONFIG.femurLength / 2;
+    femurMesh.castShadow = true;
+    femurMesh.receiveShadow = true;
+    femurJoint.add(femurMesh);
+
+    const femurJointSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(LEG_CONFIG.jointRadius, 8, 8),
+      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
+    );
+    femurJointSphere.position.y = -LEG_CONFIG.femurLength;
+    femurJointSphere.castShadow = true;
+    femurJoint.add(femurJointSphere);
+
+    // Tibia
+    const tibiaJoint = new THREE.Group();
+    tibiaJoint.position.y = -LEG_CONFIG.femurLength;
+    const tibiaGeom = new THREE.CapsuleGeometry(LEG_CONFIG.tibiaRadius, LEG_CONFIG.tibiaLength, 4, 8);
+    const tibiaMat = new THREE.MeshStandardMaterial({color: 0x44dd88, metalness: 0.3, roughness: 0.7});
+    const tibiaMesh = new THREE.Mesh(tibiaGeom, tibiaMat);
+    tibiaMesh.position.y = -LEG_CONFIG.tibiaLength / 2;
+    tibiaMesh.castShadow = true;
+    tibiaMesh.receiveShadow = true;
+    tibiaJoint.add(tibiaMesh);
+
+    const footGeom = new THREE.SphereGeometry(LEG_CONFIG.footRadius, 8, 8);
+    const footMat = new THREE.MeshStandardMaterial({color: 0x333333, metalness: 0.8, roughness: 0.3});
+    const footMesh = new THREE.Mesh(footGeom, footMat);
+    footMesh.position.y = -LEG_CONFIG.tibiaLength;
+    footMesh.castShadow = true;
+    tibiaJoint.add(footMesh);
+
+    // Build hierarchy
+    femurJoint.add(tibiaJoint);
+    coxaJoint.add(femurJoint);
+    legGroup.add(coxaJoint);
+
+    // Position and orient
+    legGroup.position.x = legPos[0];
+    legGroup.position.z = legPos[1];
+    legGroup.position.y = defaultBodyY;
+    let angle = Math.atan2(legPos[1], legPos[0]);
+    legGroup.rotation.y = angle + Math.PI / 2;
+
+    // Restore rotation state
+    coxaJoint.rotation.y = oldLeg.coxaJoint.rotation.y;
+    femurJoint.rotation.x = oldLeg.femurJoint.rotation.x;
+    tibiaJoint.rotation.x = oldLeg.tibiaJoint.rotation.x;
+
+    scene.add(legGroup);
+
+    // Update legs array
+    legs[legIndex] = {
+      group: legGroup,
+      coxaJoint: coxaJoint,
+      femurJoint: femurJoint,
+      tibiaJoint: tibiaJoint,
+      isRightSide: isRightSide
+    };
+  }
+
+  // Initialize leg previews
+  function initializeLegPreviews() {
+    for (let i = 0; i < 6; i++) {
+      const canvas = document.getElementById(`legPreview${i}`);
+      if (!canvas || legPreviews[i]) continue; // Skip if already initialized
+
+      const previewRenderer = new THREE.WebGLRenderer({canvas, antialias: true});
+      const previewScene = new THREE.Scene();
+      previewScene.background = new THREE.Color(0x1a1a1a);
+
+      const previewCamera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 500);
+      previewCamera.position.set(80, 60, 80);
+      previewCamera.lookAt(0, -30, 0);
+
+      // Lighting
+      const light = new THREE.DirectionalLight(0xffffff, 0.8);
+      light.position.set(50, 50, 50);
+      previewScene.add(light);
+      previewScene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
+
+      // Create preview leg
+      const previewLeg = createPreviewLeg();
+      previewScene.add(previewLeg);
+
+      legPreviews[i] = {
+        renderer: previewRenderer,
+        scene: previewScene,
+        camera: previewCamera,
+        leg: previewLeg
+      };
+
+      // Initial render
+      previewRenderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      previewRenderer.render(previewScene, previewCamera);
+
+      // Animate preview
+      function animatePreview() {
+        if (settingsPanel.classList.contains('open')) {
+          previewLeg.rotation.y += 0.01;
+          previewRenderer.render(previewScene, previewCamera);
+        }
+        requestAnimationFrame(animatePreview);
+      }
+      animatePreview();
+    }
+  }
+
+  // Create a preview leg
+  function createPreviewLeg() {
+    const legGroup = new THREE.Group();
+
+    // Coxa
+    const coxaJoint = new THREE.Group();
+    const coxaMesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(LEG_CONFIG.coxaRadius, LEG_CONFIG.coxaLength, 4, 8),
+      new THREE.MeshStandardMaterial({color: 0xaa6633, metalness: 0.4, roughness: 0.6})
+    );
+    coxaMesh.rotation.z = Math.PI / 2;
+    coxaJoint.add(coxaMesh);
+
+    // Femur
+    const femurJoint = new THREE.Group();
+    femurJoint.position.x = LEG_CONFIG.coxaLength;
+    const femurMesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(LEG_CONFIG.femurRadius, LEG_CONFIG.femurLength, 4, 8),
+      new THREE.MeshStandardMaterial({color: 0xbb88ff, metalness: 0.3, roughness: 0.7})
+    );
+    femurMesh.position.y = -LEG_CONFIG.femurLength / 2;
+    femurJoint.add(femurMesh);
+    femurJoint.rotation.x = -0.5;
+
+    // Tibia
+    const tibiaJoint = new THREE.Group();
+    tibiaJoint.position.y = -LEG_CONFIG.femurLength;
+    const tibiaMesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(LEG_CONFIG.tibiaRadius, LEG_CONFIG.tibiaLength, 4, 8),
+      new THREE.MeshStandardMaterial({color: 0x44dd88, metalness: 0.3, roughness: 0.7})
+    );
+    tibiaMesh.position.y = -LEG_CONFIG.tibiaLength / 2;
+    tibiaJoint.add(tibiaMesh);
+    tibiaJoint.rotation.x = 0.8;
+
+    femurJoint.add(tibiaJoint);
+    coxaJoint.add(femurJoint);
+    legGroup.add(coxaJoint);
+
+    return legGroup;
+  }
+
+  // Update leg preview
+  function updateLegPreview(legIndex) {
+    if (!legPreviews[legIndex]) return;
+
+    const preview = legPreviews[legIndex];
+    preview.scene.remove(preview.leg);
+    preview.leg = createPreviewLeg();
+    preview.scene.add(preview.leg);
+  }
+
+  // Reset single leg
+  function resetSingleLeg(legIndex) {
+    LEG_CONFIG = {...DEFAULT_LEG_CONFIG};
+    saveLegConfig();
+    rebuildLeg(legIndex);
+    if (legPreviews[legIndex]) {
+      updateLegPreview(legIndex);
+    }
+    document.getElementById(`coxa${legIndex}`).value = LEG_CONFIG.coxaLength;
+    document.getElementById(`femur${legIndex}`).value = LEG_CONFIG.femurLength;
+    document.getElementById(`tibia${legIndex}`).value = LEG_CONFIG.tibiaLength;
+    logMsg(`Leg ${legIndex} reset to defaults`);
+  }
+
+  // Reset all legs
+  document.getElementById('resetAllLegs').addEventListener('click', () => {
+    if (confirm('Reset all leg dimensions to default values?')) {
+      LEG_CONFIG = {...DEFAULT_LEG_CONFIG};
+      saveLegConfig();
+
+      for (let i = 0; i < 6; i++) {
+        rebuildLeg(i);
+        if (legPreviews[i]) {
+          updateLegPreview(i);
+        }
+        document.getElementById(`coxa${i}`).value = LEG_CONFIG.coxaLength;
+        document.getElementById(`femur${i}`).value = LEG_CONFIG.femurLength;
+        document.getElementById(`tibia${i}`).value = LEG_CONFIG.tibiaLength;
+      }
+
+      logMsg('All legs reset to defaults');
+    }
+  });
+
+  // ========== Visual Settings ==========
+
+  // Ground contact toggle
+  document.getElementById('showGroundContact').addEventListener('change', (e) => {
+    settingsValues.showGroundContact = e.target.checked;
+  });
+
+  // Shadows toggle
+  document.getElementById('showShadows').addEventListener('change', (e) => {
+    settingsValues.showShadows = e.target.checked;
+    renderer.shadowMap.enabled = e.target.checked;
+  });
+
+  // Body color
+  document.getElementById('bodyColor').addEventListener('input', (e) => {
+    body.material.color.setStyle(e.target.value);
+  });
+
+  // Ground color
+  document.getElementById('groundColor').addEventListener('input', (e) => {
+    ground.material.color.setStyle(e.target.value);
+  });
+
+  // Sky color
+  document.getElementById('skyColor').addEventListener('input', (e) => {
+    scene.background.setStyle(e.target.value);
+    scene.fog.color.setStyle(e.target.value);
+  });
+
+  // ========== Webcam Settings ==========
+
+  let webcamStream = null;
+  let webcamOverlay = null;
+
+  document.getElementById('startWebcam').addEventListener('click', async () => {
+    try {
+      webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: {facingMode: 'user'},
+        audio: false
+      });
+      const videoElement = document.getElementById('webcamFeed');
+      videoElement.srcObject = webcamStream;
+      document.getElementById('startWebcam').classList.add('active');
+
+      // If overlay checkbox is checked, recreate the overlay with new stream
+      if (document.getElementById('overlayWebcam').checked) {
+        if (webcamOverlay) {
+          // Remove old overlay
+          scene.remove(webcamOverlay);
+        }
+
+        // Create new overlay with updated video element
+        const videoTexture = new THREE.VideoTexture(videoElement);
+        const overlayGeom = new THREE.PlaneGeometry(200, 150);
+        const overlayMat = new THREE.MeshBasicMaterial({
+          map: videoTexture,
+          transparent: true,
+          opacity: parseFloat(document.getElementById('webcamOpacity').value) / 100,
+          side: THREE.DoubleSide
+        });
+        webcamOverlay = new THREE.Mesh(overlayGeom, overlayMat);
+        webcamOverlay.position.set(0, 100, -100);
+        scene.add(webcamOverlay);
+        webcamOverlay.visible = true;
+      }
+
+      logMsg('Webcam started');
+    } catch(err) {
+      logMsg('Webcam error: ' + err.message);
+      console.error('Webcam error:', err);
+    }
+  });
+
+  document.getElementById('stopWebcam').addEventListener('click', () => {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => track.stop());
+      document.getElementById('webcamFeed').srcObject = null;
+      document.getElementById('startWebcam').classList.remove('active');
+      if (webcamOverlay) {
+        webcamOverlay.visible = false;
+      }
+      logMsg('Webcam stopped');
+    }
+  });
+
+  // Webcam overlay toggle
+  document.getElementById('overlayWebcam').addEventListener('change', (e) => {
+    if (e.target.checked && webcamStream) {
+      if (!webcamOverlay || !webcamOverlay.material.map) {
+        // Create video texture overlay
+        const videoElement = document.getElementById('webcamFeed');
+        const videoTexture = new THREE.VideoTexture(videoElement);
+        const overlayGeom = new THREE.PlaneGeometry(200, 150);
+        const overlayMat = new THREE.MeshBasicMaterial({
+          map: videoTexture,
+          transparent: true,
+          opacity: parseFloat(document.getElementById('webcamOpacity').value) / 100,
+          side: THREE.DoubleSide
+        });
+        webcamOverlay = new THREE.Mesh(overlayGeom, overlayMat);
+        webcamOverlay.position.set(0, 100, -100);
+        scene.add(webcamOverlay);
+      }
+      webcamOverlay.visible = true;
+      logMsg('Webcam overlay enabled');
+    } else if (webcamOverlay) {
+      webcamOverlay.visible = false;
+      logMsg('Webcam overlay disabled');
+    }
+  });
+
+  // Webcam opacity
+  document.getElementById('webcamOpacity').addEventListener('input', (e) => {
+    const opacity = parseFloat(e.target.value) / 100;
+    document.getElementById('webcamOpacityValue').textContent = e.target.value + '%';
+    if (webcamOverlay) {
+      webcamOverlay.material.opacity = opacity;
+    }
+  });
+
+  // ========== Advanced Settings ==========
+
+  // Smoothing
+  document.getElementById('smoothing').addEventListener('input', (e) => {
+    settingsValues.smoothing = parseFloat(e.target.value) / 100;
+    document.getElementById('smoothingValue').textContent = e.target.value + '%';
+  });
+
+  // Camera FOV
+  document.getElementById('cameraFOV').addEventListener('input', (e) => {
+    const fov = parseFloat(e.target.value);
+    document.getElementById('cameraFOVValue').textContent = fov + '°';
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+  });
+
+  // Show FPS
+  document.getElementById('showFPS').addEventListener('change', (e) => {
+    settingsValues.showFPS = e.target.checked;
+  });
+
+  // Reset all settings
+  document.getElementById('resetAllSettings').addEventListener('click', () => {
+    if (confirm('Reset all settings to defaults?')) {
+      // Reset visual settings
+      document.getElementById('showGroundContact').checked = true;
+      document.getElementById('showShadows').checked = true;
+      document.getElementById('bodyColor').value = '#333333';
+      document.getElementById('groundColor').value = '#66aa44';
+      document.getElementById('skyColor').value = '#87ceeb';
+      body.material.color.setStyle('#333333');
+      ground.material.color.setStyle('#66aa44');
+      scene.background.setStyle('#87ceeb');
+      scene.fog.color.setStyle('#87ceeb');
+
+      // Reset advanced settings
+      document.getElementById('smoothing').value = 20;
+      document.getElementById('cameraFOV').value = 45;
+      document.getElementById('showFPS').checked = false;
+      settingsValues.smoothing = 0.2;
+      settingsValues.showGroundContact = true;
+      settingsValues.showShadows = true;
+      settingsValues.showFPS = false;
+      camera.fov = 45;
+      camera.updateProjectionMatrix();
+
+      logMsg('All settings reset to defaults');
+    }
+  });
+
+  // Initialize config UI
+  initializeConfigUI();
+
+})();

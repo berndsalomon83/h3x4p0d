@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexapod Simulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+      background: #222;
+    }
+    #c {
+      display: block;
+      width: 100%;
+      height: 100vh;
+    }
+    #ui {
+      position: fixed;
+      left: 10px;
+      top: 10px;
+      z-index: 100;
+      background: rgba(30, 30, 30, 0.95);
+      padding: 15px;
+      border-radius: 8px;
+      border: 2px solid #444;
+      color: #fff;
+      font-size: 14px;
+      min-width: 280px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+    .ui-section {
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #444;
+    }
+    .ui-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .ui-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #aaa;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    select, input, button {
+      font-family: inherit;
+      font-size: 13px;
+    }
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    select:hover {
+      border-color: #777;
+    }
+    select:focus {
+      outline: none;
+      border-color: #0099ff;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 6px;
+      background: #51cf66;
+      color: #000;
+      border: none;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #63db7f;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(81, 207, 102, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    button.stop-btn {
+      background: #ff6b6b;
+    }
+    button.stop-btn:hover {
+      background: #ff8787;
+      box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
+    }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .status-label {
+      color: #aaa;
+    }
+    .status-value {
+      color: #0099ff;
+      font-weight: 600;
+    }
+    #log {
+      width: 100%;
+      height: 120px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 8px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #0f0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      line-height: 1.4;
+      resize: none;
+    }
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 8px;
+      align-items: center;
+      justify-items: center;
+    }
+    .control-btn {
+      padding: 8px 6px;
+      background: #444;
+      color: #fff;
+      border: 1px solid #666;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.1s;
+      font-size: 12px;
+      width: 100%;
+    }
+    .control-btn:hover {
+      background: #555;
+      border-color: #888;
+    }
+    .control-btn:active {
+      background: #666;
+      transform: scale(0.95);
+    }
+    #joystick {
+      cursor: pointer;
+      border-radius: 4px;
+      background: #1a1a1a;
+      border: 1px solid #666;
+    }
+    .speed-control {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .speed-control input {
+      flex: 1;
+      height: 6px;
+      cursor: pointer;
+    }
+    .speed-label {
+      color: #aaa;
+      font-size: 12px;
+      min-width: 30px;
+      text-align: right;
+    }
+    .heading-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+    #settingsPanel {
+      position: fixed;
+      right: 10px;
+      top: 10px;
+      z-index: 100;
+      background: rgba(30, 30, 30, 0.98);
+      border-radius: 8px;
+      border: 2px solid #444;
+      color: #fff;
+      font-size: 14px;
+      width: 340px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      max-height: calc(100vh - 20px);
+      overflow: hidden;
+      display: none;
+      flex-direction: column;
+    }
+    #settingsPanel.open {
+      display: flex;
+    }
+    .settings-header {
+      padding: 12px 15px 0 15px;
+      flex-shrink: 0;
+    }
+    .settings-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .settings-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+    .settings-close:hover {
+      color: #fff;
+    }
+    .settings-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 0 15px 10px 15px;
+      border-bottom: 1px solid #444;
+      flex-shrink: 0;
+    }
+    .settings-tab {
+      padding: 6px 10px;
+      background: rgba(60, 60, 60, 0.5);
+      color: #aaa;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .settings-tab:hover {
+      color: #fff;
+      background: rgba(80, 80, 80, 0.6);
+    }
+    .settings-tab.active {
+      color: #fff;
+      background: #0099ff;
+      border-color: #0077cc;
+    }
+    .settings-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      scrollbar-width: thin;
+      scrollbar-color: #555 #2a2a2a;
+    }
+    .settings-body::-webkit-scrollbar {
+      width: 8px;
+    }
+    .settings-body::-webkit-scrollbar-track {
+      background: #2a2a2a;
+      border-radius: 4px;
+    }
+    .settings-body::-webkit-scrollbar-thumb {
+      background: #555;
+      border-radius: 4px;
+    }
+    .settings-body::-webkit-scrollbar-thumb:hover {
+      background: #666;
+    }
+    .settings-content {
+      display: none;
+    }
+    .settings-content.active {
+      display: block;
+    }
+    .settings-group {
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    .settings-group:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .settings-group-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #0099ff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .setting-row:last-child {
+      margin-bottom: 0;
+    }
+    .setting-label {
+      color: #ccc;
+      flex-shrink: 0;
+    }
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .setting-value {
+      min-width: 45px;
+      text-align: right;
+      color: #888;
+      font-size: 11px;
+    }
+    .setting-slider {
+      width: 100px;
+      accent-color: #0099ff;
+    }
+    .gear-btn {
+      position: fixed;
+      right: 10px;
+      top: 10px;
+      z-index: 99;
+      width: 50px;
+      height: 50px;
+      background: rgba(30, 30, 30, 0.95);
+      border: 2px solid #444;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    .gear-btn:hover {
+      background: rgba(50, 50, 50, 0.95);
+      border-color: #666;
+      transform: rotate(90deg);
+    }
+    .leg-config-item {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: rgba(50, 50, 50, 0.5);
+      border-radius: 4px;
+      border: 1px solid #555;
+    }
+    .leg-config-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #0099ff;
+    }
+    .leg-preview {
+      width: 100%;
+      height: 120px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      margin: 8px 0;
+    }
+    .config-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 4px 0;
+      font-size: 12px;
+    }
+    .config-input {
+      width: 60px;
+      padding: 4px 6px;
+      background: #333;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .reset-btn {
+      background: #ff6b6b;
+      color: #fff;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .reset-btn:hover {
+      background: #ff8787;
+    }
+    .leg-reset-btn {
+      background: #ffa500;
+      color: #fff;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .leg-reset-btn:hover {
+      background: #ffb733;
+    }
+    #webcamFeed {
+      width: 100%;
+      max-height: 200px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background: #000;
+      object-fit: cover;
+    }
+    .webcam-controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .webcam-btn {
+      flex: 1;
+      padding: 6px 10px;
+      background: #444;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .webcam-btn:hover {
+      background: #555;
+    }
+    .webcam-btn.active {
+      background: #51cf66;
+    }
+    /* Emergency Stop Button */
+    .emergency-stop {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #ff4444, #cc0000);
+      border: 4px solid #ff6666;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(255, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.2);
+      transition: all 0.1s;
+      text-transform: uppercase;
+    }
+    .emergency-stop:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 20px rgba(255, 0, 0, 0.7);
+    }
+    .emergency-stop:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 10px rgba(255, 0, 0, 0.5);
+    }
+    /* Camera Presets */
+    .camera-presets {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 99;
+      display: flex;
+      gap: 4px;
+      background: rgba(30, 30, 30, 0.9);
+      padding: 6px 10px;
+      border-radius: 20px;
+      border: 1px solid #444;
+    }
+    .camera-preset-btn {
+      padding: 6px 12px;
+      background: #444;
+      color: #ccc;
+      border: none;
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .camera-preset-btn:hover {
+      background: #555;
+      color: #fff;
+    }
+    .camera-preset-btn.active {
+      background: #0099ff;
+      color: #fff;
+    }
+    /* Rotation Controls */
+    .rotation-controls {
+      display: flex;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .rotation-btn {
+      flex: 1;
+      padding: 8px;
+      background: #444;
+      color: #fff;
+      border: 1px solid #666;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+    .rotation-btn:hover {
+      background: #555;
+    }
+    .rotation-btn:active, .rotation-btn.active {
+      background: #0099ff;
+      border-color: #0077cc;
+    }
+    /* Keyboard Help Modal */
+    .keyboard-help {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2000;
+      background: rgba(30, 30, 30, 0.98);
+      border: 2px solid #444;
+      border-radius: 12px;
+      padding: 20px;
+      color: #fff;
+      min-width: 300px;
+      max-width: 400px;
+      display: none;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    }
+    .keyboard-help.open {
+      display: block;
+    }
+    .keyboard-help-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1999;
+      display: none;
+    }
+    .keyboard-help-overlay.open {
+      display: block;
+    }
+    .keyboard-help h3 {
+      margin: 0 0 15px 0;
+      color: #0099ff;
+      font-size: 16px;
+      border-bottom: 1px solid #444;
+      padding-bottom: 10px;
+    }
+    .keyboard-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 12px;
+      border-bottom: 1px solid #333;
+    }
+    .keyboard-key {
+      background: #444;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #0099ff;
+    }
+    .help-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 99;
+      width: 36px;
+      height: 36px;
+      background: rgba(30, 30, 30, 0.9);
+      border: 1px solid #444;
+      border-radius: 50%;
+      color: #888;
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .help-btn:hover {
+      color: #fff;
+      border-color: #666;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <!-- Emergency Stop Button -->
+  <button class="emergency-stop" id="emergencyStop">STOP</button>
+
+  <!-- Help Button -->
+  <button class="help-btn" id="helpBtn" title="Keyboard Shortcuts (?)">?</button>
+
+  <!-- Camera Presets -->
+  <div class="camera-presets">
+    <button class="camera-preset-btn" data-view="front">Front</button>
+    <button class="camera-preset-btn" data-view="side">Side</button>
+    <button class="camera-preset-btn" data-view="top">Top</button>
+    <button class="camera-preset-btn active" data-view="iso">Iso</button>
+  </div>
+
+  <!-- Keyboard Help Modal -->
+  <div class="keyboard-help-overlay" id="keyboardOverlay"></div>
+  <div class="keyboard-help" id="keyboardHelp">
+    <h3>Keyboard Shortcuts</h3>
+    <div class="keyboard-row"><span>Move forward</span><span class="keyboard-key">W</span> or <span class="keyboard-key">↑</span></div>
+    <div class="keyboard-row"><span>Move backward</span><span class="keyboard-key">S</span> or <span class="keyboard-key">↓</span></div>
+    <div class="keyboard-row"><span>Strafe left</span><span class="keyboard-key">A</span> or <span class="keyboard-key">←</span></div>
+    <div class="keyboard-row"><span>Strafe right</span><span class="keyboard-key">D</span> or <span class="keyboard-key">→</span></div>
+    <div class="keyboard-row"><span>Rotate left</span><span class="keyboard-key">Q</span></div>
+    <div class="keyboard-row"><span>Rotate right</span><span class="keyboard-key">E</span></div>
+    <div class="keyboard-row"><span>Start/Stop walking</span><span class="keyboard-key">Space</span></div>
+    <div class="keyboard-row"><span>Emergency stop</span><span class="keyboard-key">Esc</span></div>
+    <div class="keyboard-row"><span>Toggle settings</span><span class="keyboard-key">Tab</span></div>
+    <div class="keyboard-row"><span>Show this help</span><span class="keyboard-key">?</span></div>
+    <div style="margin-top: 15px; text-align: center;">
+      <button id="closeHelp" style="padding: 8px 20px; background: #0099ff; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+    </div>
+  </div>
+
+  <!-- Gear button for settings -->
+  <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
+
+  <!-- Settings Panel -->
+  <div id="settingsPanel">
+    <div class="settings-header">
+      <div class="settings-title">
+        <span>Settings</span>
+        <button class="settings-close" id="settingsClose">×</button>
+      </div>
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="gait">Gait</button>
+        <button class="settings-tab" data-tab="visual">Visual</button>
+        <button class="settings-tab" data-tab="legs">Legs</button>
+        <button class="settings-tab" data-tab="calibration">Calibration</button>
+        <button class="settings-tab" data-tab="camera">Camera</button>
+        <button class="settings-tab" data-tab="controller">Controller</button>
+      </div>
+    </div>
+
+    <div class="settings-body">
+      <!-- Gait Tab -->
+      <div class="settings-content active" id="tab-gait">
+        <div class="settings-group">
+          <div class="settings-group-title">Gait Parameters</div>
+          <div class="setting-row">
+            <span class="setting-label">Step Height</span>
+            <div class="setting-control">
+              <input type="range" id="stepHeightSlider" class="setting-slider" min="10" max="50" value="25">
+              <span class="setting-value" id="stepHeightValue">25mm</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Step Length</span>
+            <div class="setting-control">
+              <input type="range" id="stepLengthSlider" class="setting-slider" min="10" max="80" value="40">
+              <span class="setting-value" id="stepLengthValue">40mm</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Cycle Time</span>
+            <div class="setting-control">
+              <input type="range" id="cycleTimeSlider" class="setting-slider" min="50" max="300" value="120">
+              <span class="setting-value" id="cycleTimeValue">1.2s</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Body Pose</div>
+          <div class="setting-row">
+            <span class="setting-label">Pitch (tilt F/B)</span>
+            <div class="setting-control">
+              <input type="range" id="bodyPitch" class="setting-slider" min="-30" max="30" value="0">
+              <span class="setting-value" id="bodyPitchValue">0°</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Roll (tilt L/R)</span>
+            <div class="setting-control">
+              <input type="range" id="bodyRoll" class="setting-slider" min="-30" max="30" value="0">
+              <span class="setting-value" id="bodyRollValue">0°</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Yaw (rotate)</span>
+            <div class="setting-control">
+              <input type="range" id="bodyYaw" class="setting-slider" min="-45" max="45" value="0">
+              <span class="setting-value" id="bodyYawValue">0°</span>
+            </div>
+          </div>
+          <button id="resetPose" style="width: 100%; padding: 6px; margin-top: 8px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Reset Pose</button>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Animation</div>
+          <div class="setting-row">
+            <span class="setting-label">Smoothing</span>
+            <div class="setting-control">
+              <input type="range" id="smoothing" class="setting-slider" min="1" max="50" value="20">
+              <span class="setting-value" id="smoothingValue">20%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Telemetry Rate</div>
+          <div class="setting-row">
+            <span class="setting-label">Update Rate</span>
+            <div class="setting-control">
+              <input type="range" id="telemetryRate" class="setting-slider" min="10" max="100" value="50">
+              <span class="setting-value" id="telemetryRateValue">20Hz</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visual Tab -->
+      <div class="settings-content" id="tab-visual">
+        <div class="settings-group">
+          <div class="settings-group-title">Display</div>
+          <div class="setting-row">
+            <span class="setting-label">Ground Contact Indicators</span>
+            <input type="checkbox" id="showGroundContact" checked>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Show Shadows</span>
+            <input type="checkbox" id="showShadows" checked>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Show FPS Counter</span>
+            <input type="checkbox" id="showFPS">
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Show Grid</span>
+            <input type="checkbox" id="showGrid">
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Camera</div>
+          <div class="setting-row">
+            <span class="setting-label">Field of View</span>
+            <div class="setting-control">
+              <input type="range" id="cameraFOV" class="setting-slider" min="30" max="90" value="45">
+              <span class="setting-value" id="cameraFOVValue">45°</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Colors</div>
+          <div class="setting-row">
+            <span class="setting-label">Body</span>
+            <input type="color" id="bodyColor" value="#333333">
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Ground</span>
+            <input type="color" id="groundColor" value="#66aa44">
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Sky</span>
+            <input type="color" id="skyColor" value="#87ceeb">
+          </div>
+        </div>
+
+        <button class="reset-btn" id="resetAllSettings" style="width: 100%; margin-top: 10px;">Reset Visual Settings</button>
+      </div>
+
+      <!-- Legs Tab -->
+      <div class="settings-content" id="tab-legs">
+        <div class="settings-group">
+          <div class="settings-group-title">Leg Dimensions</div>
+          <p style="font-size: 11px; color: #888; margin-bottom: 12px;">
+            Adjust leg segment lengths. Changes apply to all legs and are saved to the backend.
+          </p>
+          <div id="legConfigContainer"></div>
+          <button class="reset-btn" id="resetAllLegs" style="width: 100%; margin-top: 10px;">Reset All Legs to Defaults</button>
+        </div>
+      </div>
+
+      <!-- Calibration Tab -->
+      <div class="settings-content" id="tab-calibration">
+        <div class="settings-group">
+          <div class="settings-group-title">Servo Offsets</div>
+          <p style="font-size: 11px; color: #888; margin-bottom: 12px;">
+            Fine-tune servo positions to compensate for mechanical variations. Changes are saved automatically.
+          </p>
+          <div id="calibrationContainer"></div>
+          <button class="reset-btn" style="width: 100%; margin-top: 10px;" id="resetCalibration">Reset All Offsets to 0</button>
+        </div>
+      </div>
+
+      <!-- Camera Tab -->
+      <div class="settings-content" id="tab-camera">
+        <div class="settings-group">
+          <div class="settings-group-title">Webcam Feed</div>
+          <video id="webcamFeed" autoplay playsinline muted></video>
+          <div class="webcam-controls">
+            <button class="webcam-btn" id="startWebcam">Start</button>
+            <button class="webcam-btn" id="stopWebcam">Stop</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">3D Overlay</div>
+          <div class="setting-row">
+            <span class="setting-label">Enable Overlay</span>
+            <input type="checkbox" id="overlayWebcam">
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Transparency</span>
+            <div class="setting-control">
+              <input type="range" id="webcamOpacity" class="setting-slider" min="0" max="100" value="30">
+              <span class="setting-value" id="webcamOpacityValue">30%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controller Tab -->
+      <div class="settings-content" id="tab-controller">
+        <div class="settings-group">
+          <div class="settings-group-title">Game Controller Setup</div>
+          <div style="background: rgba(255, 165, 0, 0.1); border: 1px solid #ffa500; border-radius: 4px; padding: 10px; margin-bottom: 12px; font-size: 11px; color: #ffcc80;">
+            <strong style="color: #ffa500;">Note:</strong> Game controllers use Classic Bluetooth and must be paired through your OS settings first.
+          </div>
+          <div style="background: rgba(50, 50, 50, 0.5); border-radius: 4px; padding: 10px; font-size: 11px; line-height: 1.5;">
+            <div style="color: #51cf66; font-weight: 600; margin-bottom: 6px;">How to connect:</div>
+            <ol style="margin: 0; padding-left: 16px; color: #ccc;">
+              <li>Put controller in pairing mode</li>
+              <li>Pair via System Settings → Bluetooth</li>
+              <li>Restart server with <code style="background: #1a1a1a; padding: 1px 4px; border-radius: 2px; color: #51cf66;">--controller</code> flag</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Controller Status</div>
+          <div class="setting-row">
+            <span class="setting-label">Gamepad Status</span>
+            <span id="btStatus" style="color: #ff6b6b;">Not Active</span>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">BLE Scanner</div>
+          <p style="font-size: 10px; color: #666; margin-bottom: 8px;">
+            For diagnostics only. Game controllers won't appear here.
+          </p>
+          <button id="btScan" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Scan for BLE Devices</button>
+          <div id="btDevices" style="max-height: 100px; overflow-y: auto; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; padding: 6px; font-size: 10px; color: #666;">
+            Click "Scan" to discover nearby BLE devices
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ui">
+    <div class="ui-section">
+      <label class="ui-label">Movement Controls</label>
+      <div class="control-grid">
+        <div style="grid-column: 2"><button class="control-btn" id="btn-up">↑ FWD</button></div>
+        <div style="grid-column: 1"><button class="control-btn" id="btn-left">← LEFT</button></div>
+        <div style="grid-column: 2"><canvas id="joystick" width="60" height="60"></canvas></div>
+        <div style="grid-column: 3"><button class="control-btn" id="btn-right">RIGHT →</button></div>
+        <div style="grid-column: 2"><button class="control-btn" id="btn-down">↓ BACK</button></div>
+      </div>
+      <div class="rotation-controls">
+        <button class="rotation-btn" id="rotateLeft" title="Rotate Left (Q)">↺ Q</button>
+        <button class="rotation-btn" id="rotateRight" title="Rotate Right (E)">E ↻</button>
+      </div>
+      <div style="text-align: center; font-size: 11px; color: #666; margin-top: 4px;">
+        WASD/Arrows: move | Q/E: rotate
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Gait Mode</label>
+      <select id="gait">
+        <option value="tripod">Tripod (fast, stable)</option>
+        <option value="wave">Wave (smooth, slow)</option>
+        <option value="ripple">Ripple (medium)</option>
+      </select>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Max Speed</label>
+      <div class="speed-control">
+        <input type="range" id="speedSlider" min="0" max="100" value="50" style="accent-color: #0099ff;">
+        <span class="speed-label" id="speedValue">50%</span>
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Body Height</label>
+      <div class="speed-control">
+        <input type="range" id="bodyHeightSlider" min="30" max="90" value="60" style="accent-color: #0099ff;">
+        <span class="speed-label" id="bodyHeightValue">60mm</span>
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Status</label>
+      <div class="status-row">
+        <span class="status-label">Connection:</span>
+        <span class="status-value" id="connectionStatus" style="color: #ff6b6b;">Disconnected</span>
+      </div>
+      <div class="heading-info">
+        <span>Direction: <span id="dirValue" style="color: #0099ff;">0°</span></span>
+        <span>Speed: <span id="spdValue" style="color: #0099ff;">0%</span></span>
+      </div>
+      <button id="run">Start Walking</button>
+    </div>
+
+    <div class="ui-section">
+      <div class="status-row">
+        <span class="status-label">Temperature:</span>
+        <span class="status-value" id="temp">25.0 °C</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Battery:</span>
+        <span class="status-value" id="batt">12.00 V</span>
+      </div>
+    </div>
+
+    <div class="ui-section">
+      <label class="ui-label">Log</label>
+      <textarea id="log" readonly></textarea>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

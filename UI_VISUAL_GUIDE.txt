@@ -1,0 +1,226 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                   HEXAPOD WEB INTERFACE - VISUAL LAYOUT                          ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                 │
+│                                                                                 │
+│                        3D HEXAPOD VISUALIZATION CANVAS                          │
+│                                                                                 │
+│  (Three.js render - hexapod walking in real-time based on your input)           │
+│                                                                                 │
+│                                                                                 │
+│   ┌─────────────────────────────────────────────────────────────────────────┐  │
+│   │  ╔════════════════ CONTROL PANEL ════════════════╗                      │  │
+│   │  │                                                │                      │  │
+│   │  │  MOVEMENT CONTROLS                             │                      │  │
+│   │  │  ┌──────────────────────────────┐             │                      │  │
+│   │  │  │         ↑ FWD               │             │                      │  │
+│   │  │  │  ← LEFT         RIGHT →     │             │                      │  │
+│   │  │  │         ↓ BACK               │             │                      │  │
+│   │  │  └──────────────────────────────┘             │                      │  │
+│   │  │  Arrow keys or WASD                           │                      │  │
+│   │  │                                                │                      │  │
+│   │  │  GAIT MODE                                     │                      │  │
+│   │  │  ┌────────────────────────────────────────┐  │                      │  │
+│   │  │  │ ▼ Tripod (fast, stable)               │  │                      │  │
+│   │  │  │  - Wave (smooth, slow)                 │  │                      │  │
+│   │  │  │  - Ripple (medium)                     │  │                      │  │
+│   │  │  └────────────────────────────────────────┘  │                      │  │
+│   │  │                                                │                      │  │
+│   │  │  SPEED                                         │                      │  │
+│   │  │  ┌────────────────────────────────────────┐  │                      │  │
+│   │  │  │ ▬▬▬▬●▬▬▬▬▬▬▬▬▬  50%                    │  │                      │  │
+│   │  │  └────────────────────────────────────────┘  │                      │  │
+│   │  │                                                │                      │  │
+│   │  │  STATUS                                        │                      │  │
+│   │  │  Direction: 45°          Speed: 75%           │                      │  │
+│   │  │  ┌────────────────────────────────────────┐  │                      │  │
+│   │  │  │    START WALKING  (click to toggle)    │  │                      │  │
+│   │  │  └────────────────────────────────────────┘  │                      │  │
+│   │  │                                                │                      │  │
+│   │  │  SENSORS                                       │                      │  │
+│   │  │  Temperature: 25.0 °C                         │                      │  │
+│   │  │  Battery: 12.00 V                             │                      │  │
+│   │  │                                                │                      │  │
+│   │  │  ACTIVITY LOG                                 │                      │  │
+│   │  │  [14:32:47] Connected to hexapod controller   │                      │  │
+│   │  │  [14:32:48] Gait mode: tripod                │                      │  │
+│   │  │  [14:32:49] Walking started                  │                      │  │
+│   │  │  [14:32:50] Movement: heading=45°, spd=75%  │                      │  │
+│   │  │  [14:32:51] Walking stopped                  │                      │  │
+│   │  │                                                │                      │  │
+│   │  ╚════════════════════════════════════════════╝                         │  │
+│   │                                                   │                      │  │
+│   └─────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+═════════════════════════════════════════════════════════════════════════════════
+
+KEYBOARD CONTROLS:
+
+  ↑  W          : Move forward
+  ↓  S          : Move backward
+  ←  A          : Turn left
+  →  D          : Turn right
+
+  W + A         : Forward-left diagonal
+  W + D         : Forward-right diagonal
+  A (alone)     : Rotate left in place
+  D (alone)     : Rotate right in place
+
+═════════════════════════════════════════════════════════════════════════════════
+
+BUTTON CONTROLS:
+
+  [↑ FWD]       : Move forward (click and hold)
+  [↓ BACK]      : Move backward
+  [← LEFT]      : Turn left
+  [→ RIGHT]     : Turn right
+
+  Multi-click    : Click multiple buttons for diagonal movement
+
+═════════════════════════════════════════════════════════════════════════════════
+
+START/STOP WORKFLOW:
+
+  1. Click [START WALKING] button
+     Button turns RED, log shows "Walking started"
+
+  2. Press arrow keys or WASD to move
+     - Direction display updates (0° = forward, 90° = right, etc.)
+     - Speed display updates (0-100%)
+     - 3D hexapod animates in real-time
+
+  3. Click [STOP WALKING] button
+     Button turns GREEN, log shows "Walking stopped"
+
+═════════════════════════════════════════════════════════════════════════════════
+
+GAIT SELECTION:
+
+  BEFORE WALKING:
+    1. Select gait from dropdown
+       - Tripod (fast, stable)
+       - Wave (smooth, elegant)
+       - Ripple (balanced)
+    2. Log shows selected gait
+    3. Walking will use selected gait
+
+  WHILE WALKING:
+    1. Change gait dropdown
+    2. Walking continues with new gait
+    3. Visible change in 3D animation
+
+═════════════════════════════════════════════════════════════════════════════════
+
+SPEED CONTROL:
+
+  METHOD 1: Speed Slider
+    1. Move slider to desired speed (0-100%)
+    2. When no keyboard input, movement uses slider speed
+    3. Keyboard input overrides slider
+
+  METHOD 2: Keyboard Auto-Speed
+    1. Press single key = slow speed
+    2. Press multiple keys = faster speed
+    3. Diagonal = even faster
+    4. Speed indicator shows actual speed
+
+═════════════════════════════════════════════════════════════════════════════════
+
+STATUS INDICATORS:
+
+  Direction 🧭     Shows heading angle
+                   0° = Forward
+                   90° = Right turn
+                   180° = Backward
+                   270° = Left turn
+
+  Speed 📊         Shows movement speed percentage
+                   0% = Stopped
+                   50% = Half speed
+                   100% = Full speed
+
+  Temperature 🌡️  Real-time system temp (mock: ~25°C)
+
+  Battery 🔋       Power level in volts (mock: ~12V)
+
+═════════════════════════════════════════════════════════════════════════════════
+
+ACTIVITY LOG:
+
+  Green text area showing activity with timestamps
+  Last 10 entries visible
+  Shows:
+    - Connection status
+    - Gait mode changes
+    - Walking start/stop
+    - Movement parameters
+    - Error messages (if any)
+
+═════════════════════════════════════════════════════════════════════════════════
+
+3D VISUALIZATION:
+
+  ⬜ Gray Box        = Hexapod body
+  🟤 Brown Segments  = Coxa (base joint)
+  🟪 Purple Segment  = Femur (upper leg)
+  🟩 Green Segments  = Tibia (lower leg)
+
+  6 legs arranged around body:
+    Front-right, Mid-right, Rear-right (right side)
+    Front-left, Mid-left, Rear-left (left side)
+
+  Animation Updates:
+    - All movements reflected in real-time
+    - Gait algorithm controls leg timing
+    - Speed affects movement rate
+    - Heading rotates coxa joints
+
+═════════════════════════════════════════════════════════════════════════════════
+
+EXAMPLE WALKTHROUGH:
+
+  1. Open http://localhost:8000
+     → See hexapod in 3D, all controls visible
+
+  2. Select "Tripod" gait (already selected)
+     → Log: "[TIME] Gait mode: tripod"
+
+  3. Click "Start Walking"
+     → Button turns RED
+     → Log: "[TIME] Walking started"
+     → Hexapod ready to receive commands
+
+  4. Press W (hold down)
+     → Hexapod moves forward
+     → Direction: 0°, Speed: 75%
+     → All 6 legs animate in tripod pattern
+
+  5. Press A + W (forward-left)
+     → Hexapod moves forward-left
+     → Direction: 315° (or -45°), Speed: 100%
+     → Coxa joints rotate for heading
+
+  6. Release keys
+     → Hexapod stops
+     → Direction: 0°, Speed: 0%
+     → Legs hold in neutral position
+
+  7. Select "Wave" gait
+     → Log: "[TIME] Gait mode: wave"
+     → Next movement will use wave pattern
+
+  8. Press W again
+     → Hexapod moves forward using wave gait
+     → More fluid, sequential leg movement
+     → Slower but more graceful
+
+  9. Click "Stop Walking"
+     → Button turns GREEN
+     → Log: "[TIME] Walking stopped"
+     → Hexapod stops responding to movement keys
+
+═════════════════════════════════════════════════════════════════════════════════

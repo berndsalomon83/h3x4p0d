@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(node -c:*)",
+      "Bash(kill:*)",
+      "Bash(mkdir:*)",
+      "Bash(poetry install:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(python3 -m pip install:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(.venv/bin/python -m pip install:*)",
+      "Bash(.venv/bin/python -m pytest tests/ -v)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(poetry run pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(for file in tests/test_*.py)",
+      "Bash(done)",
+      "Bash(python3:*)",
+      "Bash(pkill:*)",
+      "Bash(chmod:*)",
+      "Bash(poetry run python:*)",
+      "Bash(./start.sh)",
+      "Bash(.venv/bin/python3:*)",
+      "Bash(node:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "hexapod"
+version = "0.1.0"
+description = "Hexapod controller: Bluetooth + Web UI + 3D simulator"
+authors = ["You <you@example.com>"]
+packages = [{include = "hexapod", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.100.0"
+uvicorn = {extras = ["standard"], version = "^0.22.0"}
+websockets = "^11.0"
+starlette = "^0.27.0"
+bleak = "^0.20.0" # Bluetooth LE client
+pigpio = {version = "^1.78", optional = true}
+"RPi.GPIO" = {version = "^0.7.1", optional = true}
+numpy = "^1.24.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.1.0"
+httpx = "^0.24.0"
+
+[tool.poetry.extras]
+pi = ["pigpio", "RPi.GPIO"]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
