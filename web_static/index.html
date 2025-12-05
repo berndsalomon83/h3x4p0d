@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" role="application">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1165,35 +1165,86 @@
     .disconnected-banner.visible {
       display: block;
     }
+    /* Status gauges for temperature and battery */
+    .status-gauge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+    }
+    .gauge-icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+    }
+    .gauge-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .gauge-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+    .gauge-label {
+      color: var(--text-muted);
+    }
+    .gauge-value {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .gauge-bar {
+      height: 6px;
+      background: var(--control-bg);
+      border-radius: 3px;
+      overflow: hidden;
+      border: 1px solid var(--panel-border);
+    }
+    .gauge-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s ease, background 0.3s ease;
+    }
+    .gauge-fill.temp {
+      background: linear-gradient(90deg, #51cf66, #ffc107, #ff6b6b);
+    }
+    .gauge-fill.batt {
+      background: linear-gradient(90deg, #ff6b6b, #ffc107, #51cf66);
+    }
+    .gauge-fill.good { background: #51cf66; }
+    .gauge-fill.warning { background: #ffc107; }
+    .gauge-fill.danger { background: #ff6b6b; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
 
   <!-- Emergency Stop Button -->
-  <button class="emergency-stop" id="emergencyStop">STOP</button>
+  <button class="emergency-stop" id="emergencyStop" title="Emergency stop - immediately halts all movement (Esc key)" aria-label="Emergency stop - halts all movement" role="button">STOP</button>
 
   <!-- Test Mode Indicator -->
   <div class="test-mode-indicator" id="testModeIndicator">TEST MODE ACTIVE</div>
 
   <!-- Help Button -->
-  <button class="help-btn" id="helpBtn" title="Keyboard Shortcuts (?)">?</button>
+  <button class="help-btn" id="helpBtn" title="Keyboard Shortcuts (?)" aria-label="Show keyboard shortcuts" role="button">?</button>
 
   <!-- Camera Presets -->
-  <div class="camera-presets">
-    <button class="camera-preset-btn" data-view="front">Front</button>
-    <button class="camera-preset-btn" data-view="side">Side</button>
-    <button class="camera-preset-btn" data-view="top">Top</button>
-    <button class="camera-preset-btn active" data-view="iso">Iso</button>
+  <div class="camera-presets" role="group" aria-label="Camera view presets">
+    <button class="camera-preset-btn" data-view="front" title="View hexapod from the front" aria-label="Front view">Front</button>
+    <button class="camera-preset-btn" data-view="side" title="View hexapod from the side" aria-label="Side view">Side</button>
+    <button class="camera-preset-btn" data-view="top" title="View hexapod from above" aria-label="Top view">Top</button>
+    <button class="camera-preset-btn active" data-view="iso" title="Isometric 3D view (default)" aria-label="Isometric view" aria-pressed="true">Iso</button>
   </div>
 
   <!-- Live camera dock -->
   <div id="cameraDock" class="camera-dock"></div>
 
   <!-- Keyboard Help Modal -->
-  <div class="keyboard-help-overlay" id="keyboardOverlay"></div>
-  <div class="keyboard-help" id="keyboardHelp">
-    <h3>Keyboard Shortcuts</h3>
+  <div class="keyboard-help-overlay" id="keyboardOverlay" aria-hidden="true"></div>
+  <div class="keyboard-help" id="keyboardHelp" role="dialog" aria-labelledby="keyboardHelpTitle" aria-modal="true">
+    <h3 id="keyboardHelpTitle">Keyboard Shortcuts</h3>
     <div class="keyboard-row"><span>Move forward</span><span class="keyboard-key">W</span> or <span class="keyboard-key">↑</span></div>
     <div class="keyboard-row"><span>Move backward</span><span class="keyboard-key">S</span> or <span class="keyboard-key">↓</span></div>
     <div class="keyboard-row"><span>Strafe left</span><span class="keyboard-key">A</span> or <span class="keyboard-key">←</span></div>
@@ -1210,14 +1261,14 @@
   </div>
 
   <!-- Gear button for settings -->
-  <button class="gear-btn" id="gearBtn" title="Settings">⚙</button>
+  <button class="gear-btn" id="gearBtn" title="Settings" aria-label="Open settings panel" aria-expanded="false" aria-controls="settingsPanel">⚙</button>
 
   <!-- Settings Panel -->
-  <div id="settingsPanel">
+  <div id="settingsPanel" role="dialog" aria-labelledby="settingsPanelTitle" aria-modal="false">
     <div class="settings-header">
       <div class="settings-title">
-        <span>Settings</span>
-        <button class="settings-close" id="settingsClose">×</button>
+        <span id="settingsPanelTitle">Settings</span>
+        <button class="settings-close" id="settingsClose" aria-label="Close settings panel">×</button>
       </div>
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="gait">Gait</button>
@@ -1234,21 +1285,21 @@
       <div class="settings-content active" id="tab-gait">
         <div class="settings-group">
           <div class="settings-group-title">Gait Parameters</div>
-          <div class="setting-row">
+          <div class="setting-row" title="How high each leg lifts during a step. Higher values clear obstacles better but use more power.">
             <span class="setting-label">Step Height</span>
             <div class="setting-control">
               <input type="range" id="stepHeightSlider" class="setting-slider" min="10" max="50" value="25">
               <span class="setting-value" id="stepHeightValue">25mm</span>
             </div>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="How far forward each leg moves per step. Longer steps cover more ground but may reduce stability.">
             <span class="setting-label">Step Length</span>
             <div class="setting-control">
               <input type="range" id="stepLengthSlider" class="setting-slider" min="10" max="80" value="40">
               <span class="setting-value" id="stepLengthValue">40mm</span>
             </div>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="Duration of one complete gait cycle. Lower values = faster walking but less smooth movement.">
             <span class="setting-label">Cycle Time</span>
             <div class="setting-control">
               <input type="range" id="cycleTimeSlider" class="setting-slider" min="50" max="300" value="120">
@@ -1259,33 +1310,33 @@
 
         <div class="settings-group">
           <div class="settings-group-title">Body Pose</div>
-          <div class="setting-row">
+          <div class="setting-row" title="Tilt the body forward (positive) or backward (negative). Useful for climbing slopes.">
             <span class="setting-label">Pitch (tilt F/B)</span>
             <div class="setting-control">
               <input type="range" id="bodyPitch" class="setting-slider" min="-30" max="30" value="0">
               <span class="setting-value" id="bodyPitchValue">0°</span>
             </div>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="Tilt the body left (negative) or right (positive). Helps on uneven terrain.">
             <span class="setting-label">Roll (tilt L/R)</span>
             <div class="setting-control">
               <input type="range" id="bodyRoll" class="setting-slider" min="-30" max="30" value="0">
               <span class="setting-value" id="bodyRollValue">0°</span>
             </div>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="Rotate the body left (negative) or right (positive) while keeping legs stationary.">
             <span class="setting-label">Yaw (rotate)</span>
             <div class="setting-control">
               <input type="range" id="bodyYaw" class="setting-slider" min="-45" max="45" value="0">
               <span class="setting-value" id="bodyYawValue">0°</span>
             </div>
           </div>
-          <button id="resetPose" style="width: 100%; padding: 6px; margin-top: 8px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">Reset Pose</button>
+          <button id="resetPose" style="width: 100%; padding: 6px; margin-top: 8px; background: #444; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="Reset all body orientation values to zero">Reset Pose</button>
         </div>
 
         <div class="settings-group">
           <div class="settings-group-title">Animation</div>
-          <div class="setting-row">
+          <div class="setting-row" title="Controls how smoothly the 3D visualization interpolates between positions. Higher = smoother but more delayed.">
             <span class="setting-label">Smoothing</span>
             <div class="setting-control">
               <input type="range" id="smoothing" class="setting-slider" min="1" max="50" value="20">
@@ -1296,7 +1347,7 @@
 
         <div class="settings-group">
           <div class="settings-group-title">Telemetry Rate</div>
-          <div class="setting-row">
+          <div class="setting-row" title="How often the backend sends position updates. Higher rates = smoother animation but more network/CPU usage.">
             <span class="setting-label">Update Rate</span>
             <div class="setting-control">
               <input type="range" id="telemetryRate" class="setting-slider" min="10" max="100" value="50">
@@ -1310,19 +1361,19 @@
       <div class="settings-content" id="tab-visual">
         <div class="settings-group">
           <div class="settings-group-title">Display</div>
-          <div class="setting-row">
+          <div class="setting-row" title="Show colored circles under each foot indicating ground contact status">
             <span class="setting-label">Ground Contact Indicators</span>
             <input type="checkbox" id="showGroundContact" checked>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="Enable shadow rendering for the hexapod body and legs">
             <span class="setting-label">Show Shadows</span>
             <input type="checkbox" id="showShadows" checked>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="Display frames per second counter for performance monitoring">
             <span class="setting-label">Show FPS Counter</span>
             <input type="checkbox" id="showFPS">
           </div>
-          <div class="setting-row">
+          <div class="setting-row" title="Show reference grid on the ground plane">
             <span class="setting-label">Show Grid</span>
             <input type="checkbox" id="showGrid">
           </div>
@@ -1330,7 +1381,7 @@
 
         <div class="settings-group">
           <div class="settings-group-title">Camera</div>
-          <div class="setting-row">
+          <div class="setting-row" title="Camera field of view angle. Wider = more peripheral vision, narrower = more telephoto effect">
             <span class="setting-label">Field of View</span>
             <div class="setting-control">
               <input type="range" id="cameraFOV" class="setting-slider" min="30" max="90" value="45">
@@ -1366,10 +1417,29 @@
             Choose a professional, futuristic palette for every control surface. Adjust any color below to create your own saved look.
           </p>
           <select id="themePreset">
-            <option value="aurora">Aurora Glow</option>
-            <option value="carbon">Carbon Fiber</option>
-            <option value="sunrise">Sunrise Alloy</option>
-            <option value="custom">Custom Blend</option>
+            <optgroup label="Classic">
+              <option value="aurora">Aurora Glow</option>
+              <option value="carbon">Carbon Fiber</option>
+              <option value="sunrise">Sunrise Alloy</option>
+            </optgroup>
+            <optgroup label="Sci-Fi">
+              <option value="matrix">Matrix Terminal</option>
+              <option value="cyberpunk">Cyberpunk Neon</option>
+              <option value="midnight">Midnight Purple</option>
+            </optgroup>
+            <optgroup label="Nature">
+              <option value="ocean">Deep Ocean</option>
+              <option value="arctic">Arctic Frost</option>
+              <option value="ember">Ember Forge</option>
+            </optgroup>
+            <optgroup label="Tactical">
+              <option value="military">Tactical OD</option>
+              <option value="gold">Royal Gold</option>
+              <option value="stealth">Stealth Mode</option>
+            </optgroup>
+            <optgroup label="Custom">
+              <option value="custom">Custom Blend</option>
+            </optgroup>
           </select>
         </div>
 
@@ -1567,16 +1637,16 @@
 
             <!-- Actions -->
             <div class="calibration-actions" id="legActions" style="display: none;">
-              <button class="calibration-btn test" id="testServoBtn">Test</button>
-              <button class="calibration-btn preset" id="copyToAllBtn">Copy to All</button>
-              <button class="calibration-btn reset" id="resetLegBtn">Reset Leg</button>
+              <button class="calibration-btn test" id="testServoBtn" title="Move this leg's servos to verify calibration">Test</button>
+              <button class="calibration-btn preset" id="copyToAllBtn" title="Apply this leg's dimensions and offsets to all other legs">Copy to All</button>
+              <button class="calibration-btn reset" id="resetLegBtn" title="Reset this leg to default dimensions and zero offsets">Reset Leg</button>
             </div>
           </div>
 
           <!-- Global Actions -->
           <div class="calibration-footer">
-            <button class="calibration-btn preset" id="resetAllLegs" style="flex: 1;">Reset All Legs</button>
-            <button class="calibration-btn test" id="saveCalibrationBtn" style="flex: 1;">Save All</button>
+            <button class="calibration-btn preset" id="resetAllLegs" style="flex: 1;" title="Reset all legs to factory default dimensions and zero calibration offsets">Reset All Legs</button>
+            <button class="calibration-btn test" id="saveCalibrationBtn" style="flex: 1;" title="Save all leg configurations and calibration offsets to the server">Save All</button>
           </div>
         </div>
       </div>
@@ -1614,7 +1684,7 @@
             <button class="webcam-btn" id="addCameraView" style="flex: none; width: auto;">Add Camera</button>
             <button class="webcam-btn" id="saveCameraViews" style="flex: none; width: auto;">Save Layout</button>
           </div>
-          <p class="camera-note">Choose where each live pane appears (left, right, front, rear). Layout preferences are stored on the server.</p>
+          <p class="camera-note"><strong>Display Mode:</strong> "Floating Pane" shows camera as a draggable window. "3D Overlay" projects the video onto the 3D scene background. Use the Transparency slider above to control overlay opacity.</p>
         </div>
       </div>
 
@@ -1657,22 +1727,22 @@
     </div>
   </div>
 
-  <div id="ui">
-    <div class="disconnected-banner" id="disconnectedBanner">
+  <div id="ui" role="region" aria-label="Hexapod control panel">
+    <div class="disconnected-banner" id="disconnectedBanner" role="alert" aria-live="assertive">
       SERVER DISCONNECTED - Reconnecting...
     </div>
     <div class="ui-section">
-      <label class="ui-label">Movement Controls</label>
-      <div class="control-grid">
-        <div style="grid-column: 2"><button class="control-btn" id="btn-up">↑ FWD</button></div>
-        <div style="grid-column: 1"><button class="control-btn" id="btn-left">← LEFT</button></div>
-        <div style="grid-column: 2"><canvas id="joystick" width="60" height="60"></canvas></div>
-        <div style="grid-column: 3"><button class="control-btn" id="btn-right">RIGHT →</button></div>
-        <div style="grid-column: 2"><button class="control-btn" id="btn-down">↓ BACK</button></div>
+      <label class="ui-label" id="movementLabel">Movement Controls</label>
+      <div class="control-grid" role="group" aria-labelledby="movementLabel">
+        <div style="grid-column: 2"><button class="control-btn" id="btn-up" aria-label="Move forward">↑ FWD</button></div>
+        <div style="grid-column: 1"><button class="control-btn" id="btn-left" aria-label="Strafe left">← LEFT</button></div>
+        <div style="grid-column: 2"><canvas id="joystick" width="60" height="60" role="img" aria-label="Virtual joystick for directional control"></canvas></div>
+        <div style="grid-column: 3"><button class="control-btn" id="btn-right" aria-label="Strafe right">RIGHT →</button></div>
+        <div style="grid-column: 2"><button class="control-btn" id="btn-down" aria-label="Move backward">↓ BACK</button></div>
       </div>
-      <div class="rotation-controls">
-        <button class="rotation-btn" id="rotateLeft" title="Rotate Left (Q)">↺ Q</button>
-        <button class="rotation-btn" id="rotateRight" title="Rotate Right (E)">E ↻</button>
+      <div class="rotation-controls" role="group" aria-label="Rotation controls">
+        <button class="rotation-btn" id="rotateLeft" title="Rotate Left (Q)" aria-label="Rotate left">↺ Q</button>
+        <button class="rotation-btn" id="rotateRight" title="Rotate Right (E)" aria-label="Rotate right">E ↻</button>
       </div>
       <div style="text-align: center; font-size: 11px; color: #666; margin-top: 4px;">
         WASD/Arrows: move | Q/E: rotate
@@ -1681,25 +1751,25 @@
 
     <div class="ui-section">
       <label class="ui-label">Gait Mode</label>
-      <select id="gait">
-        <option value="tripod">Tripod (fast, stable)</option>
-        <option value="wave">Wave (smooth, slow)</option>
-        <option value="ripple">Ripple (medium)</option>
+      <select id="gait" title="Walking pattern - affects which legs move together and overall stability/speed tradeoff" aria-label="Gait mode selection">
+        <option value="tripod" title="3 legs move at once - fastest but less stable on rough terrain">Tripod (fast, stable)</option>
+        <option value="wave" title="1 leg moves at a time - slowest but most stable, good for delicate surfaces">Wave (smooth, slow)</option>
+        <option value="ripple" title="2 legs move at once - balanced speed and stability">Ripple (medium)</option>
       </select>
     </div>
 
     <div class="ui-section">
-      <label class="ui-label">Max Speed</label>
+      <label class="ui-label" title="Maximum walking speed as percentage of full speed">Max Speed</label>
       <div class="speed-control">
-        <input type="range" id="speedSlider" min="0" max="100" value="50" style="accent-color: var(--accent);">
+        <input type="range" id="speedSlider" min="0" max="100" value="50" style="accent-color: var(--accent);" title="Adjust maximum walking speed" aria-label="Maximum speed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
         <span class="speed-label" id="speedValue">50%</span>
       </div>
     </div>
 
     <div class="ui-section">
-      <label class="ui-label">Body Height</label>
+      <label class="ui-label" title="Distance from ground to body center. Higher = more ground clearance, lower = more stability">Body Height</label>
       <div class="speed-control">
-        <input type="range" id="bodyHeightSlider" min="30" max="90" value="80" style="accent-color: var(--accent);">
+        <input type="range" id="bodyHeightSlider" min="30" max="90" value="80" style="accent-color: var(--accent);" title="Adjust body height above ground" aria-label="Body height" aria-valuemin="30" aria-valuemax="90" aria-valuenow="80">
         <span class="speed-label" id="bodyHeightValue">80mm</span>
       </div>
     </div>
@@ -1714,23 +1784,39 @@
         <span>Direction: <span id="dirValue" style="color: var(--accent);">0°</span></span>
         <span>Speed: <span id="spdValue" style="color: var(--accent);">0%</span></span>
       </div>
-      <button id="run">Start Walking</button>
+      <button id="run" title="Start or stop the walking gait (Space key)">Start Walking</button>
     </div>
 
     <div class="ui-section">
-      <div class="status-row">
-        <span class="status-label">Temperature:</span>
-        <span class="status-value" id="temp">25.0 °C</span>
+      <div class="status-gauge" title="Current servo controller temperature (0-80°C range)" role="meter" aria-label="Temperature" aria-valuemin="0" aria-valuemax="80" aria-valuenow="25">
+        <span class="gauge-icon" aria-hidden="true">🌡️</span>
+        <div class="gauge-container">
+          <div class="gauge-header">
+            <span class="gauge-label">Temperature</span>
+            <span class="gauge-value" id="temp" aria-live="polite">25.0 °C</span>
+          </div>
+          <div class="gauge-bar" aria-hidden="true">
+            <div class="gauge-fill temp" id="tempGauge" style="width: 31%;"></div>
+          </div>
+        </div>
       </div>
-      <div class="status-row">
-        <span class="status-label">Battery:</span>
-        <span class="status-value" id="batt">12.00 V</span>
+      <div class="status-gauge" title="Current battery voltage level (9-12.6V LiPo range)" role="meter" aria-label="Battery voltage" aria-valuemin="9" aria-valuemax="12.6" aria-valuenow="12">
+        <span class="gauge-icon" aria-hidden="true">🔋</span>
+        <div class="gauge-container">
+          <div class="gauge-header">
+            <span class="gauge-label">Battery</span>
+            <span class="gauge-value" id="batt" aria-live="polite">12.00 V</span>
+          </div>
+          <div class="gauge-bar" aria-hidden="true">
+            <div class="gauge-fill batt" id="battGauge" style="width: 83%;"></div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="ui-section">
-      <label class="ui-label">Log</label>
-      <textarea id="log" readonly></textarea>
+      <label class="ui-label" id="logLabel">Log</label>
+      <textarea id="log" readonly aria-labelledby="logLabel" aria-live="polite" aria-atomic="false"></textarea>
     </div>
   </div>
 

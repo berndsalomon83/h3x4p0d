@@ -132,7 +132,8 @@
       enabled: true,
       position: 'front',
       sourceType: 'local',
-      sourceUrl: ''
+      sourceUrl: '',
+      displayMode: 'pane'  // 'pane' = floating window, 'overlay' = 3D scene overlay
     }
   ];
 
@@ -169,6 +170,7 @@
       position: view?.position || fallback.position,
       sourceType: view?.source_type || view?.sourceType || fallback.sourceType,
       sourceUrl: view?.source_url || view?.sourceUrl || fallback.sourceUrl,
+      displayMode: view?.display_mode || view?.displayMode || fallback.displayMode,
     };
   }
 
@@ -240,6 +242,7 @@
         cameraViews = cameraViews.filter(c => c.id !== view.id);
         renderCameraList();
         renderCameraDock();
+        renderCameraOverlays();
       });
 
       header.appendChild(title);
@@ -273,8 +276,26 @@
       });
       urlLabel.appendChild(urlInput);
 
+      const displayModeLabel = document.createElement('label');
+      displayModeLabel.textContent = 'Display Mode';
+      displayModeLabel.title = 'Pane = floating window, Overlay = projected onto 3D scene';
+      const displayModeSelect = document.createElement('select');
+      displayModeSelect.innerHTML = `
+        <option value="pane">Floating Pane</option>
+        <option value="overlay">3D Overlay</option>
+      `;
+      displayModeSelect.value = view.displayMode || 'pane';
+      displayModeSelect.addEventListener('change', (e) => {
+        updateCameraView(view.id, 'displayMode', e.target.value);
+        // Re-render both dock and overlays when mode changes
+        renderCameraDock();
+        renderCameraOverlays();
+      });
+      displayModeLabel.appendChild(displayModeSelect);
+
       const positionLabel = document.createElement('label');
       positionLabel.textContent = 'Pane Position';
+      positionLabel.title = 'Only applies when Display Mode is "Floating Pane"';
       const positionSelect = document.createElement('select');
       positionSelect.innerHTML = `
         <option value="front">Front</option>
@@ -284,6 +305,7 @@
         <option value="floating">Floating</option>
       `;
       positionSelect.value = view.position;
+      positionSelect.disabled = view.displayMode === 'overlay';
       positionSelect.addEventListener('change', (e) => {
         updateCameraView(view.id, 'position', e.target.value);
       });
@@ -291,6 +313,7 @@
 
       grid.appendChild(sourceLabel);
       grid.appendChild(urlLabel);
+      grid.appendChild(displayModeLabel);
       grid.appendChild(positionLabel);
 
       row.appendChild(header);
@@ -307,9 +330,11 @@
     if (!dock) return;
 
     dock.innerHTML = '';
-    // Filter enabled views - skip local cameras if webcam isn't active
+    // Filter enabled views - only show pane mode cameras
     const enabledViews = cameraViews.filter(v => {
       if (!v.enabled) return false;
+      // Only show cameras in 'pane' mode (floating windows)
+      if (v.displayMode === 'overlay') return false;
       // Only show local camera panes when webcam stream is active
       if (v.sourceType === 'local' && !webcamStream) return false;
       // Only show URL cameras when they have a source URL
@@ -469,6 +494,7 @@
     });
     renderCameraList();
     renderCameraDock();
+    renderCameraOverlays();
   }
 
   // Load config from backend API
@@ -511,6 +537,7 @@
       }
       renderCameraList();
       renderCameraDock();
+      renderCameraOverlays();
 
       // Rebuild all legs with new dimensions
       if (typeof rebuildAllLegs === 'function') {
@@ -929,12 +956,36 @@
           // Update walking state for body animation
           walking = m.running || false;
 
-          // Update status display
+          // Update status display with gauges
           if (m.temperature_c !== undefined) {
-            document.getElementById('temp').textContent = m.temperature_c.toFixed(1) + ' °C';
+            const temp = m.temperature_c;
+            document.getElementById('temp').textContent = temp.toFixed(1) + ' °C';
+            // Temperature gauge: 0-80°C range
+            const tempPercent = Math.min(100, Math.max(0, (temp / 80) * 100));
+            const tempGauge = document.getElementById('tempGauge');
+            if (tempGauge) {
+              tempGauge.style.width = tempPercent + '%';
+              // Color coding: green < 40°C, yellow 40-60°C, red > 60°C
+              tempGauge.classList.remove('good', 'warning', 'danger');
+              if (temp < 40) tempGauge.classList.add('good');
+              else if (temp < 60) tempGauge.classList.add('warning');
+              else tempGauge.classList.add('danger');
+            }
           }
           if (m.battery_v !== undefined) {
-            document.getElementById('batt').textContent = m.battery_v.toFixed(2) + ' V';
+            const batt = m.battery_v;
+            document.getElementById('batt').textContent = batt.toFixed(2) + ' V';
+            // Battery gauge: 9V (empty) to 12.6V (full) for 3S LiPo
+            const battPercent = Math.min(100, Math.max(0, ((batt - 9) / 3.6) * 100));
+            const battGauge = document.getElementById('battGauge');
+            if (battGauge) {
+              battGauge.style.width = battPercent + '%';
+              // Color coding: red < 20%, yellow 20-40%, green > 40%
+              battGauge.classList.remove('good', 'warning', 'danger');
+              if (battPercent > 40) battGauge.classList.add('good');
+              else if (battPercent > 20) battGauge.classList.add('warning');
+              else battGauge.classList.add('danger');
+            }
           }
         }
       } catch (e) {
@@ -1369,6 +1420,13 @@
       webcamOverlay.material.map.needsUpdate = true;
     }
 
+    // Update camera overlay textures
+    Object.values(cameraOverlayMeshes).forEach(mesh => {
+      if (mesh && mesh.material && mesh.material.map) {
+        mesh.material.map.needsUpdate = true;
+      }
+    });
+
     renderer.render(scene, camera);
 
     // Display FPS if enabled (after rendering to avoid interfering with WebGL)
@@ -1446,6 +1504,123 @@
         '--text-muted': '#a3afcf',
         '--success': '#7ae0c3',
         '--danger': '#ff6b81'
+      }
+    },
+    matrix: {
+      label: 'Matrix Terminal',
+      values: {
+        '--accent': '#00ff41',
+        '--panel-bg': '#0a0a0a',
+        '--control-bg': '#0f1510',
+        '--panel-border': '#1a2f1a',
+        '--text-primary': '#00ff41',
+        '--text-muted': '#4a9f4a',
+        '--success': '#00ff41',
+        '--danger': '#ff3333'
+      }
+    },
+    cyberpunk: {
+      label: 'Cyberpunk Neon',
+      values: {
+        '--accent': '#ff00ff',
+        '--panel-bg': '#0d0221',
+        '--control-bg': '#150535',
+        '--panel-border': '#3d1a5c',
+        '--text-primary': '#ff9efc',
+        '--text-muted': '#b06ab3',
+        '--success': '#00ffcc',
+        '--danger': '#ff3366'
+      }
+    },
+    ocean: {
+      label: 'Deep Ocean',
+      values: {
+        '--accent': '#00b4d8',
+        '--panel-bg': '#03111a',
+        '--control-bg': '#051923',
+        '--panel-border': '#0a3d62',
+        '--text-primary': '#caf0f8',
+        '--text-muted': '#6ba3be',
+        '--success': '#48cae4',
+        '--danger': '#f77f7f'
+      }
+    },
+    ember: {
+      label: 'Ember Forge',
+      values: {
+        '--accent': '#ff5722',
+        '--panel-bg': '#1a0a05',
+        '--control-bg': '#2a1208',
+        '--panel-border': '#4a2010',
+        '--text-primary': '#ffe0d0',
+        '--text-muted': '#c09080',
+        '--success': '#8bc34a',
+        '--danger': '#ff1744'
+      }
+    },
+    arctic: {
+      label: 'Arctic Frost',
+      values: {
+        '--accent': '#89cff0',
+        '--panel-bg': '#0e1624',
+        '--control-bg': '#152238',
+        '--panel-border': '#2a4060',
+        '--text-primary': '#e8f4fc',
+        '--text-muted': '#8ab4d0',
+        '--success': '#7dcea0',
+        '--danger': '#e57373'
+      }
+    },
+    midnight: {
+      label: 'Midnight Purple',
+      values: {
+        '--accent': '#9d4edd',
+        '--panel-bg': '#10002b',
+        '--control-bg': '#1a0040',
+        '--panel-border': '#3c096c',
+        '--text-primary': '#e0aaff',
+        '--text-muted': '#9d6dc0',
+        '--success': '#72efdd',
+        '--danger': '#ff6b6b'
+      }
+    },
+    military: {
+      label: 'Tactical OD',
+      values: {
+        '--accent': '#9acd32',
+        '--panel-bg': '#0c120a',
+        '--control-bg': '#141f10',
+        '--panel-border': '#2a3a20',
+        '--text-primary': '#d4e6c3',
+        '--text-muted': '#8aa076',
+        '--success': '#9acd32',
+        '--danger': '#dc3545'
+      }
+    },
+    gold: {
+      label: 'Royal Gold',
+      values: {
+        '--accent': '#ffd700',
+        '--panel-bg': '#0f0d08',
+        '--control-bg': '#1a1610',
+        '--panel-border': '#3d350a',
+        '--text-primary': '#fff8dc',
+        '--text-muted': '#c0a060',
+        '--success': '#98fb98',
+        '--danger': '#ff6347'
+      }
+    },
+    stealth: {
+      label: 'Stealth Mode',
+      values: {
+        '--accent': '#505050',
+        '--panel-bg': '#0a0a0a',
+        '--control-bg': '#141414',
+        '--panel-border': '#252525',
+        '--text-primary': '#b0b0b0',
+        '--text-muted': '#606060',
+        '--success': '#4a9f4a',
+        '--danger': '#9f4a4a'
       }
     }
   };
@@ -2095,6 +2270,96 @@
   let webcamStream = null;
   let webcamOverlay = null;
 
+  // Track camera overlay meshes for 3D scene (keyed by camera id)
+  const cameraOverlayMeshes = {};
+
+  // Get the default overlay opacity from the slider
+  function getOverlayOpacity() {
+    const slider = document.getElementById('webcamOpacity');
+    const sliderVal = slider ? parseFloat(slider.value) : 30;
+    return 1.0 - (sliderVal / 100);  // Inverted: 0% slider = opaque
+  }
+
+  // Render camera overlays in the 3D scene for cameras with displayMode === 'overlay'
+  function renderCameraOverlays() {
+    // Get cameras that should be overlays
+    const overlayViews = cameraViews.filter(v => {
+      if (!v.enabled) return false;
+      if (v.displayMode !== 'overlay') return false;
+      // Only show local camera overlays when webcam stream is active
+      if (v.sourceType === 'local' && !webcamStream) return false;
+      // Only show URL cameras when they have a source URL
+      if (v.sourceType !== 'local' && !v.sourceUrl) return false;
+      return true;
+    });
+
+    // Remove overlays that are no longer needed
+    Object.keys(cameraOverlayMeshes).forEach(id => {
+      if (!overlayViews.find(v => v.id === id)) {
+        const mesh = cameraOverlayMeshes[id];
+        if (mesh) {
+          scene.remove(mesh);
+          if (mesh.material.map) mesh.material.map.dispose();
+          mesh.material.dispose();
+          mesh.geometry.dispose();
+        }
+        delete cameraOverlayMeshes[id];
+      }
+    });
+
+    // Create or update overlays for active overlay cameras
+    overlayViews.forEach((view, idx) => {
+      if (!cameraOverlayMeshes[view.id]) {
+        // Create new overlay
+        let videoElement;
+        if (view.sourceType === 'local') {
+          videoElement = document.getElementById('webcamFeed');
+        } else {
+          // For URL sources, we need to create a hidden video element
+          videoElement = document.createElement('video');
+          videoElement.autoplay = true;
+          videoElement.muted = true;
+          videoElement.playsInline = true;
+          videoElement.loop = true;
+          videoElement.crossOrigin = 'anonymous';
+          videoElement.src = view.sourceUrl;
+          videoElement.play().catch(() => {});
+        }
+
+        if (videoElement) {
+          const videoTexture = new THREE.VideoTexture(videoElement);
+          videoTexture.minFilter = THREE.LinearFilter;
+          videoTexture.magFilter = THREE.LinearFilter;
+          const overlayGeom = new THREE.PlaneGeometry(200, 150);
+          const overlayMat = new THREE.MeshBasicMaterial({
+            map: videoTexture,
+            transparent: true,
+            opacity: getOverlayOpacity(),
+            side: THREE.DoubleSide
+          });
+          const overlayMesh = new THREE.Mesh(overlayGeom, overlayMat);
+
+          // Position overlays at different depths so they don't z-fight
+          // First overlay at z=150, each subsequent one slightly further back
+          overlayMesh.position.set(0, 80, 150 + (idx * 5));
+          scene.add(overlayMesh);
+          cameraOverlayMeshes[view.id] = overlayMesh;
+
+          // Store reference to video element for URL sources
+          if (view.sourceType !== 'local') {
+            overlayMesh.userData.videoElement = videoElement;
+          }
+        }
+      } else {
+        // Update existing overlay opacity
+        const mesh = cameraOverlayMeshes[view.id];
+        if (mesh && mesh.material) {
+          mesh.material.opacity = getOverlayOpacity();
+        }
+      }
+    });
+  }
+
   // Initialize camera UI with defaults before backend config loads
   renderCameraList();
   renderCameraDock();
@@ -2166,6 +2431,7 @@
 
       refreshLocalCameraVideos();
       renderCameraDock();
+      renderCameraOverlays();
 
       logMsg('Webcam started');
     } catch(err) {
@@ -2186,6 +2452,7 @@
       webcamStream = null;
       refreshLocalCameraVideos();
       renderCameraDock();
+      renderCameraOverlays();
       logMsg('Webcam stopped');
     }
   });
@@ -2227,6 +2494,12 @@
     if (webcamOverlay && webcamOverlay.material) {
       webcamOverlay.material.opacity = opacity;
     }
+    // Also update all camera overlay meshes
+    Object.values(cameraOverlayMeshes).forEach(mesh => {
+      if (mesh && mesh.material) {
+        mesh.material.opacity = opacity;
+      }
+    });
   });
 
   document.getElementById('addCameraView').addEventListener('click', () => {
@@ -2237,11 +2510,13 @@
       enabled: true,
       position: 'floating',
       sourceType: 'local',
-      sourceUrl: ''
+      sourceUrl: '',
+      displayMode: 'pane'
     }, nextIndex);
     cameraViews.push(newView);
     renderCameraList();
     renderCameraDock();
+    renderCameraOverlays();
   });
 
   document.getElementById('saveCameraViews').addEventListener('click', async () => {
@@ -2253,6 +2528,7 @@
         position: view.position,
         source_type: view.sourceType,
         source_url: view.sourceUrl,
+        display_mode: view.displayMode,
       }))
     };
     await saveConfigToBackend(payload);

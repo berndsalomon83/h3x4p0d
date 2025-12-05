@@ -45,7 +45,10 @@ import time
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(name)s: %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 from .hardware import MockServoController, SensorReader, ServoController
