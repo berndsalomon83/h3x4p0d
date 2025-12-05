@@ -715,7 +715,10 @@ const servoCalibration = {
   mapping: {},  // leg,joint -> channel
   offsets: {},  // leg,joint -> offset in microseconds
   directions: {},  // leg,joint -> 1 or -1
-  hardware: false
+  hardware: false,
+  metadata: { path: null, exists: false, size: null },
+  coverage: { mapped: 0, legs_configured: 0, available_channels: [], unmapped: [] },
+  lastUpdated: null
 };
 
 // Load calibration from API
@@ -726,11 +729,16 @@ async function loadCalibration() {
       const data = await response.json();
       servoCalibration.mapping = data.calibration || {};
       servoCalibration.hardware = data.hardware || false;
+      servoCalibration.metadata = data.metadata || servoCalibration.metadata;
+      servoCalibration.coverage = data.coverage || servoCalibration.coverage;
+      servoCalibration.lastUpdated = new Date();
       logEvent('INFO', `Loaded calibration: ${Object.keys(servoCalibration.mapping).length} mappings`);
       updateServoMappingTable();
+      updateCalibrationStatusUI();
     }
   } catch (e) {
     logEvent('WARN', 'Could not load calibration from API, using defaults');
+    updateCalibrationStatusUI(true);
   }
 }
 
@@ -757,6 +765,83 @@ function updateServoMappingTable() {
       offsetInput.value = servoCalibration.offsets[key];
     }
   });
+}
+
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return '--';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+function formatUnmapped(unmapped) {
+  if (!Array.isArray(unmapped) || unmapped.length === 0) return ['All joints mapped'];
+  const jointNames = ['coxa', 'femur', 'tibia'];
+  return unmapped.map(u => `Leg ${u.leg} ${jointNames[u.joint] || u.joint}`);
+}
+
+function updateCalibrationStatusUI(isOffline = false) {
+  const meta = servoCalibration.metadata || {};
+  const coverage = servoCalibration.coverage || {};
+
+  const pathEl = document.getElementById('calibrationPath');
+  const sizeEl = document.getElementById('calibrationSize');
+  const existsTag = document.getElementById('calibrationExistsTag');
+  const hardwareEl = document.getElementById('calibrationHardware');
+  const updatedEl = document.getElementById('calibrationUpdated');
+  const mappedEl = document.getElementById('calibrationMapped');
+  const legsEl = document.getElementById('calibrationLegs');
+  const availableEl = document.getElementById('calibrationAvailable');
+  const unmappedCountEl = document.getElementById('calibrationUnmappedCount');
+  const unmappedListEl = document.getElementById('calibrationUnmappedList');
+
+  if (pathEl) pathEl.textContent = meta.path || '--';
+  if (sizeEl) sizeEl.textContent = meta.size !== undefined ? formatBytes(meta.size) : '--';
+
+  if (existsTag) {
+    const exists = Boolean(meta.exists);
+    existsTag.textContent = exists ? 'On disk' : (isOffline ? 'Unknown' : 'Missing');
+    existsTag.className = `tag ${exists ? 'tag-success' : isOffline ? 'tag-warning' : 'tag-danger'}`;
+  }
+
+  if (hardwareEl) hardwareEl.textContent = servoCalibration.hardware ? 'Hardware connected' : 'Mock / offline';
+
+  if (updatedEl) {
+    const ts = servoCalibration.lastUpdated;
+    updatedEl.textContent = `Last checked: ${ts ? ts.toLocaleTimeString() : '--'}`;
+  }
+
+  if (mappedEl) {
+    const mapped = coverage.mapped ?? 0;
+    mappedEl.textContent = `${mapped} / 18`;
+  }
+
+  if (legsEl) {
+    const legs = coverage.legs_configured ?? 0;
+    legsEl.textContent = `Legs configured: ${legs}`;
+  }
+
+  if (availableEl) {
+    const available = coverage.available_channels || [];
+    availableEl.textContent = available.length ? available.join(', ') : 'None';
+  }
+
+  if (unmappedCountEl) {
+    const unmappedCount = (coverage.unmapped || []).length;
+    unmappedCountEl.textContent = `Unmapped joints: ${unmappedCount}`;
+  }
+
+  if (unmappedListEl) {
+    unmappedListEl.innerHTML = '';
+    const items = formatUnmapped(coverage.unmapped);
+    items.forEach(text => {
+      const span = document.createElement('span');
+      span.className = 'tag tag-primary';
+      span.textContent = text;
+      unmappedListEl.appendChild(span);
+    });
+  }
 }
 
 if (servoMappingTable) {
@@ -806,8 +891,16 @@ if (servoMappingTable) {
   }
 
   // Auto-fill Template button
-  document.querySelector('#tab-servo-mapping .btn-secondary')?.addEventListener('click', () => {
+  document.getElementById('btnAutoFillTemplate')?.addEventListener('click', () => {
     autoFillServoTemplate();
+  });
+
+  document.getElementById('btnRefreshCalibration')?.addEventListener('click', () => {
+    refreshCalibrationStatus();
+  });
+
+  document.getElementById('btnSaveCalibration')?.addEventListener('click', () => {
+    saveCalibrationToDisk();
   });
 
   // Highlight All button
@@ -817,6 +910,48 @@ if (servoMappingTable) {
 
   // Load calibration on init
   loadCalibration();
+}
+
+async function refreshCalibrationStatus() {
+  try {
+    const response = await fetch('/api/status');
+    if (response.ok) {
+      const data = await response.json();
+      servoCalibration.hardware = Boolean(data.hardware);
+      servoCalibration.metadata = data.metadata || servoCalibration.metadata;
+      servoCalibration.coverage = data.coverage || servoCalibration.coverage;
+      servoCalibration.lastUpdated = new Date();
+
+      if (data.calibration) {
+        servoCalibration.mapping = data.calibration;
+        updateServoMappingTable();
+      }
+
+      updateCalibrationStatusUI();
+      logEvent('INFO', 'Calibration status refreshed');
+      return;
+    }
+  } catch (e) {
+    logEvent('WARN', 'Calibration status unavailable');
+  }
+
+  updateCalibrationStatusUI(true);
+}
+
+async function saveCalibrationToDisk() {
+  try {
+    const response = await fetch('/api/calibration/save', { method: 'POST' });
+    if (response.ok) {
+      const result = await response.json();
+      servoCalibration.metadata = result.metadata || servoCalibration.metadata;
+      servoCalibration.coverage = result.coverage || servoCalibration.coverage;
+      servoCalibration.lastUpdated = new Date();
+      updateCalibrationStatusUI();
+      logEvent('INFO', 'Calibration saved to disk');
+    }
+  } catch (e) {
+    logEvent('ERROR', `Failed to save calibration: ${e.message}`);
+  }
 }
 
 async function testServo(leg, joint, channel) {
@@ -875,6 +1010,12 @@ async function saveServoMapping(leg, joint, channel, direction, offset) {
     const result = await response.json();
     if (result.success) {
       logEvent('INFO', `Saved mapping: leg ${leg} joint ${joint} → channel ${channel}`);
+
+      if (result.coverage) {
+        servoCalibration.coverage = result.coverage;
+        servoCalibration.lastUpdated = new Date();
+        updateCalibrationStatusUI();
+      }
 
       // Also save offset and direction to config
       const configUpdate = {};

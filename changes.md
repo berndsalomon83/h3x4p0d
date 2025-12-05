@@ -7,6 +7,13 @@
 - Added backend-aware data bindings for geometry and leg length sliders in the configuration UI so updates persist using the server's expected key names. (web_static/config.html, web_static/config.js)
 - Introduced a cycle time control and aligned gait parameter bindings with `step_length`/`step_height` keys to keep the summary cards and saves consistent with the configuration API. (web_static/config.html, web_static/config.js)
 
+## 2025-02-08
+
+### Configuration Calibration Status
+
+- Added a calibration status panel with on-disk metadata, hardware/backend detection, coverage counts, available channels, and unmapped joint chips so operators can see configuration health at a glance. (web_static/config.html, web_static/config.js)
+- Wired refresh/save buttons to the new calibration endpoints so saving mappings persists to disk and coverage snapshots stay in sync with backend status responses. (web_static/config.html, web_static/config.js)
+
 ## 2025-12-11
 
 ### Test Suite Quality Review
