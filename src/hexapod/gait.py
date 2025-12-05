@@ -62,6 +62,8 @@ class GaitEngine:
         self.time = 0.0
         self.turn_rate = 0.0  # -1.0 to 1.0: negative = left, positive = right
         self.ik = InverseKinematics(LEG_COXA_LEN, LEG_FEMUR_LEN, LEG_TIBIA_LEN)
+        # Track whether each leg is currently in swing phase for telemetry/ground contact
+        self.last_swing_states = [False] * 6
 
     def update(self, dt: float):
         self.time += dt
@@ -83,6 +85,7 @@ class GaitEngine:
         base_swing_angle = max(3.0, min(15.0, base_swing_angle))
 
         angles = []
+        swing_states = []
         for leg in range(6):
             phase = self._phase_for_leg(leg, mode)
             local_t = ((t / self.cycle_time) + phase) % 1.0
@@ -90,6 +93,7 @@ class GaitEngine:
             # swing phase (0-0.5): lift leg up and forward
             # stance phase (0.5-1.0): push down and backward
             swing = local_t < 0.5
+            swing_states.append(swing)
             cycle_pos = (local_t * 2.0) if swing else ((local_t - 0.5) * 2.0)
 
             # Apply differential steering based on turn_rate
@@ -137,6 +141,8 @@ class GaitEngine:
 
             angles.append((coxa, femur, tibia))
 
+        # Persist swing states so the controller can expose ground contact telemetry
+        self.last_swing_states = swing_states
         return angles
 
     def _phase_for_leg(self, leg: int, mode: str) -> float:

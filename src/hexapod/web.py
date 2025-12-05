@@ -54,7 +54,7 @@ class ConnectionManager:
 
 class HexapodController:
     """Main controller coordinating gait, servo, and sensor state."""
-    def __init__(self, servo: ServoController, sensor: SensorReader):
+        def __init__(self, servo: ServoController, sensor: SensorReader):
         self.servo = servo
         self.sensor = sensor
         self.gait = GaitEngine(step_height=25.0, step_length=40.0, cycle_time=1.2)
@@ -71,6 +71,9 @@ class HexapodController:
 
         # Rotation in place (degrees per second, 0 = no rotation)
         self.rotation_speed = 0.0  # positive = clockwise, negative = counter-clockwise
+
+        # Track ground contact state for telemetry (True = stance/grounded)
+        self.ground_contacts: List[bool] = [True] * 6
 
         # motion command handler
         self.bt_controller = GenericController()
@@ -172,9 +175,12 @@ class HexapodController:
         if self.running:
             # Walking: use gait generator
             base_angles = self.gait.joint_angles_for_time(self.gait.time, mode=self.gait_mode)
+            # stance phase when swing=False inside gait engine
+            self.ground_contacts = [not swing for swing in self.gait.last_swing_states]
         else:
             # Standing: use IK for body height
             base_angles = self.calculate_standing_pose()
+            self.ground_contacts = [True] * 6
 
         # Apply heading rotation to all coxa angles and update servos
         angles = []
@@ -206,6 +212,7 @@ class HexapodController:
             "rotation_speed": self.rotation_speed,
             "temperature_c": self.sensor.read_temperature_c(),
             "battery_v": self.sensor.read_battery_voltage(),
+            "ground_contacts": self.ground_contacts,
         }
 
 
@@ -611,6 +618,8 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                     # Set turn_rate for differential steering (Q/E keys)
                     turn = float(data.get("turn", 0.0))
                     controller.gait.turn_rate = max(-1.0, min(1.0, turn))
+                    # Convert turn rate into a rotation speed (deg/s) so backend drives turning
+                    controller.rotation_speed = controller.gait.turn_rate * 90.0
                 elif typ == "body_height":
                     height = float(data.get("height", 60.0))
                     height = max(30.0, min(90.0, height))

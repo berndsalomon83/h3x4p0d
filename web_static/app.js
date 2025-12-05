@@ -559,6 +559,7 @@
 
   // Interpolation targets for smooth animation
   const legTargets = [];
+  const groundContactStates = Array(6).fill(true);
 
   // Track manual control for each leg (timestamp of last manual adjustment)
   const manualControlTimestamps = Array(6).fill(-Infinity);
@@ -918,6 +919,11 @@
               // left vs right mirroring via legGroup.rotation.y
               legTargets[i].femur = (f - 90) * Math.PI / 180;
               legTargets[i].tibia = (t - 90) * Math.PI / 180;
+            }
+          }
+          if (Array.isArray(m.ground_contacts) && m.ground_contacts.length === 6) {
+            for (let i = 0; i < 6; i++) {
+              groundContactStates[i] = !!m.ground_contacts[i];
             }
           }
           // Update walking state for body animation
@@ -1341,20 +1347,13 @@
         groundContactIndicators[i].position.x = footPos.x;
         groundContactIndicators[i].position.z = footPos.z;
 
-        // Show indicator when foot is near or on ground OR in the air
-        const isOnGround = footPos.y < 5;
+        // Show indicator when enabled and colorize from backend ground-contact telemetry
         groundContactIndicators[i].visible = settingsValues.showGroundContact;
-
-        // Change color: ORANGE when in air, green when on ground
-        if (isOnGround) {
-          const contactStrength = Math.max(0, 1 - footPos.y / 5);
-          groundContactIndicators[i].material.color.setRGB(
-            1 - contactStrength,
-            contactStrength,
-            0
-          );
+        if (groundContactStates[i]) {
+          // Firm ground contact -> green
+          groundContactIndicators[i].material.color.setRGB(0.0, 1.0, 0.0);
         } else {
-          // ORANGE when foot is lifted (in the air)
+          // Swing phase -> orange
           groundContactIndicators[i].material.color.setRGB(1.0, 0.6, 0.0);
         }
       }
