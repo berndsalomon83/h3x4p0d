@@ -14,10 +14,16 @@ class HexapodConfig:
 
     # Default configuration values
     DEFAULTS = {
-        # Leg geometry (mm) - must match frontend DEFAULT_LEG_CONFIG in app.js
+        # Default leg geometry (mm) - used as fallback for per-leg config
         "leg_coxa_length": 15.0,
         "leg_femur_length": 50.0,
         "leg_tibia_length": 55.0,
+
+        # Per-leg geometry (mm) - allows individual leg customization
+        # Format: leg{N}_coxa_length, leg{N}_femur_length, leg{N}_tibia_length
+        **{f"leg{leg}_coxa_length": 15.0 for leg in range(6)},
+        **{f"leg{leg}_femur_length": 50.0 for leg in range(6)},
+        **{f"leg{leg}_tibia_length": 55.0 for leg in range(6)},
 
         # Body dimensions (mm)
         "body_width": 100.0,
@@ -115,11 +121,17 @@ class HexapodConfig:
         self._config = self.DEFAULTS.copy()
 
     def load(self) -> None:
-        """Load configuration from file."""
+        """Load configuration from file.
+
+        Merges file values with defaults, preserving any new default keys
+        that may have been added since the file was created.
+        """
         if self.config_file.exists():
             with open(self.config_file, 'r') as f:
                 loaded = json.load(f)
-                self._config.update(loaded)
+                # Start with defaults, then overlay with loaded values
+                # This ensures new default keys are preserved
+                self._config = {**self.DEFAULTS, **loaded}
 
     def save(self) -> None:
         """Save configuration to file."""

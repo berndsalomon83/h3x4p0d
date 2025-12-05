@@ -22,7 +22,8 @@
       "Bash(poetry run python:*)",
       "Bash(./start.sh)",
       "Bash(.venv/bin/python3:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

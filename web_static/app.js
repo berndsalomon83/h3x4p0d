@@ -298,6 +298,9 @@
     });
   }
 
+  // Store floating camera positions
+  const floatingCameraPositions = {};
+
   function renderCameraDock() {
     const dock = document.getElementById('cameraDock');
     if (!dock) return;
@@ -309,6 +312,7 @@
     enabledViews.forEach((view) => {
       const pane = document.createElement('div');
       pane.className = `camera-pane position-${view.position || 'floating'}`;
+      pane.dataset.cameraId = view.id;
 
       const header = document.createElement('div');
       header.className = 'camera-pane-header';
@@ -351,8 +355,98 @@
         pane.appendChild(placeholder);
       }
 
+      // Make floating panes draggable
+      if (view.position === 'floating') {
+        // Restore saved position or use default
+        const savedPos = floatingCameraPositions[view.id];
+        if (savedPos) {
+          pane.style.left = savedPos.x + 'px';
+          pane.style.top = savedPos.y + 'px';
+          pane.style.bottom = 'auto';
+        } else {
+          // Default position for new floating cameras
+          pane.style.right = '20px';
+          pane.style.top = '80px';
+        }
+
+        makeDraggable(pane, header, view.id);
+      }
+
       dock.appendChild(pane);
     });
+  }
+
+  // Make an element draggable by its header
+  function makeDraggable(element, handle, cameraId) {
+    let isDragging = false;
+    let startX, startY, initialX, initialY;
+
+    handle.style.cursor = 'move';
+
+    handle.addEventListener('mousedown', startDrag);
+    handle.addEventListener('touchstart', startDrag, { passive: false });
+
+    function startDrag(e) {
+      if (e.type === 'touchstart') {
+        e.preventDefault();
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      } else {
+        startX = e.clientX;
+        startY = e.clientY;
+      }
+
+      const rect = element.getBoundingClientRect();
+      initialX = rect.left;
+      initialY = rect.top;
+      isDragging = true;
+
+      document.addEventListener('mousemove', drag);
+      document.addEventListener('mouseup', stopDrag);
+      document.addEventListener('touchmove', drag, { passive: false });
+      document.addEventListener('touchend', stopDrag);
+    }
+
+    function drag(e) {
+      if (!isDragging) return;
+
+      let currentX, currentY;
+      if (e.type === 'touchmove') {
+        e.preventDefault();
+        currentX = e.touches[0].clientX;
+        currentY = e.touches[0].clientY;
+      } else {
+        currentX = e.clientX;
+        currentY = e.clientY;
+      }
+
+      const deltaX = currentX - startX;
+      const deltaY = currentY - startY;
+
+      const newX = Math.max(0, Math.min(window.innerWidth - element.offsetWidth, initialX + deltaX));
+      const newY = Math.max(0, Math.min(window.innerHeight - element.offsetHeight, initialY + deltaY));
+
+      element.style.left = newX + 'px';
+      element.style.top = newY + 'px';
+      element.style.right = 'auto';
+      element.style.bottom = 'auto';
+    }
+
+    function stopDrag() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Save position
+      floatingCameraPositions[cameraId] = {
+        x: parseInt(element.style.left),
+        y: parseInt(element.style.top)
+      };
+
+      document.removeEventListener('mousemove', drag);
+      document.removeEventListener('mouseup', stopDrag);
+      document.removeEventListener('touchmove', drag);
+      document.removeEventListener('touchend', stopDrag);
+    }
   }
 
   function updateCameraView(id, field, value) {
@@ -378,17 +472,27 @@
       }
       const config = await response.json();
 
-      // Map backend config keys to frontend leg config
-      const backendConfig = {
-        coxaLength: config.leg_coxa_length || DEFAULT_LEG_CONFIG.coxaLength,
-        femurLength: config.leg_femur_length || DEFAULT_LEG_CONFIG.femurLength,
-        tibiaLength: config.leg_tibia_length || DEFAULT_LEG_CONFIG.tibiaLength,
+      // Common visualization config (shared across all legs)
+      const vizConfig = {
         coxaRadius: config.viz_coxa_radius || DEFAULT_LEG_CONFIG.coxaRadius,
         femurRadius: config.viz_femur_radius || DEFAULT_LEG_CONFIG.femurRadius,
         tibiaRadius: config.viz_tibia_radius || DEFAULT_LEG_CONFIG.tibiaRadius,
         jointRadius: config.viz_joint_radius || DEFAULT_LEG_CONFIG.jointRadius,
         footRadius: config.viz_foot_radius || DEFAULT_LEG_CONFIG.footRadius
       };
+
+      // Load per-leg configuration (falls back to global defaults)
+      const defaultCoxa = config.leg_coxa_length || DEFAULT_LEG_CONFIG.coxaLength;
+      const defaultFemur = config.leg_femur_length || DEFAULT_LEG_CONFIG.femurLength;
+      const defaultTibia = config.leg_tibia_length || DEFAULT_LEG_CONFIG.tibiaLength;
+
+      legConfigs = Array(6).fill(null).map((_, legIndex) => ({
+        coxaLength: config[`leg${legIndex}_coxa_length`] ?? defaultCoxa,
+        femurLength: config[`leg${legIndex}_femur_length`] ?? defaultFemur,
+        tibiaLength: config[`leg${legIndex}_tibia_length`] ?? defaultTibia,
+        ...vizConfig
+      }));
+      console.log('Loaded per-leg config from backend:', legConfigs);
 
       // Camera layout persistence
       if (Array.isArray(config.camera_views)) {
@@ -398,10 +502,6 @@
       }
       renderCameraList();
       renderCameraDock();
-
-      // Apply to all legs
-      legConfigs = Array(6).fill(null).map(() => ({...backendConfig}));
-      console.log('Loaded leg config from backend:', backendConfig);
 
       // Rebuild all legs with new dimensions
       if (typeof rebuildAllLegs === 'function') {
@@ -775,6 +875,9 @@
       document.getElementById('connectionStatus').textContent = 'Connected';
       document.getElementById('connectionStatus').style.color = getThemeColor('--success', '#51cf66');
       reconnectAttempts = 0;
+      // Remove disconnected state from UI
+      document.getElementById('ui').classList.remove('disconnected');
+      document.getElementById('disconnectedBanner').classList.remove('visible');
       // Load configuration from backend API
       loadConfigFromBackend();
       // Load gait parameters from backend
@@ -826,11 +929,17 @@
     ws.onerror = () => {
       document.getElementById('connectionStatus').textContent = 'Error';
       document.getElementById('connectionStatus').style.color = getThemeColor('--danger', '#ff6b6b');
+      // Show disconnected state
+      document.getElementById('ui').classList.add('disconnected');
+      document.getElementById('disconnectedBanner').classList.add('visible');
     };
 
     ws.onclose = () => {
       document.getElementById('connectionStatus').textContent = 'Disconnected';
       document.getElementById('connectionStatus').style.color = getThemeColor('--danger', '#ff6b6b');
+      // Show disconnected state
+      document.getElementById('ui').classList.add('disconnected');
+      document.getElementById('disconnectedBanner').classList.add('visible');
 
       // Auto-reconnect with exponential backoff
       if (reconnectAttempts < maxReconnectAttempts) {
@@ -851,6 +960,10 @@
       }
     };
   }
+
+  // Start in disconnected state until connection is established
+  document.getElementById('ui').classList.add('disconnected');
+  document.getElementById('disconnectedBanner').classList.add('visible');
 
   // Initial connection
   connectWebSocket();
@@ -1604,20 +1717,19 @@
     }
   }
 
-  // Update leg configuration - saves to backend (applies to all legs)
+  // Update leg configuration - saves to backend (per-leg configuration)
   function updateLegConfig(legIndex, part, value) {
-    // Backend config applies to all legs uniformly
-    // Map part name to backend config key
+    // Map part name to backend config key (per-leg)
     let backendKey;
     if (part === 'coxa') {
-      backendKey = 'leg_coxa_length';
-      legConfigs.forEach(cfg => cfg.coxaLength = value);
+      backendKey = `leg${legIndex}_coxa_length`;
+      legConfigs[legIndex].coxaLength = value;
     } else if (part === 'femur') {
-      backendKey = 'leg_femur_length';
-      legConfigs.forEach(cfg => cfg.femurLength = value);
+      backendKey = `leg${legIndex}_femur_length`;
+      legConfigs[legIndex].femurLength = value;
     } else if (part === 'tibia') {
-      backendKey = 'leg_tibia_length';
-      legConfigs.forEach(cfg => cfg.tibiaLength = value);
+      backendKey = `leg${legIndex}_tibia_length`;
+      legConfigs[legIndex].tibiaLength = value;
     }
 
     // Save to backend API
@@ -1625,11 +1737,11 @@
       saveConfigToBackend({[backendKey]: value});
     }
 
-    // Rebuild all legs with new dimensions (backend config is uniform)
-    rebuildAllLegs();
+    // Rebuild only the affected leg
+    rebuildLeg(legIndex);
     applyNeutralPose();
 
-    logMsg(`Updated ${part} length to ${value}mm (all legs)`);
+    logMsg(`Updated leg ${legIndex} ${part} length to ${value}mm`);
   }
 
   // Rebuild a specific leg with new dimensions
@@ -1838,12 +1950,14 @@
   function resetAllLegsToDefaults() {
     legConfigs = Array(6).fill(null).map(() => ({...DEFAULT_LEG_CONFIG}));
 
-    // Save defaults to backend
-    saveConfigToBackend({
-      leg_coxa_length: DEFAULT_LEG_CONFIG.coxaLength,
-      leg_femur_length: DEFAULT_LEG_CONFIG.femurLength,
-      leg_tibia_length: DEFAULT_LEG_CONFIG.tibiaLength
-    });
+    // Save per-leg defaults to backend
+    const updates = {};
+    for (let i = 0; i < 6; i++) {
+      updates[`leg${i}_coxa_length`] = DEFAULT_LEG_CONFIG.coxaLength;
+      updates[`leg${i}_femur_length`] = DEFAULT_LEG_CONFIG.femurLength;
+      updates[`leg${i}_tibia_length`] = DEFAULT_LEG_CONFIG.tibiaLength;
+    }
+    saveConfigToBackend(updates);
 
     rebuildAllLegs();
     applyNeutralPose();
@@ -1905,14 +2019,15 @@
     scene.fog.color.setStyle(e.target.value);
   });
 
+  // Webcam variables (declared before use in renderCameraDock)
+  let webcamStream = null;
+  let webcamOverlay = null;
+
   // Initialize camera UI with defaults before backend config loads
   renderCameraList();
   renderCameraDock();
 
   // ========== Webcam Settings ==========
-
-  let webcamStream = null;
-  let webcamOverlay = null;
 
   function refreshLocalCameraVideos() {
     document.querySelectorAll('.camera-pane video[data-source-type="local"]').forEach((video) => {

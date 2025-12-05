@@ -292,6 +292,14 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             )
         return HTMLResponse("<h1>Hexapod Controller</h1><p>UI files not found.</p>")
 
+    @app.get("/favicon.ico")
+    async def favicon():
+        """Serve favicon."""
+        favicon_file = Path(__file__).parent.parent.parent / "web_static" / "favicon.svg"
+        if favicon_file.exists():
+            return FileResponse(str(favicon_file), media_type="image/svg+xml")
+        return Response(status_code=204)  # No content if favicon doesn't exist
+
     @app.get("/api/health")
     async def health_check():
         """Health check endpoint for monitoring."""

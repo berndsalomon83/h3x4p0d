@@ -161,6 +161,30 @@ Located in the Settings panel (Gait tab), body pose controls let you tilt and ro
 
 ---
 
+## Connection Status & Disconnected State
+
+The web UI provides clear visual feedback about the server connection status:
+
+### Connected State
+- Connection status shows "Connected" in green
+- All controls are fully interactive
+- Telemetry updates in real-time
+
+### Disconnected State
+When the server connection is lost:
+- A red **"SERVER DISCONNECTED - Reconnecting..."** banner appears at the top of the control panel
+- All control sections are grayed out and become non-interactive
+- The connection status shows "Disconnected" or "Reconnecting (n)..." in red/orange
+- The activity log remains visible to show reconnection attempts
+- Controls automatically become active again when connection is restored
+
+**Auto-reconnection:**
+- The UI automatically attempts to reconnect with exponential backoff
+- Up to 10 reconnection attempts are made
+- After max attempts, click "Click to reconnect" to manually retry
+
+---
+
 ## Status Indicators
 
 Located in the **"Status"** section of the control panel:
@@ -231,28 +255,72 @@ View can be adjusted using your browser's three.js controls (if enabled). Defaul
 
 ---
 
+## Live Camera Views
+
+The web UI supports multiple live camera feeds displayed in a dock at the bottom of the screen.
+
+### Camera Dock Layout
+- Camera views are displayed on the **right side** of the screen (to avoid overlaying the control panel on the left)
+- Multiple cameras can be configured via the Settings panel (Camera tab)
+- Cameras are ordered by position:
+  - **Front** cameras appear at the top
+  - **Left/Right** cameras appear in the middle row
+  - **Rear** cameras appear at the bottom
+  - **Floating** cameras can be dragged anywhere on screen
+
+### Floating Camera Panes
+- Set a camera's position to "Floating" to make it freely movable
+- **Drag** the floating pane by clicking and holding its header bar
+- Position is remembered during your session
+- Floating panes appear above other UI elements
+
+### Camera Configuration (Settings > Camera tab)
+1. Click **"Add Camera"** to create a new camera view
+2. Configure each camera:
+   - **Label**: Display name for the camera
+   - **Source Type**: "Local webcam" or "Stream URL"
+   - **Stream URL**: RTSP or HTTP stream URL (for external cameras)
+   - **Pane Position**: Where to display the camera (front/left/right/rear/floating)
+   - **Enabled**: Toggle to show/hide the camera view
+3. Click **"Save Layout"** to persist camera configuration
+
+### Starting the Webcam
+1. Open Settings > Camera tab
+2. Click **"Start"** under "Webcam Feed"
+3. Allow browser camera access when prompted
+4. Camera will appear in configured camera panes
+
+---
+
 ## Web Interface Layout
 
 ```
-╔════════════════════════════════════════╗
-║  3D CANVAS (occupies full screen)      ║
-║                                        ║
-║  ┌────────── CONTROL PANEL ────────┐  ║
-║  │ ↑ FWD    ← LEFT  RIGHT →        │  ║
-║  │ ↓ BACK                           │  ║
-║  │                                  │  ║
-║  │ Gait: [Tripod ▼]                │  ║
-║  │ Speed: [====●========] 50%       │  ║
-║  │                                  │  ║
-║  │ Direction: 0°  Speed: 0%         │  ║
-║  │ [Start Walking]                  │  ║
-║  │                                  │  ║
-║  │ Temperature: 25.0°C              │  ║
-║  │ Battery: 12.00V                  │  ║
-║  │                                  │  ║
-║  │ [Activity Log - last 10 lines]   │  ║
-║  └──────────────────────────────────┘  ║
-╚════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════════╗
+║  3D CANVAS (occupies full screen)                             ║
+║                                                               ║
+║  ┌─── CONTROL PANEL ───┐                    ┌─ SETTINGS ─┐   ║
+║  │ ↑ FWD  ← →  ↓ BACK │                    │ (gear icon)│   ║
+║  │                     │                    └────────────┘   ║
+║  │ Gait: [Tripod ▼]   │                                      ║
+║  │ Speed: [===●===]   │                                      ║
+║  │                     │                                      ║
+║  │ Status: Connected   │                                      ║
+║  │ Direction: 0°       │                                      ║
+║  │ [Start Walking]     │                                      ║
+║  │                     │                                      ║
+║  │ Temp: 25.0°C        │                                      ║
+║  │ Battery: 12.00V     │                                      ║
+║  │                     │                                      ║
+║  │ [Activity Log]      │                                      ║
+║  └─────────────────────┘                                      ║
+║                                                               ║
+║             [Front] [Side] [Top] [Iso]  <-- Camera Presets   ║
+║                         ┌──────────────────────────────────┐ ║
+║                         │ CAMERA DOCK (bottom-right)       │ ║
+║                         │ [Camera 1] [Camera 2] ...        │ ║
+║                         └──────────────────────────────────┘ ║
+║                                              [EMERGENCY STOP] ║
+╚═══════════════════════════════════════════════════════════════╝
 ```
 
 ---
