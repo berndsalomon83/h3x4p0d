@@ -5,22 +5,41 @@ Provides a dedicated UI for servo calibration without gait interference.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
-from fastapi.middleware.cors import CORSMiddleware
-import asyncio
-from pathlib import Path
-import json
+from datetime import datetime
 import argparse
+import json
 import logging
+from pathlib import Path
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+
+from .hardware import MockServoController, PCA9685ServoController
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-from .hardware import PCA9685ServoController, MockServoController
-
 # Calibration file path
 CALIBRATION_FILE = Path.home() / ".hexapod_calibration.json"
+
+
+JOINT_LABELS = ["Coxa", "Femur", "Tibia"]
+
+
+def calibration_metadata(file_path: Path | None = None) -> dict:
+    """Return metadata about the calibration file."""
+
+    file_path = file_path or CALIBRATION_FILE
+    exists = file_path.exists()
+    return {
+        "path": str(file_path),
+        "exists": exists,
+        "last_modified": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
+        if exists
+        else None,
+        "size": file_path.stat().st_size if exists else 0,
+    }
 
 
 def load_calibration() -> dict:
@@ -35,6 +54,32 @@ def save_calibration(cal: dict):
     """Save calibration to file."""
     with open(CALIBRATION_FILE, "w", encoding='utf-8') as f:
         json.dump(cal, f, indent=2)
+
+
+def calibration_coverage(calibration: dict) -> dict:
+    """Return coverage info, unmapped joints, and free channels."""
+
+    used_channels = {channel for channel in calibration.values() if isinstance(channel, int)}
+    available_channels = [channel for channel in range(18) if channel not in used_channels]
+
+    unmapped = []
+    for leg in range(6):
+        for joint in range(3):
+            key = f"{leg},{joint}"
+            if key not in calibration:
+                unmapped.append({
+                    "leg": leg,
+                    "joint": joint,
+                    "label": f"L{leg} {JOINT_LABELS[joint]}",
+                })
+
+    return {
+        "mapped": len(calibration),
+        "total": 18,
+        "legs_configured": len({int(key.split(',')[0]) for key in calibration}),
+        "unmapped": unmapped,
+        "available_channels": available_channels,
+    }
 
 
 class CalibrationController:
@@ -99,21 +144,34 @@ class CalibrationController:
         """Set channel mapping for a leg/joint."""
         key = f"{leg},{joint}"
         self.calibration[key] = channel
-        return {"success": True, "key": key, "channel": channel}
+        return {
+            "success": True,
+            "key": key,
+            "channel": channel,
+            "coverage": calibration_coverage(self.calibration),
+        }
 
     def remove_mapping(self, leg: int, joint: int) -> dict:
         """Remove channel mapping for a leg/joint."""
         key = f"{leg},{joint}"
         if key in self.calibration:
             del self.calibration[key]
-            return {"success": True, "key": key}
+            return {
+                "success": True,
+                "key": key,
+                "coverage": calibration_coverage(self.calibration),
+            }
         return {"success": False, "error": "Mapping not found"}
 
     def save(self) -> dict:
         """Save current calibration to file."""
         try:
             save_calibration(self.calibration)
-            return {"success": True, "path": str(CALIBRATION_FILE)}
+            return {
+                "success": True,
+                "path": str(CALIBRATION_FILE),
+                "metadata": calibration_metadata(),
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -121,7 +179,12 @@ class CalibrationController:
         """Reload calibration from file."""
         try:
             self.calibration = load_calibration()
-            return {"success": True, "calibration": self.calibration}
+            return {
+                "success": True,
+                "calibration": self.calibration,
+                "metadata": calibration_metadata(),
+                "coverage": calibration_coverage(self.calibration),
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -131,7 +194,9 @@ class CalibrationController:
             "hardware": self.use_hardware,
             "calibration": self.calibration,
             "current_angles": self.current_angles,
-            "calibration_file": str(CALIBRATION_FILE)
+            "calibration_file": str(CALIBRATION_FILE),
+            "metadata": calibration_metadata(),
+            "coverage": calibration_coverage(self.calibration),
         }
 
 
@@ -189,7 +254,9 @@ def create_calibration_app(use_hardware: bool = False):
         """Get current calibration mapping."""
         return JSONResponse({
             "calibration": controller.calibration,
-            "hardware": controller.use_hardware
+            "hardware": controller.use_hardware,
+            "metadata": calibration_metadata(),
+            "coverage": calibration_coverage(controller.calibration),
         })
 
     @app.post("/api/calibration/save")
