@@ -64,6 +64,9 @@ class HexapodController:
         self.heading = 0.0  # rotation in degrees
         self.body_height = 60.0  # mm - height of body above ground
 
+        # Left-side legs use mirrored servo orientation (legs 3,4,5)
+        self._left_leg_indices = {3, 4, 5}
+
         # Body pose (degrees) - for tilting/rotating body while standing
         self.body_pitch = 0.0  # forward/backward tilt (-30 to +30)
         self.body_roll = 0.0   # side-to-side tilt (-30 to +30)
@@ -155,6 +158,7 @@ class HexapodController:
 
     def update_servos(self):
         """Update servo positions based on current gait time or standing pose."""
+        commanded_angles: List[Tuple[float, float, float]] = []
         if self.running:
             # Walking: use gait generator
             angles = self.gait.joint_angles_for_time(self.gait.time, mode=self.gait_mode)
@@ -164,9 +168,13 @@ class HexapodController:
                 try:
                     # add heading rotation to coxa
                     coxa_adjusted = coxa + self.heading
-                    self.servo.set_servo_angle(leg_idx, 0, coxa_adjusted)
-                    self.servo.set_servo_angle(leg_idx, 1, femur)
-                    self.servo.set_servo_angle(leg_idx, 2, tibia)
+                    coxa_cmd, femur_cmd, tibia_cmd = self._mirror_leg_angles(
+                        leg_idx, coxa_adjusted, femur, tibia
+                    )
+                    self.servo.set_servo_angle(leg_idx, 0, coxa_cmd)
+                    self.servo.set_servo_angle(leg_idx, 1, femur_cmd)
+                    self.servo.set_servo_angle(leg_idx, 2, tibia_cmd)
+                    commanded_angles.append((coxa_cmd, femur_cmd, tibia_cmd))
                 except Exception as e:
                     print(f"Servo error leg {leg_idx}: {e}")
         else:
@@ -176,13 +184,44 @@ class HexapodController:
             # Update servos to standing pose
             for leg_idx, (coxa, femur, tibia) in enumerate(angles):
                 try:
-                    self.servo.set_servo_angle(leg_idx, 0, coxa)
-                    self.servo.set_servo_angle(leg_idx, 1, femur)
-                    self.servo.set_servo_angle(leg_idx, 2, tibia)
+                    coxa_cmd, femur_cmd, tibia_cmd = self._mirror_leg_angles(
+                        leg_idx, coxa, femur, tibia
+                    )
+                    self.servo.set_servo_angle(leg_idx, 0, coxa_cmd)
+                    self.servo.set_servo_angle(leg_idx, 1, femur_cmd)
+                    self.servo.set_servo_angle(leg_idx, 2, tibia_cmd)
+                    commanded_angles.append((coxa_cmd, femur_cmd, tibia_cmd))
                 except Exception as e:
                     print(f"Servo error leg {leg_idx}: {e}")
 
-        return angles
+        # Return the actual commanded angles (post-mirroring) for telemetry/UI
+        return commanded_angles if commanded_angles else angles
+
+    def _mirror_leg_angles(
+        self, leg_idx: int, coxa: float, femur: float, tibia: float
+    ) -> Tuple[float, float, float]:
+        """Mirror joint angles for left-side legs so motion matches right legs.
+
+        Physical servo orientation is mirrored on legs 3-5, so without flipping
+        their angles the gait appears to bend inward. Reflecting around 180°
+        keeps neutral 90° unchanged while reversing the swing direction.
+        """
+        if leg_idx in self._left_leg_indices:
+            return (
+                self._clamp_angle(180.0 - coxa),
+                self._clamp_angle(180.0 - femur),
+                self._clamp_angle(180.0 - tibia),
+            )
+        return (
+            self._clamp_angle(coxa),
+            self._clamp_angle(femur),
+            self._clamp_angle(tibia),
+        )
+
+    @staticmethod
+    def _clamp_angle(angle: float) -> float:
+        """Clamp servo angles to valid range."""
+        return max(0.0, min(180.0, angle))
 
     def get_telemetry(self) -> dict:
         """Return current state for UI."""

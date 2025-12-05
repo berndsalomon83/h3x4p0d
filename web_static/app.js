@@ -81,12 +81,13 @@
   scene.add(dirLight);
   scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
   
+  const GROUND_Y = -10;
   // Ground
   const groundGeom = new THREE.PlaneGeometry(800, 600);
   const groundMat = new THREE.MeshStandardMaterial({color: 0x66aa44});
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -10;
+  ground.position.y = GROUND_Y;
   ground.receiveShadow = true;
   scene.add(ground);
 
@@ -97,7 +98,7 @@
   scene.add(gridHelper);
   
   // Hexapod body - ellipsoid (stretched sphere) for realistic proportions
-  let defaultBodyY = 60; // Higher off ground for realistic leg extension (adjustable)
+  let defaultBodyY = 80; // Higher off ground for realistic leg extension (adjustable)
   const bodyGeom = new THREE.SphereGeometry(50, 32, 32); // Sphere base
   const bodyMat = new THREE.MeshStandardMaterial({
     color: 0x333333,
@@ -156,6 +157,7 @@
       // Rebuild all legs with new dimensions
       if (typeof rebuildAllLegs === 'function') {
         rebuildAllLegs();
+        applyNeutralPose();
       }
     } catch(e) {
       console.error('Failed to load config from backend:', e);
@@ -201,7 +203,7 @@
   const legTargets = [];
 
   // Track manual control for each leg (timestamp of last manual adjustment)
-  const manualControlTimestamps = Array(6).fill(0);
+  const manualControlTimestamps = Array(6).fill(-Infinity);
   const MANUAL_CONTROL_TIMEOUT = 5000; // 5 seconds in milliseconds
 
   for(let i = 0; i < 6; i++){
@@ -212,7 +214,6 @@
 
     // Use this leg's specific config
     const legConfig = legConfigs[i];
-
     // Coxa joint and segment (base rotation)
     const coxaJoint = new THREE.Group();
     const coxaGeom = new THREE.CapsuleGeometry(legConfig.coxaRadius, legConfig.coxaLength, 4, 8);
@@ -292,6 +293,10 @@
     footMesh.castShadow = true;
     tibiaJoint.add(footMesh);
 
+    // Set a neutral pose before telemetry arrives; backend telemetry will update angles
+    femurJoint.rotation.x = 0;
+    tibiaJoint.rotation.x = 0;
+
     // Build hierarchy: tibia -> femur -> coxa -> leg group
     femurJoint.add(tibiaJoint);
     coxaJoint.add(femurJoint);
@@ -321,14 +326,13 @@
       isRightSide: isRightSide
     });
 
-    // Initialize interpolation targets to safe neutral position
-    // All angles at 0 = legs pointing horizontally (above ground)
-    // Backend telemetry will immediately provide correct IK values
-    // Smoothing will transition from this safe position to actual pose
+      // Initialize interpolation targets to a neutral position
+      // Backend telemetry will immediately provide correct IK values
+      // Smoothing will transition from this neutral pose to actual angles
     legTargets.push({
       coxa: 0,      // Neutral (pointing straight out)
-      femur: 0,     // Neutral (horizontal)
-      tibia: 0      // Neutral (straight continuation of femur)
+      femur: 0,
+      tibia: 0
     });
 
   }
@@ -536,14 +540,10 @@
               // Coxa: direct conversion for yaw rotation
               legTargets[i].coxa = (c - 90) * Math.PI / 180;
 
-              // Femur and tibia: LEFT and RIGHT legs need OPPOSITE rotations
-              // because legGroup.rotation.y flips the X axis for left vs right sides!
-              // Right side (positive Z): use angles as-is
-              // Left side (negative Z): negate femur/tibia angles
-              const isRightSide = legs[i].isRightSide;
-              const sign = isRightSide ? 1 : -1;
-              legTargets[i].femur = sign * (f - 90) * Math.PI / 180;
-              legTargets[i].tibia = sign * (t - 90) * Math.PI / 180;
+          // Femur and tibia share the same rotation direction on both sides;
+          // legGroup.rotation handles mirroring, so do not invert these angles.
+          legTargets[i].femur = (f - 90) * Math.PI / 180;
+          legTargets[i].tibia = (t - 90) * Math.PI / 180;
             }
           }
           // Update walking state for body animation
@@ -732,6 +732,8 @@
     legs.forEach((leg, i) => {
       leg.group.position.y = height;
     });
+
+    applyNeutralPose();
 
     // Send body height to backend via WebSocket
     // Backend will calculate IK and send angles back via telemetry
@@ -1172,6 +1174,23 @@
     }
   }
 
+  function applyNeutralPose() {
+    const now = performance.now();
+
+    for (let i = 0; i < legs.length; i++) {
+      legTargets[i].coxa = 0;
+      legTargets[i].femur = 0;
+      legTargets[i].tibia = 0;
+
+      const underManualControl = (now - manualControlTimestamps[i]) < MANUAL_CONTROL_TIMEOUT;
+      if (!underManualControl) {
+        legs[i].coxaJoint.rotation.y = 0;
+        legs[i].femurJoint.rotation.x = 0;
+        legs[i].tibiaJoint.rotation.x = 0;
+      }
+    }
+  }
+
   // Rebuild all legs with current config
   function rebuildAllLegs() {
     for (let i = 0; i < 6; i++) {
@@ -1212,6 +1231,7 @@
 
     // Rebuild all legs with new dimensions (backend config is uniform)
     rebuildAllLegs();
+    applyNeutralPose();
 
     logMsg(`Updated ${part} length to ${value}mm (all legs)`);
   }
@@ -1430,6 +1450,7 @@
     });
 
     rebuildAllLegs();
+    applyNeutralPose();
     logMsg('All legs reset to defaults');
   }
 
@@ -1456,10 +1477,12 @@
     ground.receiveShadow = e.target.checked;
     // Update all leg segments
     legs.forEach(leg => {
-      leg.coxa.castShadow = e.target.checked;
-      leg.femur.castShadow = e.target.checked;
-      leg.tibia.castShadow = e.target.checked;
-      leg.foot.castShadow = e.target.checked;
+      leg.group.traverse(obj => {
+        if (obj.isMesh) {
+          obj.castShadow = e.target.checked;
+          obj.receiveShadow = e.target.checked;
+        }
+      });
     });
     // Force shadow map update
     renderer.shadowMap.needsUpdate = true;
