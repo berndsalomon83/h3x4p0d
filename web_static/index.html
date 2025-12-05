@@ -5,11 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hexapod Simulator</title>
   <style>
+    :root {
+      --page-bg: #050913;
+      --panel-bg: #0c1423;
+      --panel-border: #1f2c46;
+      --panel-strong: #2d3b5a;
+      --card-bg: #0c1423;
+      --control-bg: #111a2c;
+      --input-bg: #0d1727;
+      --text-primary: #e6efff;
+      --text-muted: #93a4c7;
+      --text-subtle: #6f7f9c;
+      --accent: #00d2ff;
+      --accent-strong: #00b3ff;
+      --success: #51cf66;
+      --danger: #ff6b6b;
+      --warning: #ffb347;
+      --border-soft: #1b263b;
+      --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       overflow: hidden;
-      background: #222;
+      background: var(--page-bg);
+      color: var(--text-primary);
     }
     #c {
       display: block;
@@ -21,19 +41,19 @@
       left: 10px;
       top: 10px;
       z-index: 100;
-      background: rgba(30, 30, 30, 0.95);
+      background: var(--panel-bg);
       padding: 15px;
       border-radius: 8px;
-      border: 2px solid #444;
-      color: #fff;
+      border: 1px solid var(--panel-border);
+      color: var(--text-primary);
       font-size: 14px;
       min-width: 280px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--shadow-strong);
     }
     .ui-section {
       margin-bottom: 12px;
       padding-bottom: 12px;
-      border-bottom: 1px solid #444;
+      border-bottom: 1px solid var(--panel-border);
     }
     .ui-section:last-child {
       border-bottom: none;
@@ -44,7 +64,7 @@
       display: block;
       font-weight: 600;
       margin-bottom: 6px;
-      color: #aaa;
+      color: var(--text-muted);
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -56,26 +76,26 @@
     select {
       width: 100%;
       padding: 6px 8px;
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--panel-strong);
       border-radius: 4px;
       cursor: pointer;
       margin-bottom: 8px;
     }
     select:hover {
-      border-color: #777;
+      border-color: var(--accent);
     }
     select:focus {
       outline: none;
-      border-color: #0099ff;
+      border-color: var(--accent);
     }
     button {
       width: 100%;
       padding: 10px;
       margin-bottom: 6px;
-      background: #51cf66;
-      color: #000;
+      background: var(--success);
+      color: #041019;
       border: none;
       border-radius: 4px;
       font-weight: 600;
@@ -83,7 +103,7 @@
       transition: all 0.2s;
     }
     button:hover {
-      background: #63db7f;
+      background: #6fe58f;
       transform: translateY(-1px);
       box-shadow: 0 2px 6px rgba(81, 207, 102, 0.4);
     }
@@ -91,10 +111,10 @@
       transform: translateY(0);
     }
     button.stop-btn {
-      background: #ff6b6b;
+      background: var(--danger);
     }
     button.stop-btn:hover {
-      background: #ff8787;
+      background: #ff8d8d;
       box-shadow: 0 2px 6px rgba(255, 107, 107, 0.4);
     }
     .status-row {
@@ -108,7 +128,7 @@
       color: #aaa;
     }
     .status-value {
-      color: #0099ff;
+      color: var(--accent);
       font-weight: 600;
     }
     #log {
@@ -137,9 +157,9 @@
     }
     .control-btn {
       padding: 8px 6px;
-      background: #444;
-      color: #fff;
-      border: 1px solid #666;
+      background: var(--control-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--panel-strong);
       border-radius: 4px;
       font-weight: 600;
       cursor: pointer;
@@ -148,11 +168,11 @@
       width: 100%;
     }
     .control-btn:hover {
-      background: #555;
-      border-color: #888;
+      background: var(--panel-strong);
+      border-color: var(--accent);
     }
     .control-btn:active {
-      background: #666;
+      background: var(--panel-strong);
       transform: scale(0.95);
     }
     #joystick {
@@ -173,7 +193,7 @@
       cursor: pointer;
     }
     .speed-label {
-      color: #aaa;
+      color: var(--text-muted);
       font-size: 12px;
       min-width: 30px;
       text-align: right;
@@ -190,13 +210,13 @@
       right: 10px;
       top: 10px;
       z-index: 100;
-      background: rgba(30, 30, 30, 0.98);
+      background: var(--panel-bg);
       border-radius: 8px;
-      border: 2px solid #444;
-      color: #fff;
+      border: 1px solid var(--panel-border);
+      color: var(--text-primary);
       font-size: 14px;
       width: 340px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      box-shadow: var(--shadow-strong);
       max-height: calc(100vh - 20px);
       overflow: hidden;
       display: none;
@@ -212,7 +232,7 @@
     .settings-title {
       font-size: 16px;
       font-weight: 700;
-      color: #fff;
+      color: var(--text-primary);
       margin-bottom: 12px;
       display: flex;
       justify-content: space-between;
@@ -221,7 +241,7 @@
     .settings-close {
       background: none;
       border: none;
-      color: #888;
+      color: var(--text-muted);
       font-size: 20px;
       cursor: pointer;
       padding: 0;
@@ -235,14 +255,14 @@
       flex-wrap: wrap;
       gap: 4px;
       padding: 0 15px 10px 15px;
-      border-bottom: 1px solid #444;
+      border-bottom: 1px solid var(--panel-border);
       flex-shrink: 0;
     }
     .settings-tab {
       padding: 6px 10px;
-      background: rgba(60, 60, 60, 0.5);
-      color: #aaa;
-      border: 1px solid transparent;
+      background: rgba(30, 42, 66, 0.65);
+      color: var(--text-muted);
+      border: 1px solid var(--panel-border);
       border-radius: 4px;
       cursor: pointer;
       font-size: 11px;
@@ -250,13 +270,13 @@
       transition: all 0.2s;
     }
     .settings-tab:hover {
-      color: #fff;
-      background: rgba(80, 80, 80, 0.6);
+      color: var(--text-primary);
+      background: rgba(40, 60, 92, 0.8);
     }
     .settings-tab.active {
-      color: #fff;
-      background: #0099ff;
-      border-color: #0077cc;
+      color: #041019;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      border-color: var(--accent);
     }
     .settings-body {
       flex: 1;
@@ -269,15 +289,15 @@
       width: 8px;
     }
     .settings-body::-webkit-scrollbar-track {
-      background: #2a2a2a;
+      background: var(--control-bg);
       border-radius: 4px;
     }
     .settings-body::-webkit-scrollbar-thumb {
-      background: #555;
+      background: var(--panel-strong);
       border-radius: 4px;
     }
     .settings-body::-webkit-scrollbar-thumb:hover {
-      background: #666;
+      background: var(--accent);
     }
     .settings-content {
       display: none;
@@ -298,7 +318,7 @@
     .settings-group-title {
       font-size: 12px;
       font-weight: 700;
-      color: #0099ff;
+      color: var(--accent);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 12px;
@@ -314,7 +334,7 @@
       margin-bottom: 0;
     }
     .setting-label {
-      color: #ccc;
+      color: var(--text-primary);
       flex-shrink: 0;
     }
     .setting-control {
@@ -325,12 +345,12 @@
     .setting-value {
       min-width: 45px;
       text-align: right;
-      color: #888;
+      color: var(--text-muted);
       font-size: 11px;
     }
     .setting-slider {
       width: 100px;
-      accent-color: #0099ff;
+      accent-color: var(--accent);
     }
     .gear-btn {
       position: fixed;
@@ -339,29 +359,29 @@
       z-index: 99;
       width: 50px;
       height: 50px;
-      background: rgba(30, 30, 30, 0.95);
-      border: 2px solid #444;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
       border-radius: 8px;
-      color: #fff;
+      color: var(--text-primary);
       font-size: 24px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      box-shadow: var(--shadow-strong);
     }
     .gear-btn:hover {
-      background: rgba(50, 50, 50, 0.95);
-      border-color: #666;
+      background: rgba(30, 52, 78, 0.95);
+      border-color: var(--accent);
       transform: rotate(90deg);
     }
     .leg-config-item {
       margin-bottom: 15px;
       padding: 10px;
-      background: rgba(50, 50, 50, 0.5);
-      border-radius: 4px;
-      border: 1px solid #555;
+      background: var(--card-bg);
+      border-radius: 8px;
+      border: 1px solid var(--panel-border);
     }
     .leg-config-header {
       display: flex;
@@ -369,7 +389,7 @@
       align-items: center;
       margin-bottom: 8px;
       font-weight: 600;
-      color: #0099ff;
+      color: var(--accent);
     }
     .leg-preview {
       width: 100%;
@@ -389,9 +409,9 @@
     .config-input {
       width: 60px;
       padding: 4px 6px;
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--panel-strong);
       border-radius: 3px;
       font-size: 12px;
     }
@@ -427,7 +447,7 @@
     #webcamFeed {
       width: 100%;
       max-height: 200px;
-      border: 1px solid #444;
+      border: 1px solid var(--panel-border);
       border-radius: 4px;
       background: #000;
       object-fit: cover;
@@ -454,6 +474,57 @@
     }
     .webcam-btn.active {
       background: #51cf66;
+    }
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .theme-swatch {
+      background: var(--control-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .theme-swatch label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      width: 100%;
+    }
+    .theme-swatch input[type="color"] {
+      width: 100%;
+      height: 34px;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      background: var(--card-bg);
+    }
+    .theme-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      background: var(--control-bg);
+      border: 1px dashed var(--panel-border);
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .pill-tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(0, 210, 255, 0.1);
+      border: 1px solid rgba(0, 210, 255, 0.35);
+      color: var(--accent);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
     }
     /* Emergency Stop Button */
     .emergency-stop {
@@ -511,7 +582,7 @@
       color: #fff;
     }
     .camera-preset-btn.active {
-      background: #0099ff;
+      background: var(--accent);
       color: #fff;
     }
     /* Rotation Controls */
@@ -535,7 +606,7 @@
       background: #555;
     }
     .rotation-btn:active, .rotation-btn.active {
-      background: #0099ff;
+      background: var(--accent);
       border-color: #0077cc;
     }
     /* Keyboard Help Modal */
@@ -573,7 +644,7 @@
     }
     .keyboard-help h3 {
       margin: 0 0 15px 0;
-      color: #0099ff;
+      color: var(--accent);
       font-size: 16px;
       border-bottom: 1px solid #444;
       padding-bottom: 10px;
@@ -590,7 +661,7 @@
       padding: 3px 8px;
       border-radius: 4px;
       font-family: monospace;
-      color: #0099ff;
+      color: var(--accent);
     }
     .help-btn {
       position: fixed;
@@ -636,13 +707,13 @@
       filter: brightness(1.3);
     }
     .hexapod-svg .leg-btn.selected {
-      filter: drop-shadow(0 0 8px #0099ff);
+      filter: drop-shadow(0 0 8px var(--accent));
     }
     .hexapod-svg .leg-btn.has-offset {
       filter: drop-shadow(0 0 4px #ffa500);
     }
     .hexapod-svg .leg-btn.selected.has-offset {
-      filter: drop-shadow(0 0 8px #0099ff) drop-shadow(0 0 4px #ffa500);
+      filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 4px #ffa500);
     }
     .leg-detail-panel {
       background: linear-gradient(145deg, #222, #2a2a2a);
@@ -661,7 +732,7 @@
     .leg-detail-title {
       font-size: 14px;
       font-weight: 700;
-      color: #0099ff;
+      color: var(--accent);
     }
     .leg-detail-status {
       font-size: 10px;
@@ -689,7 +760,7 @@
       position: relative;
     }
     .servo-gauge.active {
-      border-color: #0099ff;
+      border-color: var(--accent);
       box-shadow: 0 0 10px rgba(0, 153, 255, 0.3);
     }
     .servo-gauge-label {
@@ -727,7 +798,7 @@
     .servo-slider-value {
       font-size: 11px;
       font-weight: 600;
-      color: #0099ff;
+      color: var(--accent);
       min-width: 45px;
       text-align: right;
     }
@@ -775,7 +846,7 @@
       text-transform: uppercase;
     }
     .calibration-btn.test {
-      background: #0099ff;
+      background: var(--accent);
       color: #fff;
     }
     .calibration-btn.test:hover {
@@ -894,7 +965,7 @@
     <div class="keyboard-row"><span>Toggle settings</span><span class="keyboard-key">Tab</span></div>
     <div class="keyboard-row"><span>Show this help</span><span class="keyboard-key">?</span></div>
     <div style="margin-top: 15px; text-align: center;">
-      <button id="closeHelp" style="padding: 8px 20px; background: #0099ff; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+      <button id="closeHelp" style="padding: 8px 20px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Close</button>
     </div>
   </div>
 
@@ -911,6 +982,7 @@
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="gait">Gait</button>
         <button class="settings-tab" data-tab="visual">Visual</button>
+        <button class="settings-tab" data-tab="theme">Theme</button>
         <button class="settings-tab" data-tab="legs">Legs</button>
         <button class="settings-tab" data-tab="calibration">Calibration</button>
         <button class="settings-tab" data-tab="camera">Camera</button>
@@ -1047,6 +1119,80 @@
         <button class="reset-btn" id="resetAllSettings" style="width: 100%; margin-top: 10px;">Reset Visual Settings</button>
       </div>
 
+      <!-- Theme Tab -->
+      <div class="settings-content" id="tab-theme">
+        <div class="settings-group">
+          <div class="settings-group-title">Presets</div>
+          <p class="theme-note" style="margin-bottom: 10px;">
+            Choose a professional, futuristic palette for every control surface. Adjust any color below to create your own saved look.
+          </p>
+          <select id="themePreset">
+            <option value="aurora">Aurora Glow</option>
+            <option value="carbon">Carbon Fiber</option>
+            <option value="sunrise">Sunrise Alloy</option>
+            <option value="custom">Custom Blend</option>
+          </select>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Fine Tuning <span class="pill-tag">Live</span></div>
+          <div class="theme-grid">
+            <div class="theme-swatch">
+              <label>
+                Accent
+                <input type="color" data-theme-var="--accent" id="themeAccent">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Panels
+                <input type="color" data-theme-var="--panel-bg" id="themePanel">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Controls
+                <input type="color" data-theme-var="--control-bg" id="themeControl">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Borders
+                <input type="color" data-theme-var="--panel-border" id="themeBorder">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Text
+                <input type="color" data-theme-var="--text-primary" id="themeText">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Muted Text
+                <input type="color" data-theme-var="--text-muted" id="themeMuted">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Success
+                <input type="color" data-theme-var="--success" id="themeSuccess">
+              </label>
+            </div>
+            <div class="theme-swatch">
+              <label>
+                Danger
+                <input type="color" data-theme-var="--danger" id="themeDanger">
+              </label>
+            </div>
+          </div>
+          <div class="setting-row" style="margin-top: 12px;">
+            <span class="setting-label">Save as Custom</span>
+            <button id="saveCustomTheme" style="width: auto; padding: 8px 14px; margin-bottom: 0;">Save Theme</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Legs Tab -->
       <div class="settings-content" id="tab-legs">
         <div class="settings-group">
@@ -1070,7 +1216,7 @@
               <ellipse cx="100" cy="70" rx="35" ry="25" fill="#333" stroke="#555" stroke-width="2"/>
               <text x="100" y="74" text-anchor="middle" fill="#666" font-size="8" font-weight="bold">BODY</text>
               <!-- Direction indicator -->
-              <polygon points="100,35 95,45 105,45" fill="#0099ff" opacity="0.6"/>
+              <polygon points="100,35 95,45 105,45" fill="var(--accent)" opacity="0.6"/>
 
               <!-- Legs (clickable) -->
               <!-- Leg 0: Front Right -->
@@ -1297,7 +1443,7 @@
     <div class="ui-section">
       <label class="ui-label">Max Speed</label>
       <div class="speed-control">
-        <input type="range" id="speedSlider" min="0" max="100" value="50" style="accent-color: #0099ff;">
+        <input type="range" id="speedSlider" min="0" max="100" value="50" style="accent-color: var(--accent);">
         <span class="speed-label" id="speedValue">50%</span>
       </div>
     </div>
@@ -1305,7 +1451,7 @@
     <div class="ui-section">
       <label class="ui-label">Body Height</label>
       <div class="speed-control">
-        <input type="range" id="bodyHeightSlider" min="30" max="90" value="80" style="accent-color: #0099ff;">
+        <input type="range" id="bodyHeightSlider" min="30" max="90" value="80" style="accent-color: var(--accent);">
         <span class="speed-label" id="bodyHeightValue">80mm</span>
       </div>
     </div>
@@ -1317,8 +1463,8 @@
         <span class="status-value" id="connectionStatus" style="color: #ff6b6b;">Disconnected</span>
       </div>
       <div class="heading-info">
-        <span>Direction: <span id="dirValue" style="color: #0099ff;">0°</span></span>
-        <span>Speed: <span id="spdValue" style="color: #0099ff;">0%</span></span>
+        <span>Direction: <span id="dirValue" style="color: var(--accent);">0°</span></span>
+        <span>Speed: <span id="spdValue" style="color: var(--accent);">0%</span></span>
       </div>
       <button id="run">Start Walking</button>
     </div>
