@@ -1703,107 +1703,395 @@
   // Initialize config UI
   initializeConfigUI();
 
-  // ========== Calibration Tab ==========
+  // ========== Enhanced Calibration Tab ==========
 
-  function initializeCalibrationUI() {
-    const container = document.getElementById('calibrationContainer');
-    if (!container) return;
+  const calibrationState = {
+    selectedLeg: null,
+    offsets: Array(6).fill(null).map(() => ({coxa: 0, femur: 0, tibia: 0})),
+    testMode: false,
+    mirrorPairs: {0: 5, 1: 4, 2: 3, 3: 2, 4: 1, 5: 0} // Left-right pairs
+  };
 
-    const legNames = ['Front Right', 'Middle Right', 'Rear Right', 'Rear Left', 'Middle Left', 'Front Left'];
-    const jointNames = ['Coxa', 'Femur', 'Tibia'];
+  const legNames = ['Front Right', 'Mid Right', 'Rear Right', 'Rear Left', 'Mid Left', 'Front Left'];
 
-    legNames.forEach((legName, legIndex) => {
-      const legSection = document.createElement('div');
-      legSection.style.marginBottom = '20px';
-      legSection.style.padding = '10px';
-      legSection.style.background = '#1a1a1a';
-      legSection.style.borderRadius = '4px';
+  // Draw a gauge arc on canvas
+  function drawGauge(canvasId, value, min = -45, max = 45) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const centerX = w / 2;
+    const centerY = h - 5;
+    const radius = 30;
 
-      const legLabel = document.createElement('div');
-      legLabel.textContent = `Leg ${legIndex}: ${legName}`;
-      legLabel.style.fontWeight = '600';
-      legLabel.style.marginBottom = '10px';
-      legLabel.style.color = '#51cf66';
-      legSection.appendChild(legLabel);
+    ctx.clearRect(0, 0, w, h);
 
-      jointNames.forEach((jointName, jointIndex) => {
-        const jointRow = document.createElement('div');
-        jointRow.className = 'config-row';
-        jointRow.style.alignItems = 'center';
-        jointRow.style.marginBottom = '8px';
+    // Background arc
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, Math.PI, 0);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 6;
+    ctx.stroke();
 
-        const label = document.createElement('span');
-        label.textContent = `${jointName}:`;
-        label.style.width = '60px';
-        label.style.display = 'inline-block';
+    // Value arc
+    const range = max - min;
+    const normalizedValue = (value - min) / range;
+    const angle = Math.PI * (1 - normalizedValue);
 
-        const slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '-90';
-        slider.max = '90';
-        slider.value = '0';
-        slider.step = '0.5';
-        slider.style.width = '150px';
-        slider.dataset.leg = legIndex;
-        slider.dataset.joint = jointIndex;
+    // Determine color based on value
+    let color;
+    if (value > 0) {
+      color = '#51cf66'; // Green for positive
+    } else if (value < 0) {
+      color = '#ff6b6b'; // Red for negative
+    } else {
+      color = '#888'; // Gray for zero
+    }
 
-        const valueDisplay = document.createElement('span');
-        valueDisplay.textContent = '0.0°';
-        valueDisplay.style.width = '50px';
-        valueDisplay.style.display = 'inline-block';
-        valueDisplay.style.textAlign = 'right';
+    // Draw colored portion
+    ctx.beginPath();
+    if (value >= 0) {
+      ctx.arc(centerX, centerY, radius, Math.PI / 2, angle, true);
+    } else {
+      ctx.arc(centerX, centerY, radius, angle, Math.PI / 2, true);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.stroke();
 
-        slider.addEventListener('input', async (e) => {
-          const offset = parseFloat(e.target.value);
-          valueDisplay.textContent = `${offset.toFixed(1)}°`;
+    // Draw needle
+    const needleAngle = Math.PI - (normalizedValue * Math.PI);
+    const needleLength = radius - 8;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(
+      centerX + Math.cos(needleAngle) * needleLength,
+      centerY - Math.sin(needleAngle) * needleLength
+    );
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-          // Save to backend
-          try {
-            await fetch('/api/config/servo_offset', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({
-                leg: parseInt(e.target.dataset.leg),
-                joint: parseInt(e.target.dataset.joint),
-                offset: offset
-              })
-            });
-          } catch (error) {
-            console.error('Failed to save servo offset:', error);
-          }
-        });
+    // Needle center dot
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
 
-        jointRow.appendChild(label);
-        jointRow.appendChild(slider);
-        jointRow.appendChild(valueDisplay);
-        legSection.appendChild(jointRow);
-      });
+    // Scale marks
+    ctx.fillStyle = '#555';
+    ctx.font = '7px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('-45', 8, centerY - 5);
+    ctx.fillText('0', centerX, 10);
+    ctx.fillText('+45', w - 8, centerY - 5);
+  }
 
-      container.appendChild(legSection);
+  // Update all gauges for selected leg
+  function updateGauges() {
+    if (calibrationState.selectedLeg === null) return;
+
+    const offsets = calibrationState.offsets[calibrationState.selectedLeg];
+
+    drawGauge('coxaGaugeCanvas', offsets.coxa);
+    drawGauge('femurGaugeCanvas', offsets.femur);
+    drawGauge('tibiaGaugeCanvas', offsets.tibia);
+
+    // Update value displays
+    const updateValueDisplay = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = value.toFixed(1) + '°';
+        el.className = 'servo-gauge-value' + (value > 0 ? ' positive' : value < 0 ? ' negative' : '');
+      }
+    };
+
+    updateValueDisplay('coxaGaugeValue', offsets.coxa);
+    updateValueDisplay('femurGaugeValue', offsets.femur);
+    updateValueDisplay('tibiaGaugeValue', offsets.tibia);
+
+    updateValueDisplay('coxaSliderValue', offsets.coxa);
+    updateValueDisplay('femurSliderValue', offsets.femur);
+    updateValueDisplay('tibiaSliderValue', offsets.tibia);
+
+    // Update sliders
+    document.getElementById('coxaOffsetSlider').value = offsets.coxa;
+    document.getElementById('femurOffsetSlider').value = offsets.femur;
+    document.getElementById('tibiaOffsetSlider').value = offsets.tibia;
+
+    // Update leg status
+    const hasOffset = offsets.coxa !== 0 || offsets.femur !== 0 || offsets.tibia !== 0;
+    const statusEl = document.getElementById('legOffsetStatus');
+    if (statusEl) {
+      statusEl.textContent = hasOffset ? 'Modified' : 'No offsets';
+      statusEl.className = 'leg-detail-status' + (hasOffset ? ' modified' : '');
+    }
+  }
+
+  // Update SVG diagram to show offset status
+  function updateDiagramStatus() {
+    document.querySelectorAll('.leg-btn').forEach((legEl, index) => {
+      const offsets = calibrationState.offsets[index];
+      const hasOffset = offsets.coxa !== 0 || offsets.femur !== 0 || offsets.tibia !== 0;
+      legEl.classList.toggle('has-offset', hasOffset);
+      legEl.classList.toggle('selected', index === calibrationState.selectedLeg);
     });
+  }
 
-    // Reset button
-    document.getElementById('resetCalibration').addEventListener('click', async () => {
-      if (!confirm('Reset all servo offsets to 0?')) return;
+  // Select a leg for calibration
+  function selectLeg(legIndex) {
+    calibrationState.selectedLeg = legIndex;
 
-      const sliders = container.querySelectorAll('input[type="range"]');
-      for (const slider of sliders) {
-        slider.value = 0;
-        slider.nextElementSibling.textContent = '0.0°';
+    // Update title
+    const titleEl = document.getElementById('selectedLegTitle');
+    if (titleEl) {
+      titleEl.textContent = `Leg ${legIndex}: ${legNames[legIndex]}`;
+    }
 
-        await fetch('/api/config/servo_offset', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            leg: parseInt(slider.dataset.leg),
-            joint: parseInt(slider.dataset.joint),
-            offset: 0
-          })
-        });
+    // Update mirror button text
+    const mirrorBtn = document.getElementById('mirrorBtn');
+    if (mirrorBtn) {
+      const mirrorLeg = calibrationState.mirrorPairs[legIndex];
+      mirrorBtn.textContent = `Mirror → ${mirrorLeg}`;
+    }
+
+    // Highlight the leg in 3D view
+    highlightLegIn3D(legIndex);
+
+    updateGauges();
+    updateDiagramStatus();
+  }
+
+  // Highlight selected leg in 3D scene
+  function highlightLegIn3D(legIndex) {
+    // Reset all legs to normal color
+    legs.forEach((leg, i) => {
+      const isSelected = i === legIndex;
+      // Find the coxa, femur, tibia meshes and update their emission
+      leg.coxaJoint.traverse(child => {
+        if (child.isMesh && child.material) {
+          child.material.emissive = isSelected ? new THREE.Color(0x003366) : new THREE.Color(0x000000);
+          child.material.emissiveIntensity = isSelected ? 0.5 : 0;
+        }
+      });
+    });
+  }
+
+  // Save offset to backend
+  async function saveOffset(legIndex, jointIndex, offset) {
+    try {
+      await fetch('/api/config/servo_offset', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          leg: legIndex,
+          joint: jointIndex,
+          offset: offset
+        })
+      });
+    } catch (error) {
+      console.error('Failed to save servo offset:', error);
+    }
+  }
+
+  // Load offsets from backend
+  async function loadOffsetsFromBackend() {
+    try {
+      const response = await fetch('/api/config');
+      if (!response.ok) return;
+      const config = await response.json();
+
+      for (let leg = 0; leg < 6; leg++) {
+        calibrationState.offsets[leg] = {
+          coxa: config[`servo_offset_leg${leg}_joint0`] || 0,
+          femur: config[`servo_offset_leg${leg}_joint1`] || 0,
+          tibia: config[`servo_offset_leg${leg}_joint2`] || 0
+        };
       }
 
+      updateDiagramStatus();
+      if (calibrationState.selectedLeg !== null) {
+        updateGauges();
+      }
+    } catch (e) {
+      console.error('Failed to load servo offsets:', e);
+    }
+  }
+
+  // Initialize calibration UI
+  function initializeCalibrationUI() {
+    // Leg selection from SVG diagram
+    document.querySelectorAll('.leg-btn').forEach(legEl => {
+      legEl.addEventListener('click', () => {
+        const legIndex = parseInt(legEl.dataset.leg);
+        selectLeg(legIndex);
+      });
+    });
+
+    // Slider handlers
+    ['coxa', 'femur', 'tibia'].forEach((joint, jointIndex) => {
+      const slider = document.getElementById(`${joint}OffsetSlider`);
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          if (calibrationState.selectedLeg === null) return;
+
+          const offset = parseFloat(e.target.value);
+          calibrationState.offsets[calibrationState.selectedLeg][joint] = offset;
+
+          // Update displays
+          updateGauges();
+          updateDiagramStatus();
+
+          // Apply to 3D view if in test mode
+          if (calibrationState.testMode) {
+            applyTestOffset(calibrationState.selectedLeg, jointIndex, offset);
+          }
+
+          // Save to backend
+          saveOffset(calibrationState.selectedLeg, jointIndex, offset);
+        });
+      }
+    });
+
+    // Quick preset buttons
+    document.querySelectorAll('.quick-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (calibrationState.selectedLeg === null) return;
+
+        const joint = btn.dataset.joint;
+        const value = parseFloat(btn.dataset.value);
+        const jointIndex = {coxa: 0, femur: 1, tibia: 2}[joint];
+
+        calibrationState.offsets[calibrationState.selectedLeg][joint] = value;
+
+        const slider = document.getElementById(`${joint}OffsetSlider`);
+        if (slider) slider.value = value;
+
+        updateGauges();
+        updateDiagramStatus();
+
+        if (calibrationState.testMode) {
+          applyTestOffset(calibrationState.selectedLeg, jointIndex, value);
+        }
+
+        saveOffset(calibrationState.selectedLeg, jointIndex, value);
+      });
+    });
+
+    // Test mode toggle
+    document.getElementById('testModeBtn').addEventListener('click', () => {
+      calibrationState.testMode = !calibrationState.testMode;
+
+      const btn = document.getElementById('testModeBtn');
+      const indicator = document.getElementById('testModeIndicator');
+
+      btn.classList.toggle('active', calibrationState.testMode);
+      btn.textContent = calibrationState.testMode ? 'Exit Test' : 'Test Mode';
+      indicator.classList.toggle('active', calibrationState.testMode);
+
+      if (calibrationState.testMode && calibrationState.selectedLeg !== null) {
+        logMsg(`Test mode active for leg ${calibrationState.selectedLeg}`);
+      } else {
+        logMsg('Test mode deactivated');
+      }
+    });
+
+    // Mirror button
+    document.getElementById('mirrorBtn').addEventListener('click', async () => {
+      if (calibrationState.selectedLeg === null) return;
+
+      const mirrorLeg = calibrationState.mirrorPairs[calibrationState.selectedLeg];
+      const sourceOffsets = calibrationState.offsets[calibrationState.selectedLeg];
+
+      // Copy offsets to mirror leg (invert coxa for left/right)
+      calibrationState.offsets[mirrorLeg] = {
+        coxa: -sourceOffsets.coxa, // Invert coxa for mirror
+        femur: sourceOffsets.femur,
+        tibia: sourceOffsets.tibia
+      };
+
+      // Save to backend
+      await saveOffset(mirrorLeg, 0, -sourceOffsets.coxa);
+      await saveOffset(mirrorLeg, 1, sourceOffsets.femur);
+      await saveOffset(mirrorLeg, 2, sourceOffsets.tibia);
+
+      updateDiagramStatus();
+      logMsg(`Mirrored offsets from leg ${calibrationState.selectedLeg} to leg ${mirrorLeg}`);
+    });
+
+    // Reset leg button
+    document.getElementById('resetLegBtn').addEventListener('click', async () => {
+      if (calibrationState.selectedLeg === null) return;
+
+      calibrationState.offsets[calibrationState.selectedLeg] = {coxa: 0, femur: 0, tibia: 0};
+
+      await saveOffset(calibrationState.selectedLeg, 0, 0);
+      await saveOffset(calibrationState.selectedLeg, 1, 0);
+      await saveOffset(calibrationState.selectedLeg, 2, 0);
+
+      updateGauges();
+      updateDiagramStatus();
+      logMsg(`Reset offsets for leg ${calibrationState.selectedLeg}`);
+    });
+
+    // Save all button
+    document.getElementById('saveCalibration').addEventListener('click', async () => {
+      try {
+        await fetch('/api/config/save', { method: 'POST' });
+        logMsg('Calibration saved to file');
+      } catch (e) {
+        logMsg('Failed to save calibration');
+      }
+    });
+
+    // Reset all button
+    document.getElementById('resetAllCalibration').addEventListener('click', async () => {
+      if (!confirm('Reset all servo offsets to 0?')) return;
+
+      for (let leg = 0; leg < 6; leg++) {
+        calibrationState.offsets[leg] = {coxa: 0, femur: 0, tibia: 0};
+        await saveOffset(leg, 0, 0);
+        await saveOffset(leg, 1, 0);
+        await saveOffset(leg, 2, 0);
+      }
+
+      updateGauges();
+      updateDiagramStatus();
       logMsg('All servo offsets reset to 0');
     });
+
+    // Select first leg by default
+    selectLeg(0);
+
+    // Load offsets from backend
+    loadOffsetsFromBackend();
+
+    // Draw initial gauges
+    drawGauge('coxaGaugeCanvas', 0);
+    drawGauge('femurGaugeCanvas', 0);
+    drawGauge('tibiaGaugeCanvas', 0);
+  }
+
+  // Apply test offset to 3D view
+  function applyTestOffset(legIndex, jointIndex, offset) {
+    const leg = legs[legIndex];
+    const radians = offset * Math.PI / 180;
+
+    // Apply offset directly to the joint
+    if (jointIndex === 0) {
+      leg.coxaJoint.rotation.y = radians;
+      legTargets[legIndex].coxa = radians;
+    } else if (jointIndex === 1) {
+      leg.femurJoint.rotation.x = radians;
+      legTargets[legIndex].femur = radians;
+    } else if (jointIndex === 2) {
+      leg.tibiaJoint.rotation.x = radians;
+      legTargets[legIndex].tibia = radians;
+    }
+
+    // Mark as manually controlled
+    manualControlTimestamps[legIndex] = performance.now();
   }
 
   initializeCalibrationUI();

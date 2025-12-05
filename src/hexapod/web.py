@@ -510,6 +510,15 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         cfg.save()
         return {"ok": True, "leg": leg, "joint": joint, "offset": offset}
 
+    @app.post("/api/config/save")
+    async def save_config_endpoint():
+        """Explicitly save configuration to file."""
+        from .config import get_config
+        cfg = get_config()
+        cfg.save()
+        logger.info("Configuration saved to file")
+        return {"ok": True, "message": "Configuration saved"}
+
     @app.post("/api/servo/test")
     async def test_servo(request: Request):
         """Manually set a servo angle for testing."""
