@@ -369,6 +369,12 @@
   let currentHeading = 0;    // 0-360 degrees
   let keysPressed = {};
 
+  function updateRunButtonTheme() {
+    if (!runBtn) return;
+    runBtn.style.background = walking ? getThemeColor('--danger', '#ff6b6b') : getThemeColor('--success', '#51cf66');
+    runBtn.style.color = '#041019';
+  }
+
   // Joystick controls
   const joystickCanvas = document.getElementById('joystick');
   const joystickCtx = joystickCanvas.getContext('2d');
@@ -384,14 +390,14 @@
     joystickCtx.clearRect(0, 0, joystickCanvas.width, joystickCanvas.height);
 
     // Draw outer circle
-    joystickCtx.strokeStyle = '#666';
+    joystickCtx.strokeStyle = getThemeColor('--panel-strong', '#666');
     joystickCtx.lineWidth = 2;
     joystickCtx.beginPath();
     joystickCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
     joystickCtx.stroke();
 
     // Draw center crosshair
-    joystickCtx.strokeStyle = '#444';
+    joystickCtx.strokeStyle = getThemeColor('--panel-border', '#444');
     joystickCtx.lineWidth = 1;
     joystickCtx.beginPath();
     joystickCtx.moveTo(centerX - 5, centerY);
@@ -404,7 +410,7 @@
     const stickX = centerX + joystickX * radius;
     const stickY = centerY - joystickY * radius; // Invert Y for canvas
 
-    joystickCtx.fillStyle = joystickActive ? '#0099ff' : '#888';
+    joystickCtx.fillStyle = joystickActive ? getThemeColor('--accent', '#0099ff') : getThemeColor('--text-muted', '#888');
     joystickCtx.beginPath();
     joystickCtx.arc(stickX, stickY, 8, 0, Math.PI * 2);
     joystickCtx.fill();
@@ -417,26 +423,26 @@
     const maxSpeed = parseFloat(speedSlider.value) / 100;
     const distance = Math.sqrt(x*x + y*y);
 
-    if (distance > 0.1) {
-      currentSpeed = Math.min(distance, 1.0) * maxSpeed;
-      currentHeading = Math.atan2(x, y) * 180 / Math.PI;
+      if (distance > 0.1) {
+        currentSpeed = Math.min(distance, 1.0) * maxSpeed;
+        currentHeading = Math.atan2(x, y) * 180 / Math.PI;
 
-      if (!walking) {
-        walking = true;
-        runBtn.textContent = 'Stop Walking';
-        runBtn.style.background = '#ff6b6b';
-      }
-    } else {
-      currentSpeed = 0;
-      joystickX = 0;
-      joystickY = 0;
+        if (!walking) {
+          walking = true;
+          runBtn.textContent = 'Stop Walking';
+          updateRunButtonTheme();
+        }
+      } else {
+        currentSpeed = 0;
+        joystickX = 0;
+        joystickY = 0;
 
-      if (walking) {
-        walking = false;
-        runBtn.textContent = 'Start Walking';
-        runBtn.style.background = '#51cf66';
+        if (walking) {
+          walking = false;
+          runBtn.textContent = 'Start Walking';
+          updateRunButtonTheme();
+        }
       }
-    }
 
     updateUI();
     sendMovement();
@@ -536,7 +542,7 @@
     ws.onopen = () => {
       logMsg('Connected to hexapod controller');
       document.getElementById('connectionStatus').textContent = 'Connected';
-      document.getElementById('connectionStatus').style.color = '#51cf66';
+      document.getElementById('connectionStatus').style.color = getThemeColor('--success', '#51cf66');
       reconnectAttempts = 0;
       // Load configuration from backend API
       loadConfigFromBackend();
@@ -588,12 +594,12 @@
 
     ws.onerror = () => {
       document.getElementById('connectionStatus').textContent = 'Error';
-      document.getElementById('connectionStatus').style.color = '#ff6b6b';
+      document.getElementById('connectionStatus').style.color = getThemeColor('--danger', '#ff6b6b');
     };
 
     ws.onclose = () => {
       document.getElementById('connectionStatus').textContent = 'Disconnected';
-      document.getElementById('connectionStatus').style.color = '#ff6b6b';
+      document.getElementById('connectionStatus').style.color = getThemeColor('--danger', '#ff6b6b');
 
       // Auto-reconnect with exponential backoff
       if (reconnectAttempts < maxReconnectAttempts) {
@@ -601,7 +607,7 @@
         const delay = reconnectDelay * Math.min(reconnectAttempts, 5);
         logMsg(`Connection lost. Reconnecting in ${delay/1000}s... (attempt ${reconnectAttempts})`);
         document.getElementById('connectionStatus').textContent = `Reconnecting (${reconnectAttempts})...`;
-        document.getElementById('connectionStatus').style.color = '#ffa500';
+        document.getElementById('connectionStatus').style.color = getThemeColor('--warning', '#ffa500');
         setTimeout(connectWebSocket, delay);
       } else {
         logMsg('Max reconnection attempts reached. Click to retry.');
@@ -651,7 +657,7 @@
       if(walking){
         walking = false;
         runBtn.textContent = 'Start Walking';
-        runBtn.style.background = '#51cf66';
+        updateRunButtonTheme();
       }
     } else {
       // Calculate heading (in degrees, 0 = forward)
@@ -664,7 +670,7 @@
       if(!walking){
         walking = true;
         runBtn.textContent = 'Stop Walking';
-        runBtn.style.background = '#ff6b6b';
+        updateRunButtonTheme();
       }
     }
 
@@ -773,7 +779,7 @@
   runBtn.addEventListener('click', () => {
     walking = !walking;
     runBtn.textContent = walking ? 'Stop Walking' : 'Start Walking';
-    runBtn.style.background = walking ? '#ff6b6b' : '#51cf66';
+    updateRunButtonTheme();
 
     // If starting to walk with no movement keys pressed, use slider speed
     if(walking && currentSpeed === 0){
@@ -1016,6 +1022,101 @@
     showFPS: false
   };
 
+  // Theme presets and helpers
+  const THEME_STORAGE_KEY = 'hexapod-theme';
+  const themeVars = ['--accent', '--panel-bg', '--control-bg', '--panel-border', '--text-primary', '--text-muted', '--success', '--danger'];
+  const themePresets = {
+    aurora: {
+      label: 'Aurora Glow',
+      values: {
+        '--accent': '#00d2ff',
+        '--panel-bg': '#0c1423',
+        '--control-bg': '#111a2c',
+        '--panel-border': '#1f2c46',
+        '--text-primary': '#e6efff',
+        '--text-muted': '#93a4c7',
+        '--success': '#51cf66',
+        '--danger': '#ff6b6b'
+      }
+    },
+    carbon: {
+      label: 'Carbon Fiber',
+      values: {
+        '--accent': '#7c5dff',
+        '--panel-bg': '#0b0f1a',
+        '--control-bg': '#10182b',
+        '--panel-border': '#1f2b3f',
+        '--text-primary': '#e5ecff',
+        '--text-muted': '#94a0bf',
+        '--success': '#5be7aa',
+        '--danger': '#ff7b8a'
+      }
+    },
+    sunrise: {
+      label: 'Sunrise Alloy',
+      values: {
+        '--accent': '#ffa93a',
+        '--panel-bg': '#0d0f1c',
+        '--control-bg': '#14192b',
+        '--panel-border': '#2b3248',
+        '--text-primary': '#f3f4ff',
+        '--text-muted': '#a3afcf',
+        '--success': '#7ae0c3',
+        '--danger': '#ff6b81'
+      }
+    }
+  };
+
+  let activeTheme = {...themePresets.aurora.values};
+
+  function getThemeColor(varName, fallback = '#ffffff') {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    return value || fallback;
+  }
+
+  function applyTheme(values, skipSave = false) {
+    activeTheme = {...activeTheme, ...values};
+    Object.entries(activeTheme).forEach(([key, value]) => {
+      document.documentElement.style.setProperty(key, value);
+    });
+
+    updateRunButtonTheme();
+    drawJoystick();
+
+    if (!skipSave) {
+      localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({preset: document.getElementById('themePreset')?.value || 'aurora', values: activeTheme}));
+    }
+  }
+
+  function syncThemeInputs(values) {
+    document.querySelectorAll('[data-theme-var]').forEach((input) => {
+      const varName = input.dataset.themeVar;
+      if (values[varName]) {
+        input.value = values[varName];
+      }
+    });
+  }
+
+  function loadTheme() {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const presetName = parsed.preset || 'aurora';
+        activeTheme = {...activeTheme, ...parsed.values};
+        applyTheme(activeTheme, true);
+        const presetSelect = document.getElementById('themePreset');
+        if (presetSelect) presetSelect.value = presetName;
+        syncThemeInputs(activeTheme);
+        return;
+      } catch (e) {
+        console.warn('Failed to load saved theme, reverting to default');
+      }
+    }
+    applyTheme(activeTheme, true);
+    syncThemeInputs(activeTheme);
+  }
+
   // Toggle settings panel
   gearBtn.addEventListener('click', () => {
     settingsPanel.classList.toggle('open');
@@ -1055,6 +1156,45 @@
     });
   });
 
+  // Theme bindings
+  const themePresetSelect = document.getElementById('themePreset');
+  if (themePresetSelect) {
+    themePresetSelect.addEventListener('change', (event) => {
+      const presetKey = event.target.value;
+      if (themePresets[presetKey]) {
+        applyTheme(themePresets[presetKey].values);
+        syncThemeInputs(themePresets[presetKey].values);
+      } else {
+        syncThemeInputs(activeTheme);
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-theme-var]').forEach((input) => {
+    input.addEventListener('input', (event) => {
+      const varName = event.target.dataset.themeVar;
+      const value = event.target.value;
+      applyTheme({[varName]: value});
+      if (themePresetSelect) {
+        themePresetSelect.value = 'custom';
+      }
+    });
+  });
+
+  const saveCustomThemeBtn = document.getElementById('saveCustomTheme');
+  if (saveCustomThemeBtn) {
+    saveCustomThemeBtn.addEventListener('click', () => {
+      applyTheme(activeTheme);
+      if (themePresetSelect) {
+        themePresetSelect.value = 'custom';
+      }
+      logMsg('Custom theme saved');
+    });
+  }
+
+  // Load saved theme once UI controls are available
+  loadTheme();
+
   // Initialize leg configuration UI
   function initializeConfigUI() {
     const legNames = ['Front Right', 'Mid Right', 'Rear Right', 'Rear Left', 'Mid Left', 'Front Left'];
@@ -1063,13 +1203,13 @@
     legConfigContainer.innerHTML = `
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
         <div id="leftLegs" style="text-align: center;">
-          <div style="background: #555; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold;">LEFT SIDE</div>
+          <div style="background: var(--panel-strong); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold;">LEFT SIDE</div>
         </div>
         <div id="rightLegs" style="text-align: center;">
-          <div style="background: #555; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold;">RIGHT SIDE</div>
+          <div style="background: var(--panel-strong); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold;">RIGHT SIDE</div>
         </div>
       </div>
-      <div style="text-align: center; background: #444; padding: 15px; border-radius: 8px; margin: 10px 0; font-weight: bold; font-size: 16px;">
+      <div style="text-align: center; background: var(--control-bg); padding: 15px; border-radius: 8px; margin: 10px 0; font-weight: bold; font-size: 16px;">
         HEXAPOD BODY
       </div>
     `;
@@ -1106,7 +1246,7 @@
           <input type="number" class="config-input" id="tibia${index}" value="${legConfigs[index].tibiaLength}" min="20" max="100" step="1">
           <span>mm</span>
         </div>
-        <div class="config-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #666;">
+        <div class="config-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--panel-border);">
           <span style="font-weight: bold;">Manual Angles:</span>
         </div>
         <div class="config-row">
@@ -1730,7 +1870,7 @@
     // Background arc
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, Math.PI, 0);
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = getThemeColor('--panel-border', '#333');
     ctx.lineWidth = 6;
     ctx.stroke();
 
@@ -1742,11 +1882,11 @@
     // Determine color based on value
     let color;
     if (value > 0) {
-      color = '#51cf66'; // Green for positive
+      color = getThemeColor('--success', '#51cf66');
     } else if (value < 0) {
-      color = '#ff6b6b'; // Red for negative
+      color = getThemeColor('--danger', '#ff6b6b');
     } else {
-      color = '#888'; // Gray for zero
+      color = getThemeColor('--text-muted', '#888');
     }
 
     // Draw colored portion
@@ -1780,7 +1920,7 @@
     ctx.fill();
 
     // Scale marks
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = getThemeColor('--panel-strong', '#555');
     ctx.font = '7px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('-45', 8, centerY - 5);
@@ -2117,18 +2257,18 @@
         devicesDiv.innerHTML = '';
 
         if (data.devices.length === 0) {
-          devicesDiv.innerHTML = '<div style="color: #aaa; padding: 10px; text-align: center;">No BLE devices found nearby</div>';
+          devicesDiv.innerHTML = '<div style="color: var(--text-muted); padding: 10px; text-align: center;">No BLE devices found nearby</div>';
         } else {
           // Display devices as read-only list (no connection buttons)
           data.devices.forEach((device, index) => {
             const deviceItem = document.createElement('div');
             deviceItem.style.padding = '8px';
-            deviceItem.style.borderBottom = '1px solid #333';
+            deviceItem.style.borderBottom = '1px solid var(--panel-border)';
             deviceItem.style.fontSize = '11px';
-            deviceItem.style.color = '#ccc';
+            deviceItem.style.color = 'var(--text-primary)';
             deviceItem.innerHTML = `
-              <div style="font-weight: 600; color: #0099ff; margin-bottom: 2px;">${device.name}</div>
-              <div style="color: #888; font-size: 10px;">${device.address}</div>
+              <div style="font-weight: 600; color: var(--accent); margin-bottom: 2px;">${device.name}</div>
+              <div style="color: var(--text-muted); font-size: 10px;">${device.address}</div>
             `;
             devicesDiv.appendChild(deviceItem);
           });
@@ -2136,11 +2276,11 @@
 
         logMsg(`Found ${data.devices.length} BLE device(s)`);
       } else {
-        devicesDiv.innerHTML = `<div style="color: #ff6b6b; padding: 10px; text-align: center;">Error: ${data.error || 'Scan failed'}</div>`;
+        devicesDiv.innerHTML = `<div style="color: var(--danger); padding: 10px; text-align: center;">Error: ${data.error || 'Scan failed'}</div>`;
         logMsg(`BLE scan failed: ${data.error}`);
       }
     } catch (error) {
-      devicesDiv.innerHTML = `<div style="color: #ff6b6b; padding: 10px; text-align: center;">Error: ${error.message}</div>`;
+      devicesDiv.innerHTML = `<div style="color: var(--danger); padding: 10px; text-align: center;">Error: ${error.message}</div>`;
       logMsg(`BLE scan error: ${error.message}`);
     } finally {
       btn.disabled = false;
@@ -2155,7 +2295,7 @@
       await fetch('/api/emergency_stop', { method: 'POST' });
       walking = false;
       runBtn.textContent = 'Start Walking';
-      runBtn.style.background = '#51cf66';
+      updateRunButtonTheme();
       logMsg('EMERGENCY STOP activated!');
     } catch (e) {
       console.error('Emergency stop failed:', e);
