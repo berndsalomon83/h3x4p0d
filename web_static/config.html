@@ -232,21 +232,21 @@
                 <span class="slider-label">Body Length</span>
                 <span class="slider-value" id="bodyLengthValue">300 mm</span>
               </div>
-              <input type="range" class="slider" id="bodyLength" min="150" max="500" value="300">
+              <input type="range" class="slider" id="bodyLength" data-config="body_length" min="150" max="500" value="300">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Body Width</span>
                 <span class="slider-value" id="bodyWidthValue">250 mm</span>
               </div>
-              <input type="range" class="slider" id="bodyWidth" min="100" max="400" value="250">
+              <input type="range" class="slider" id="bodyWidth" data-config="body_width" min="100" max="400" value="250">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Body Height</span>
                 <span class="slider-value" id="bodyHeightGeoValue">50 mm</span>
               </div>
-              <input type="range" class="slider" id="bodyHeightGeo" min="20" max="100" value="50">
+              <input type="range" class="slider" id="bodyHeightGeo" data-config="body_height_geo" min="20" max="100" value="50">
             </div>
           </div>
           <div class="form-group" style="margin-top: 16px;">
@@ -307,21 +307,21 @@
                 <span class="slider-label">Coxa Length</span>
                 <span class="slider-value" id="coxaLengthValue">40 mm</span>
               </div>
-              <input type="range" class="slider" id="coxaLength" min="20" max="80" value="40">
+              <input type="range" class="slider" id="coxaLength" data-config="leg_coxa_length" min="20" max="80" value="40">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Femur Length</span>
                 <span class="slider-value" id="femurLengthValue">80 mm</span>
               </div>
-              <input type="range" class="slider" id="femurLength" min="40" max="150" value="80">
+              <input type="range" class="slider" id="femurLength" data-config="leg_femur_length" min="40" max="150" value="80">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Tibia Length</span>
                 <span class="slider-value" id="tibiaLengthValue">100 mm</span>
               </div>
-              <input type="range" class="slider" id="tibiaLength" min="40" max="150" value="100">
+              <input type="range" class="slider" id="tibiaLength" data-config="leg_tibia_length" min="40" max="150" value="100">
             </div>
           </div>
         </div>
@@ -815,21 +815,28 @@
                 <span class="slider-label">Stride Length</span>
                 <span class="slider-value">100 mm</span>
               </div>
-              <input type="range" class="slider" data-config="gait_step_length" min="30" max="150" value="100">
+              <input type="range" class="slider" data-config="step_length" min="30" max="150" value="100">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Step Height</span>
                 <span class="slider-value">30 mm</span>
               </div>
-              <input type="range" class="slider" data-config="gait_step_height" min="10" max="80" value="30">
+              <input type="range" class="slider" data-config="step_height" min="10" max="80" value="30">
             </div>
+              <div class="slider-group">
+                <div class="slider-header">
+                  <span class="slider-label">Duty Factor</span>
+                  <span class="slider-value">65%</span>
+                </div>
+                <input type="range" class="slider" data-config="gait_duty_factor" min="40" max="80" value="65">
+              </div>
             <div class="slider-group">
               <div class="slider-header">
-                <span class="slider-label">Duty Factor</span>
-                <span class="slider-value">65%</span>
+                <span class="slider-label">Cycle Time</span>
+                <span class="slider-value">1.0 s</span>
               </div>
-              <input type="range" class="slider" data-config="gait_duty_factor" min="40" max="80" value="65">
+              <input type="range" class="slider" data-config="cycle_time" min="0.5" max="2.5" step="0.1" value="1.0">
             </div>
           </div>
 

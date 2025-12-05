@@ -182,8 +182,9 @@ async function loadConfig() {
       leg_coxa_length: 30,
       leg_femur_length: 50,
       leg_tibia_length: 80,
-      gait_step_length: 60,
-      gait_step_height: 30,
+      step_length: 60,
+      step_height: 30,
+      cycle_time: 1.2,
       servo_type: 'DS3218'
     };
     applyConfigToUI();
@@ -635,21 +636,28 @@ function applyConfigToUI() {
   const c = state.config;
 
   // Geometry sliders
-  setSliderValue('bodyHeight', c.body_height || 120);
-  setSliderValue('bodyWidth', c.body_width || 100);
-  setSliderValue('bodyLength', c.body_length || 150);
+  setSliderValue('body_height_geo', c.body_height_geo || 50);
+  setSliderValue('body_width', c.body_width || 100);
+  setSliderValue('body_length', c.body_length || 150);
 
   // Leg geometry
-  setSliderValue('coxaLength', c.leg_coxa_length || 30);
-  setSliderValue('femurLength', c.leg_femur_length || 50);
-  setSliderValue('tibiaLength', c.leg_tibia_length || 80);
+  const coxa = c.leg_coxa_length || c.leg0_coxa_length || 30;
+  const femur = c.leg_femur_length || c.leg0_femur_length || 50;
+  const tibia = c.leg_tibia_length || c.leg0_tibia_length || 80;
+  setSliderValue('leg_coxa_length', coxa);
+  setSliderValue('leg_femur_length', femur);
+  setSliderValue('leg_tibia_length', tibia);
 
   // Gait parameters
-  setSliderValue('stepHeight', c.gait_step_height || 30);
-  setSliderValue('stepLength', c.gait_step_length || 60);
-  setSliderValue('cycleTime', (c.gait_cycle_time || 1.0) * 100);
+  const stepHeight = c.step_height ?? c.gait_step_height ?? 30;
+  const stepLength = c.step_length ?? c.gait_step_length ?? 60;
+  const cycleTime = c.cycle_time ?? c.gait_cycle_time ?? 1.2;
+  setSliderValue('step_height', stepHeight);
+  setSliderValue('step_length', stepLength);
+  setSliderValue('cycle_time', cycleTime);
 
   // Body pose
+  setSliderValue('body_height', c.body_height || state.telemetry.bodyHeight || 120);
   setSliderValue('bodyRoll', c.body_roll || 0);
   setSliderValue('bodyPitch', c.body_pitch || 0);
   setSliderValue('bodyYaw', c.body_yaw || 0);
@@ -2375,8 +2383,8 @@ function updateSummaryCards() {
   }
   const summaryGaitMeta = document.getElementById('summaryGaitMeta');
   if (summaryGaitMeta) {
-    const stepLen = c.gait_step_length || 60;
-    const stepHeight = c.gait_step_height || 30;
+    const stepLen = c.step_length ?? c.gait_step_length ?? 60;
+    const stepHeight = c.step_height ?? c.gait_step_height ?? 30;
     summaryGaitMeta.textContent = `Step: ${stepLen}mm, Height: ${stepHeight}mm`;
   }
 
