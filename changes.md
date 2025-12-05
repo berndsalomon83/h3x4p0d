@@ -1,5 +1,12 @@
 # Changelog
 
+## 2025-02-07
+
+### Frontend Configuration Wiring
+
+- Added backend-aware data bindings for geometry and leg length sliders in the configuration UI so updates persist using the server's expected key names. (web_static/config.html, web_static/config.js)
+- Introduced a cycle time control and aligned gait parameter bindings with `step_length`/`step_height` keys to keep the summary cards and saves consistent with the configuration API. (web_static/config.html, web_static/config.js)
+
 ## 2025-12-11
 
 ### Test Suite Quality Review
