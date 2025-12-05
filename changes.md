@@ -1,5 +1,13 @@
 # Changelog
 
+## 2025-12-11
+
+### Test Suite Quality Review
+
+- Strengthened calibration API tests by removing duplicated fixtures and asserting coverage/metadata returned by status and mapping endpoints. (tests/test_calibrate_web.py)
+- Added new process-safety tests for server shutdown routines and calibration server bootstrap coverage to exercise host/port wiring. (tests/test_main.py)
+- All new tests executed alongside the existing suite to guard against regressions. (tests)
+
 ## 2025-12-07
 
 ### Testing Improvements
