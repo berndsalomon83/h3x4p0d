@@ -1,4 +1,4 @@
-// Hexapod Configuration v2 - JavaScript
+// Hexapod Configuration - JavaScript
 
 // ========== State Management ==========
 const state = {
@@ -31,7 +31,8 @@ const state = {
   selectedLeg: null,
   recordedPoses: [],
   isRecording: false,
-  gaitPhase: 0
+  gaitPhase: 0,
+  testActionActive: false  // When true, disables idle animation
 };
 
 // Sparkline data buffers
@@ -764,11 +765,235 @@ function loadLegLimits(legIndex) {
   });
 }
 
+// ========== Default Geometry Configuration ==========
+// Defined here so 3D preview can access it during initialization
+const defaultGeometry = {
+  body_length: 300,
+  body_width: 250,
+  body_height_geo: 50,
+  body_origin: 'center',
+  leg_coxa_length: 40,
+  leg_femur_length: 80,
+  leg_tibia_length: 100,
+  coxa_axis: 'z',
+  femur_axis: 'y',
+  tibia_axis: 'y',
+  leg_attach_points: [
+    { leg: 0, name: 'FR', x: 150, y: 120, z: 0, angle: 45 },
+    { leg: 1, name: 'MR', x: 0, y: 150, z: 0, angle: 90 },
+    { leg: 2, name: 'RR', x: -150, y: 120, z: 0, angle: 135 },
+    { leg: 3, name: 'RL', x: -150, y: -120, z: 0, angle: 225 },
+    { leg: 4, name: 'ML', x: 0, y: -150, z: 0, angle: 270 },
+    { leg: 5, name: 'FL', x: 150, y: -120, z: 0, angle: 315 }
+  ],
+  frames: [
+    { name: 'world', parent: null, position: [0, 0, 0], orientation: [0, 0, 0], fixed: true },
+    { name: 'body', parent: 'world', position: [0, 0, 120], orientation: [0, 0, 0], fixed: false },
+    { name: 'camera_front', parent: 'body', position: [100, 0, 50], orientation: [0, -10, 0], fixed: false },
+    { name: 'camera_rear', parent: 'body', position: [-100, 0, 50], orientation: [0, -10, 180], fixed: false },
+    { name: 'imu', parent: 'body', position: [0, 0, 10], orientation: [0, 0, 0], fixed: false }
+  ]
+};
+
 // ========== 3D Preview ==========
 let scene, camera, renderer, body, legs = [];
 let cameraRadius = 400;
 let cameraTheta = Math.PI / 4;
 let cameraPhi = Math.PI / 4;
+
+// Global camera position update function
+function updateCameraPosition() {
+  if (!camera) return;
+  camera.position.x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+  camera.position.y = cameraRadius * Math.cos(cameraPhi);
+  camera.position.z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+  camera.lookAt(0, 50, 0);
+}
+
+// Smooth camera transition function
+let cameraTransition = null;
+function animateCameraTo(targetTheta, targetPhi, duration = 1500) {
+  // Cancel any existing transition
+  if (cameraTransition) {
+    cancelAnimationFrame(cameraTransition.frameId);
+  }
+
+  const startTheta = cameraTheta;
+  const startPhi = cameraPhi;
+  const startTime = Date.now();
+
+  // Normalize theta difference for shortest path
+  let deltaTheta = targetTheta - startTheta;
+  if (deltaTheta > Math.PI) deltaTheta -= 2 * Math.PI;
+  if (deltaTheta < -Math.PI) deltaTheta += 2 * Math.PI;
+
+  function step() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    // Ease-out cubic for smooth deceleration
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    cameraTheta = startTheta + deltaTheta * eased;
+    cameraPhi = startPhi + (targetPhi - startPhi) * eased;
+
+    updateCameraPosition();
+
+    if (progress < 1) {
+      cameraTransition = { frameId: requestAnimationFrame(step) };
+    } else {
+      cameraTransition = null;
+      // Ensure we end exactly at target
+      cameraTheta = targetTheta;
+      cameraPhi = targetPhi;
+      updateCameraPosition();
+    }
+  }
+
+  cameraTransition = { frameId: requestAnimationFrame(step) };
+}
+
+// Scale factor: mm in config → units in 3D scene (roughly 1/3 scale)
+const GEOMETRY_SCALE = 1 / 3;
+
+// Materials (shared across rebuilds)
+let bodyMaterial, legMaterial, jointMaterial, footMaterial;
+
+// Get geometry value from config or default
+function getGeometryValue(key) {
+  return state.config[key] ?? defaultGeometry[key] ?? 0;
+}
+
+// Get leg attach point from config or default
+function getLegAttachPoint(legIndex) {
+  const defaults = defaultGeometry.leg_attach_points[legIndex];
+  return {
+    x: state.config[`leg_${legIndex}_attach_x`] ?? defaults.x,
+    y: state.config[`leg_${legIndex}_attach_y`] ?? defaults.y,
+    z: state.config[`leg_${legIndex}_attach_z`] ?? defaults.z,
+    angle: state.config[`leg_${legIndex}_attach_angle`] ?? defaults.angle
+  };
+}
+
+// Rebuild body mesh with current geometry
+function rebuildBodyMesh() {
+  if (!scene || !bodyMaterial) return;
+
+  // Remove old body
+  if (body) {
+    scene.remove(body);
+    body.geometry.dispose();
+  }
+
+  // Get dimensions from config (scaled)
+  const bodyLength = getGeometryValue('body_length') * GEOMETRY_SCALE;
+  const bodyWidth = getGeometryValue('body_width') * GEOMETRY_SCALE;
+  const bodyHeight = getGeometryValue('body_height_geo') * GEOMETRY_SCALE;
+
+  // Create new body: BoxGeometry(width, height, depth) maps to (x, y, z)
+  // body_width → x (left-right), body_height_geo → y (thickness), body_length → z (front-back)
+  const bodyGeometry = new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyLength);
+  body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = state.telemetry.bodyHeight || 80;
+  scene.add(body);
+}
+
+// Create a single leg with proper segment lengths
+function createLeg(legIndex) {
+  const coxaLen = getGeometryValue('leg_coxa_length') * GEOMETRY_SCALE;
+  const femurLen = getGeometryValue('leg_femur_length') * GEOMETRY_SCALE;
+  const tibiaLen = getGeometryValue('leg_tibia_length') * GEOMETRY_SCALE;
+  const attachPoint = getLegAttachPoint(legIndex);
+
+  const legGroup = new THREE.Group();
+
+  // Coxa joint
+  const coxaJoint = new THREE.Group();
+  const coxa = new THREE.Mesh(
+    new THREE.CylinderGeometry(4, 4, coxaLen, 8),
+    legMaterial
+  );
+  coxa.rotation.z = Math.PI / 2;
+  coxa.position.x = coxaLen / 2;
+  coxaJoint.add(coxa);
+
+  // Femur joint
+  const femurJoint = new THREE.Group();
+  femurJoint.position.x = coxaLen;
+  const femur = new THREE.Mesh(
+    new THREE.CylinderGeometry(3, 3, femurLen, 8),
+    legMaterial
+  );
+  femur.position.y = -femurLen / 2;
+  femurJoint.add(femur);
+  const femurBall = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), jointMaterial);
+  femurJoint.add(femurBall);
+
+  // Tibia joint
+  const tibiaJoint = new THREE.Group();
+  tibiaJoint.position.y = -femurLen;
+  const tibia = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.5, 2.5, tibiaLen, 8),
+    legMaterial
+  );
+  tibia.position.y = -tibiaLen / 2;
+  tibiaJoint.add(tibia);
+  const tibiaBall = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), jointMaterial);
+  tibiaJoint.add(tibiaBall);
+
+  // Foot
+  const foot = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), footMaterial.clone());
+  foot.position.y = -tibiaLen;
+  tibiaJoint.add(foot);
+
+  // Build hierarchy
+  femurJoint.add(tibiaJoint);
+  coxaJoint.add(femurJoint);
+  legGroup.add(coxaJoint);
+
+  // Position leg at attach point (config x→3D z, config y→3D x)
+  const posX = attachPoint.y * GEOMETRY_SCALE;
+  const posZ = attachPoint.x * GEOMETRY_SCALE;
+  const posY = (state.telemetry.bodyHeight || 80) + (attachPoint.z * GEOMETRY_SCALE);
+  legGroup.position.set(posX, posY, posZ);
+  legGroup.rotation.y = (attachPoint.angle * Math.PI) / 180;
+
+  return { group: legGroup, coxaJoint, femurJoint, tibiaJoint, foot };
+}
+
+// Rebuild all legs with current geometry
+function rebuildLegs() {
+  if (!scene || !legMaterial) return;
+
+  // Remove old legs
+  legs.forEach(leg => {
+    scene.remove(leg.group);
+    // Dispose geometries recursively
+    leg.group.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+    });
+  });
+  legs = [];
+
+  // Create 6 new legs
+  for (let i = 0; i < 6; i++) {
+    const leg = createLeg(i);
+    scene.add(leg.group);
+    legs.push(leg);
+  }
+}
+
+// Update leg positions without full rebuild (for attach point changes)
+function updateLegPositions() {
+  legs.forEach((leg, i) => {
+    const attachPoint = getLegAttachPoint(i);
+    const posX = attachPoint.y * GEOMETRY_SCALE;
+    const posZ = attachPoint.x * GEOMETRY_SCALE;
+    const posY = (state.telemetry.bodyHeight || 80) + (attachPoint.z * GEOMETRY_SCALE);
+    leg.group.position.set(posX, posY, posZ);
+    leg.group.rotation.y = (attachPoint.angle * Math.PI) / 180;
+  });
+}
 
 const previewCanvas = document.getElementById('previewCanvas');
 
@@ -794,69 +1019,15 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   const gridHelper = new THREE.GridHelper(400, 20, 0x1f2c46, 0x0d1727);
   scene.add(gridHelper);
 
-  // Create hexapod body
-  const bodyGeometry = new THREE.BoxGeometry(100, 20, 80);
-  const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x2d3b5a });
-  body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-  body.position.y = 80;
-  scene.add(body);
+  // Initialize shared materials
+  bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x2d3b5a });
+  legMaterial = new THREE.MeshLambertMaterial({ color: 0x44dd88 });
+  jointMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+  footMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
 
-  // Create legs with articulated joints
-  const legMaterial = new THREE.MeshLambertMaterial({ color: 0x44dd88 });
-  const jointMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
-  const legPositions = [
-    { x: 50, z: 40, angle: 45 },
-    { x: 60, z: 0, angle: 90 },
-    { x: 50, z: -40, angle: 135 },
-    { x: -50, z: -40, angle: 225 },
-    { x: -60, z: 0, angle: 270 },
-    { x: -50, z: 40, angle: 315 }
-  ];
-
-  legPositions.forEach((pos, index) => {
-    const legGroup = new THREE.Group();
-
-    // Coxa joint
-    const coxaJoint = new THREE.Group();
-    const coxa = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 30, 8), legMaterial);
-    coxa.rotation.z = Math.PI / 2;
-    coxa.position.x = 15;
-    coxaJoint.add(coxa);
-
-    // Femur joint
-    const femurJoint = new THREE.Group();
-    femurJoint.position.x = 30;
-    const femur = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 50, 8), legMaterial);
-    femur.position.y = -25;
-    femurJoint.add(femur);
-    const femurBall = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), jointMaterial);
-    femurJoint.add(femurBall);
-
-    // Tibia joint
-    const tibiaJoint = new THREE.Group();
-    tibiaJoint.position.y = -50;
-    const tibia = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 60, 8), legMaterial);
-    tibia.position.y = -30;
-    tibiaJoint.add(tibia);
-    const tibiaBall = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), jointMaterial);
-    tibiaJoint.add(tibiaBall);
-
-    // Foot
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), new THREE.MeshLambertMaterial({ color: 0x333333 }));
-    foot.position.y = -60;
-    tibiaJoint.add(foot);
-
-    // Build hierarchy
-    femurJoint.add(tibiaJoint);
-    coxaJoint.add(femurJoint);
-    legGroup.add(coxaJoint);
-
-    legGroup.position.set(pos.x, 80, pos.z);
-    legGroup.rotation.y = (pos.angle * Math.PI) / 180;
-    scene.add(legGroup);
-
-    legs.push({ group: legGroup, coxaJoint, femurJoint, tibiaJoint, foot });
-  });
+  // Build hexapod from geometry config
+  rebuildBodyMesh();
+  rebuildLegs();
 
   // Camera orbit controls (simple mouse drag)
   let isDragging = false;
@@ -888,16 +1059,27 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     updateCameraPosition();
   });
 
-  function updateCameraPosition() {
-    camera.position.x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
-    camera.position.y = cameraRadius * Math.cos(cameraPhi);
-    camera.position.z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-    camera.lookAt(0, 50, 0);
-  }
-
   // Animation loop
+  let animationTime = 0;
+
   function animate() {
     requestAnimationFrame(animate);
+    animationTime += 0.016; // ~60fps
+
+    // Idle animation when not connected and no test action is active
+    if (!state.connected && !state.testActionActive) {
+      const breathe = Math.sin(animationTime * 1.5) * 0.5;
+      state.telemetry.pitch = breathe;
+      state.telemetry.roll = Math.sin(animationTime * 0.7) * 0.3;
+
+      // Subtle leg movement
+      legs.forEach((leg, i) => {
+        const phase = (i / 6) * Math.PI * 2;
+        const legBreath = Math.sin(animationTime * 1.5 + phase) * 2;
+        state.legAngles[i].femur = 45 + legBreath;
+        state.legAngles[i].tibia = -90 - legBreath * 0.5;
+      });
+    }
 
     // Update leg angles from state
     legs.forEach((leg, i) => {
@@ -907,7 +1089,9 @@ if (previewCanvas && typeof THREE !== 'undefined') {
       leg.tibiaJoint.rotation.z = (angles.tibia + 90) * Math.PI / 180;
 
       // Update foot color based on contact
-      leg.foot.children[0]?.material?.color?.set(state.footContacts[i] ? 0x51cf66 : 0xff6b6b);
+      if (leg.foot.material) {
+        leg.foot.material.color.set(state.footContacts[i] ? 0x51cf66 : 0xff6b6b);
+      }
     });
 
     // Update body pose
@@ -929,26 +1113,36 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   });
 }
 
-// Preview view buttons
+// Preview view buttons with smooth camera transitions
 document.querySelectorAll('.preview-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
     const view = btn.dataset.view;
+    let targetTheta, targetPhi;
+
     switch (view) {
       case 'front':
-        cameraTheta = 0; cameraPhi = Math.PI / 4; break;
+        targetTheta = 0;
+        targetPhi = Math.PI / 3;  // Slightly lower angle to see full hexapod
+        break;
       case 'side':
-        cameraTheta = Math.PI / 2; cameraPhi = Math.PI / 4; break;
+        targetTheta = Math.PI / 2;
+        targetPhi = Math.PI / 3;
+        break;
       case 'top':
-        cameraTheta = 0; cameraPhi = 0.1; break;
+        targetTheta = 0;
+        targetPhi = 0.05;  // Nearly straight down
+        break;
       default: // iso
-        cameraTheta = Math.PI / 4; cameraPhi = Math.PI / 4; break;
+        targetTheta = Math.PI / 4;
+        targetPhi = Math.PI / 4;
+        break;
     }
-    if (typeof updateCameraPosition === 'function') {
-      updateCameraPosition();
-    }
+
+    // Smooth transition over 1.5 seconds
+    animateCameraTo(targetTheta, targetPhi, 1500);
   });
 });
 
@@ -984,30 +1178,145 @@ function updatePreview() {
   if (state.config.body_height) state.telemetry.bodyHeight = state.config.body_height;
 }
 
+// Animate pose transition in 3D preview
+function animatePoseTransition(targetHeight, targetRoll, targetPitch, targetYaw, duration = 500) {
+  const startHeight = state.telemetry.bodyHeight;
+  const startRoll = state.telemetry.roll;
+  const startPitch = state.telemetry.pitch;
+  const startYaw = state.telemetry.yaw;
+  const startTime = Date.now();
+
+  function step() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // Ease-out curve
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    state.telemetry.bodyHeight = startHeight + (targetHeight - startHeight) * eased;
+    state.telemetry.roll = startRoll + (targetRoll - startRoll) * eased;
+    state.telemetry.pitch = startPitch + (targetPitch - startPitch) * eased;
+    state.telemetry.yaw = startYaw + (targetYaw - startYaw) * eased;
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    }
+  }
+  step();
+}
+
+// ========== Saved Poses Preview Buttons ==========
+document.getElementById('savedPosesTable')?.querySelectorAll('tbody tr').forEach(row => {
+  const previewBtn = row.querySelector('.btn-secondary');
+  if (previewBtn && previewBtn.textContent.includes('Preview')) {
+    previewBtn.addEventListener('click', () => {
+      const height = parseFloat(row.dataset.height) || 80;
+      const roll = parseFloat(row.dataset.roll) || 0;
+      const pitch = parseFloat(row.dataset.pitch) || 0;
+      const yaw = parseFloat(row.dataset.yaw) || 0;
+
+      animatePoseTransition(height, roll, pitch, yaw);
+
+      const poseName = row.querySelector('td strong')?.textContent || 'Unknown';
+      logEvent('INFO', `Previewing pose: ${poseName}`);
+    });
+  }
+});
+
 // ========== Test Action Buttons ==========
 document.getElementById('testStand')?.addEventListener('click', () => {
+  state.testActionActive = true;
   sendCommand('pose', { preset: 'stand' });
+
+  // Animate to standing pose
+  animatePoseTransition(120, 0, 0, 0, 800);
+  animateLegsTo({ femur: 30, tibia: -60 }, 800);  // Extended legs
+
   logEvent('INFO', 'Stand pose commanded');
 });
 
 document.getElementById('testCrouch')?.addEventListener('click', () => {
+  state.testActionActive = true;
   sendCommand('pose', { preset: 'crouch' });
+
+  // Animate to crouched pose
+  animatePoseTransition(50, 0, 0, 0, 800);
+  animateLegsTo({ femur: 70, tibia: -120 }, 800);  // Bent legs
+
   logEvent('INFO', 'Crouch pose commanded');
 });
 
 document.getElementById('testWalk')?.addEventListener('click', () => {
+  state.testActionActive = true;
   sendCommand('walk', { walking: true });
   logEvent('INFO', 'Walk test started');
+
+  // Animate a walking motion for demo
+  let walkStep = 0;
+  const walkInterval = setInterval(() => {
+    const roll = Math.sin(walkStep * 0.3) * 5;
+    const pitch = Math.sin(walkStep * 0.5) * 3;
+    state.telemetry.roll = roll;
+    state.telemetry.pitch = pitch;
+
+    // Animate leg walking motion
+    state.legAngles.forEach((angles, i) => {
+      const phase = (i % 2 === 0) ? 0 : Math.PI;  // Alternating legs
+      const liftPhase = Math.sin(walkStep * 0.4 + phase);
+      angles.femur = 45 + liftPhase * 15;
+      angles.tibia = -90 - liftPhase * 10;
+      state.footContacts[i] = liftPhase < 0;
+    });
+
+    walkStep++;
+  }, 50);
+
   setTimeout(() => {
+    clearInterval(walkInterval);
     sendCommand('walk', { walking: false });
+    animatePoseTransition(state.telemetry.bodyHeight, 0, 0, 0, 500);
+    animateLegsTo({ femur: 45, tibia: -90 }, 500);
+    // Reset foot contacts
+    state.footContacts = [true, true, true, true, true, true];
     logEvent('INFO', 'Walk test stopped');
   }, 3000);
 });
 
 document.getElementById('testReset')?.addEventListener('click', () => {
+  state.testActionActive = false;  // Re-enable idle animation
   sendCommand('pose', { preset: 'neutral' });
+  animatePoseTransition(80, 0, 0, 0, 600);
+  animateLegsTo({ femur: 45, tibia: -90 }, 600);
   logEvent('INFO', 'Reset to neutral pose');
 });
+
+// Helper function to animate all legs to target angles
+function animateLegsTo(targetAngles, duration = 500) {
+  const startAngles = state.legAngles.map(a => ({ ...a }));
+  const startTime = Date.now();
+
+  function step() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    state.legAngles.forEach((angles, i) => {
+      if (targetAngles.coxa !== undefined) {
+        angles.coxa = startAngles[i].coxa + (targetAngles.coxa - startAngles[i].coxa) * eased;
+      }
+      if (targetAngles.femur !== undefined) {
+        angles.femur = startAngles[i].femur + (targetAngles.femur - startAngles[i].femur) * eased;
+      }
+      if (targetAngles.tibia !== undefined) {
+        angles.tibia = startAngles[i].tibia + (targetAngles.tibia - startAngles[i].tibia) * eased;
+      }
+    });
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    }
+  }
+  step();
+}
 
 // ========== E-Stop ==========
 document.getElementById('estopBtn')?.addEventListener('click', () => {
@@ -1520,35 +1829,7 @@ document.getElementById('btnImportProfile')?.addEventListener('click', () => {
 });
 
 // ========== Geometry & Frames Section ==========
-
-// Default geometry configuration
-const defaultGeometry = {
-  body_length: 300,
-  body_width: 250,
-  body_height_geo: 50,
-  body_origin: 'center',
-  leg_coxa_length: 40,
-  leg_femur_length: 80,
-  leg_tibia_length: 100,
-  coxa_axis: 'z',
-  femur_axis: 'y',
-  tibia_axis: 'y',
-  leg_attach_points: [
-    { leg: 0, name: 'FR', x: 150, y: 120, z: 0, angle: 45 },
-    { leg: 1, name: 'MR', x: 0, y: 150, z: 0, angle: 90 },
-    { leg: 2, name: 'RR', x: -150, y: 120, z: 0, angle: 135 },
-    { leg: 3, name: 'RL', x: -150, y: -120, z: 0, angle: 225 },
-    { leg: 4, name: 'ML', x: 0, y: -150, z: 0, angle: 270 },
-    { leg: 5, name: 'FL', x: 150, y: -120, z: 0, angle: 315 }
-  ],
-  frames: [
-    { name: 'world', parent: null, position: [0, 0, 0], orientation: [0, 0, 0], fixed: true },
-    { name: 'body', parent: 'world', position: [0, 0, 120], orientation: [0, 0, 0], fixed: false },
-    { name: 'camera_front', parent: 'body', position: [100, 0, 50], orientation: [0, -10, 0], fixed: false },
-    { name: 'camera_rear', parent: 'body', position: [-100, 0, 50], orientation: [0, -10, 180], fixed: false },
-    { name: 'imu', parent: 'body', position: [0, 0, 10], orientation: [0, 0, 0], fixed: false }
-  ]
-};
+// Note: defaultGeometry is defined earlier (before 3D Preview) so it can be used during initialization
 
 // Initialize geometry from config or defaults
 function initGeometrySection() {
@@ -1654,6 +1935,9 @@ function setupLegAttachTable() {
         update[configKey] = value;
         saveConfig(update);
 
+        // Update 3D preview
+        updateGeometryPreview(configKey, value);
+
         // Apply symmetry if enabled
         const symmetryCheckbox = document.getElementById('symmetryMode');
         if (symmetryCheckbox && symmetryCheckbox.checked) {
@@ -1698,6 +1982,9 @@ function applySymmetry() {
     }
   });
 
+  // Update 3D preview
+  updateLegPositions();
+
   logEvent('INFO', 'Symmetry applied to leg attach points');
 }
 
@@ -1726,8 +2013,12 @@ function applySymmetryForLeg(legIndex, field, value) {
 
   mirrorInput.value = mirrorValue;
   const update = {};
-  update[`leg_${mirrorLeg}_attach_${field}`] = mirrorValue;
+  const configKey = `leg_${mirrorLeg}_attach_${field}`;
+  update[configKey] = mirrorValue;
   saveConfig(update);
+
+  // Update 3D preview for mirrored leg
+  updateGeometryPreview(configKey, mirrorValue);
 }
 
 function setupAxisSelects() {
@@ -1937,6 +2228,10 @@ function resetGeometryToDefaults() {
     });
   }
 
+  // Update 3D preview with new geometry
+  rebuildBodyMesh();
+  rebuildLegs();
+
   logEvent('INFO', 'Geometry reset to defaults');
 }
 
@@ -1956,11 +2251,24 @@ function setSliderAndSave(sliderId, valueId, value, unit, configKey) {
 
 function updateGeometryPreview(configKey, value) {
   // Update the 3D preview based on geometry changes
-  // This would update body/leg dimensions in the Three.js scene
-  // For now, just update state if relevant
-  if (configKey === 'body_height_geo' && body) {
-    // Note: body_height_geo is chassis thickness, not ground clearance
-    // You might want to update the body geometry here
+  if (!scene) return;
+
+  // Body dimension changes require rebuilding the body mesh
+  if (configKey === 'body_length' || configKey === 'body_width' || configKey === 'body_height_geo') {
+    rebuildBodyMesh();
+    logEvent('DEBUG', `Body geometry updated: ${configKey} = ${value}`);
+  }
+
+  // Leg segment length changes require rebuilding all legs
+  if (configKey === 'leg_coxa_length' || configKey === 'leg_femur_length' || configKey === 'leg_tibia_length') {
+    rebuildLegs();
+    logEvent('DEBUG', `Leg geometry updated: ${configKey} = ${value}`);
+  }
+
+  // Leg attach point changes just update positions
+  if (configKey.startsWith('leg_') && configKey.includes('_attach_')) {
+    updateLegPositions();
+    logEvent('DEBUG', `Leg positions updated: ${configKey} = ${value}`);
   }
 }
 
@@ -1975,5 +2283,5 @@ setTimeout(initGeometrySection, 100);
 // Periodic status update for non-websocket values
 setInterval(updateLiveStatus, 100);
 
-logEvent('INFO', 'Hexapod Configuration v2 initialized');
-console.log('Hexapod Configuration v2 loaded');
+logEvent('INFO', 'Hexapod Configuration initialized');
+console.log('Hexapod Configuration loaded');

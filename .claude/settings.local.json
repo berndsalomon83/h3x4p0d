@@ -1,5 +1,5 @@
 {
-    "env": {
+  "env": {
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000"
   },
   "permissions": {
@@ -38,7 +38,8 @@
       "Bash(.venv/bin/ruff check src/ tests/ --fix)",
       "Bash(.venv/bin/ruff check src/ tests/ --fix --unsafe-fixes)",
       "Bash(ls:*)",
-      "Bash(.venv/bin/ruff check src/hexapod/web.py)"
+      "Bash(.venv/bin/ruff check src/hexapod/web.py)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

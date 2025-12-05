@@ -464,6 +464,37 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             )
         return HTMLResponse("<h1>Hexapod Controller</h1><p>UI files not found.</p>")
 
+    @app.get("/config.html")
+    async def config_page():
+        """Serve the configuration page."""
+        config_file = Path(__file__).parent.parent.parent / "web_static" / "config.html"
+        if config_file.exists():
+            return FileResponse(
+                str(config_file),
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+        return HTMLResponse("<h1>Configuration</h1><p>Config page not found.</p>")
+
+    @app.get("/config.css")
+    async def config_css():
+        """Serve the configuration CSS."""
+        css_file = Path(__file__).parent.parent.parent / "web_static" / "config.css"
+        if css_file.exists():
+            return FileResponse(str(css_file), media_type="text/css")
+        return Response(status_code=404)
+
+    @app.get("/config.js")
+    async def config_js():
+        """Serve the configuration JavaScript."""
+        js_file = Path(__file__).parent.parent.parent / "web_static" / "config.js"
+        if js_file.exists():
+            return FileResponse(str(js_file), media_type="application/javascript")
+        return Response(status_code=404)
+
     @app.get("/favicon.ico")
     async def favicon():
         """Serve favicon."""

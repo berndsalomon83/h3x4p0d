@@ -3,12 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hexapod Configuration v2</title>
+  <title>Hexapod Configuration</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <link rel="stylesheet" href="config2.css">
+  <link rel="stylesheet" href="config.css">
 </head>
 <body>
-  <!-- ===== CSS loaded from config2.css ===== -->
   <!-- ===== HEADER ===== -->
   <header class="app-header">
     <div class="app-logo">
@@ -18,6 +17,10 @@
       </svg>
       Hexapod Config
     </div>
+
+    <nav class="header-nav" style="display: flex; gap: 16px; margin-left: 24px;">
+      <a href="http://localhost:8000" style="color: var(--text-muted); text-decoration: none; font-size: 13px;">← Controller</a>
+    </nav>
 
     <div class="header-controls">
       <div class="header-group">
@@ -641,7 +644,7 @@
             <span class="card-title">Saved Poses</span>
             <button class="btn btn-primary btn-sm">+ New Pose</button>
           </div>
-          <table class="data-table">
+          <table class="data-table" id="savedPosesTable">
             <thead>
               <tr>
                 <th>Name</th>
@@ -652,7 +655,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
+              <tr data-height="120" data-roll="0" data-pitch="0" data-yaw="0">
                 <td><strong>Default Stance</strong></td>
                 <td><span class="tag tag-success">Operation</span></td>
                 <td>120mm</td>
@@ -662,7 +665,7 @@
                   <button class="btn btn-secondary btn-sm">Edit</button>
                 </td>
               </tr>
-              <tr>
+              <tr data-height="80" data-roll="0" data-pitch="0" data-yaw="0">
                 <td><strong>Low Stance</strong></td>
                 <td><span class="tag tag-success">Operation</span></td>
                 <td>80mm</td>
@@ -672,7 +675,7 @@
                   <button class="btn btn-secondary btn-sm">Edit</button>
                 </td>
               </tr>
-              <tr>
+              <tr data-height="160" data-roll="0" data-pitch="0" data-yaw="0">
                 <td><strong>High Stance</strong></td>
                 <td><span class="tag tag-success">Operation</span></td>
                 <td>160mm</td>
@@ -682,7 +685,7 @@
                   <button class="btn btn-secondary btn-sm">Edit</button>
                 </td>
               </tr>
-              <tr>
+              <tr data-height="40" data-roll="0" data-pitch="0" data-yaw="0">
                 <td><strong>Rest Pose</strong></td>
                 <td><span class="tag tag-primary">Rest</span></td>
                 <td>40mm</td>
@@ -692,7 +695,7 @@
                   <button class="btn btn-secondary btn-sm">Edit</button>
                 </td>
               </tr>
-              <tr>
+              <tr data-height="0" data-roll="0" data-pitch="0" data-yaw="0">
                 <td><strong>Power Off</strong></td>
                 <td><span class="tag tag-warning">Rest</span></td>
                 <td>0mm</td>
@@ -1805,6 +1808,6 @@
 
   <!-- ===== SCRIPTS ===== -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
-  <script src="config2.js"></script>
+  <script src="config.js"></script>
 </body>
 </html>

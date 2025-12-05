@@ -43,14 +43,15 @@ Quick Start (Development)
 
    This starts two servers:
    - **Main UI**: `http://localhost:8000` - 3D simulator and controls
-   - **Calibration**: `http://localhost:8001` - Servo channel mapping and testing
+   - **Configuration**: `http://localhost:8001` - Geometry, gaits, servo calibration, and profiles
 
 4. **Open in a browser**:
-   - Navigate to `http://localhost:8000` 
+   - Navigate to `http://localhost:8000` for the main control interface
    - Use the **Gait Mode** dropdown to select walk pattern
    - Click **Start** to begin simulation
    - Watch the 3D hexapod simulator move
    - Monitor **Temperature** and **Battery** voltage
+   - Open `http://localhost:8001` to configure geometry, calibration, and profiles
 
 5. **Test the code** (optional):
    ```bash
@@ -85,13 +86,13 @@ Connect PCA9685 via I2C to Raspberry Pi:
 
 ### 3. Calibrate Servos
 
-Use the web-based calibration tool at `http://localhost:8001` to:
+Use the web-based configuration tool at `http://localhost:8001` (Calibration tab) to:
 - Map servo channels to leg joints (leg 0-5, coxa/femur/tibia)
 - Test individual servo angles with sliders
 - Auto-assign channels for quick setup
 - Save calibration to `~/.hexapod_calibration.json`
 
-The calibration server starts automatically with the main server.
+The configuration server starts automatically with the main server.
 
 For CLI-based calibration (legacy):
 ```bash
@@ -183,8 +184,11 @@ hexapod/
 │   ├── calibrate.py            # CLI servo calibration (legacy)
 │   └── test_runner.py          # Unit tests
 ├── web_static/
-│   ├── index.html              # Main web UI (3D simulator)
-│   ├── calibrate.html          # Calibration web UI
+│   ├── index.html              # Main web UI (3D simulator and controls)
+│   ├── config.html             # Configuration web UI (geometry, gaits, profiles)
+│   ├── config.css              # Configuration page styles
+│   ├── config.js               # Configuration page JavaScript
+│   ├── calibrate.html          # Servo calibration web UI
 │   ├── app.js                  # 3D simulator and controls (JavaScript)
 │   └── favicon.svg             # Hexapod icon
 └── tests/                      # pytest test suite

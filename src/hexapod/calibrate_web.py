@@ -230,14 +230,38 @@ def create_calibration_app(use_hardware: bool = False):
 
     @app.get("/")
     async def index():
-        """Serve calibration UI."""
-        cal_file = static_dir / "calibrate.html"
-        if cal_file.exists():
+        """Serve configuration UI."""
+        config_file = static_dir / "config.html"
+        if config_file.exists():
             return FileResponse(
-                str(cal_file),
+                str(config_file),
                 headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
             )
-        return HTMLResponse("<h1>Calibration UI not found</h1>", status_code=404)
+        return HTMLResponse("<h1>Configuration UI not found</h1>", status_code=404)
+
+    @app.get("/config.css")
+    async def config_css():
+        """Serve configuration CSS."""
+        css_file = static_dir / "config.css"
+        if css_file.exists():
+            return FileResponse(
+                str(css_file),
+                media_type="text/css",
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+            )
+        return Response(status_code=404)
+
+    @app.get("/config.js")
+    async def config_js():
+        """Serve configuration JavaScript."""
+        js_file = static_dir / "config.js"
+        if js_file.exists():
+            return FileResponse(
+                str(js_file),
+                media_type="application/javascript",
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+            )
+        return Response(status_code=404)
 
     @app.get("/static/{file_path:path}")
     async def serve_static(file_path: str):
@@ -354,7 +378,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("HEXAPOD CALIBRATION SERVER")
+    print("HEXAPOD CONFIGURATION SERVER")
     print("=" * 60)
     print(f"Running on http://localhost:{args.port}")
     print(f"Hardware mode: {'enabled' if args.hardware else 'disabled (mock)'}")
