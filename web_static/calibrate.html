@@ -61,6 +61,41 @@
     .status-dot.connected { background: var(--success); }
     .status-dot.hardware { background: var(--warning); }
 
+    .overview-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .overview-card {
+      flex: 1;
+      min-width: 240px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .overview-label {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .overview-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .overview-meta {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
     .main-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -377,6 +412,24 @@
       </div>
     </header>
 
+    <div class="overview-grid">
+      <div class="overview-card">
+        <div class="overview-label">Server endpoint</div>
+        <div class="overview-value" id="serverEndpoint">localhost:8001</div>
+        <div class="overview-meta">REST + WebSocket connection</div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-label">Calibration file</div>
+        <div class="overview-value" id="calibrationPath">Not detected</div>
+        <div class="overview-meta" id="calibrationMeta">Waiting for status...</div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-label">Mapping coverage</div>
+        <div class="overview-value" id="mappingSummary">No joints mapped</div>
+        <div class="overview-meta" id="mappingMeta">Tracks configured channels per leg</div>
+      </div>
+    </div>
+
     <div class="main-grid">
       <!-- Left Panel: Hexapod & Leg Selection -->
       <div class="panel">
@@ -544,6 +597,11 @@
     const connectionText = document.getElementById('connectionText');
     const hardwareDot = document.getElementById('hardwareDot');
     const hardwareText = document.getElementById('hardwareText');
+    const serverEndpoint = document.getElementById('serverEndpoint');
+    const calibrationPath = document.getElementById('calibrationPath');
+    const calibrationMeta = document.getElementById('calibrationMeta');
+    const mappingSummary = document.getElementById('mappingSummary');
+    const mappingMeta = document.getElementById('mappingMeta');
     const selectedLegTitle = document.getElementById('selectedLegTitle');
 
     // Logging
@@ -554,6 +612,39 @@
       entry.textContent = `[${time}] ${msg}`;
       logArea.appendChild(entry);
       logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const value = bytes / (1024 ** exponent);
+      return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
+    }
+
+    function updateMetadata(meta) {
+      if (!meta) {
+        calibrationPath.textContent = 'Unknown';
+        calibrationMeta.textContent = 'Waiting for calibration metadata...';
+        return;
+      }
+
+      calibrationPath.textContent = meta.path || 'Unknown path';
+      if (meta.exists) {
+        const modified = meta.last_modified ? new Date(meta.last_modified).toLocaleString() : 'Unknown time';
+        calibrationMeta.textContent = `Saved ${modified} · ${formatBytes(meta.size)}`;
+      } else {
+        calibrationMeta.textContent = 'File will be created on first save';
+      }
+    }
+
+    function updateMappingSummary() {
+      const mapped = Object.keys(calibration).length;
+      const totalJoints = 18; // 6 legs * 3 joints
+      const legsCovered = new Set(Object.keys(calibration).map(key => key.split(',')[0])).size;
+
+      mappingSummary.textContent = `${mapped} / ${totalJoints} joints mapped`;
+      mappingMeta.textContent = `${legsCovered} of 6 legs configured`;
     }
 
     // WebSocket connection
@@ -586,6 +677,10 @@
     }
 
     function handleMessage(data) {
+      if (data.metadata) {
+        updateMetadata(data.metadata);
+      }
+
       if (data.hardware !== undefined) {
         isHardware = data.hardware;
         hardwareDot.classList.toggle('hardware', isHardware);
@@ -594,6 +689,16 @@
 
       if (data.calibration) {
         calibration = data.calibration;
+        updateChannelMap();
+        updateLegDisplay();
+      }
+
+      if (data.success && data.key) {
+        if (data.channel !== undefined) {
+          calibration[data.key] = data.channel;
+        } else {
+          delete calibration[data.key];
+        }
         updateChannelMap();
         updateLegDisplay();
       }
@@ -678,6 +783,8 @@
 
         map.appendChild(slot);
       }
+
+      updateMappingSummary();
     }
 
     // Update leg visual display
@@ -871,6 +978,7 @@
         const data = await resp.json();
         if (data.success) {
           calibration = data.calibration;
+          updateMetadata(data.metadata);
           updateChannelMap();
           updateLegDisplay();
           if (selectedLeg !== null) loadLegControls(selectedLeg);
@@ -887,12 +995,15 @@
     async function init() {
       log('Initializing calibration UI...');
 
+      serverEndpoint.textContent = window.location.origin;
+
       // Load initial calibration
       try {
         const resp = await fetch('/api/calibration');
         const data = await resp.json();
         calibration = data.calibration || {};
         isHardware = data.hardware;
+        updateMetadata(data.metadata);
         hardwareDot.classList.toggle('hardware', isHardware);
         hardwareText.textContent = `Hardware: ${isHardware ? 'PCA9685' : 'Mock'}`;
         updateChannelMap();
