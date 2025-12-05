@@ -6,7 +6,7 @@ authors = ["You <you@example.com>"]
 packages = [{include = "hexapod", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 fastapi = "^0.100.0"
 uvicorn = {extras = ["standard"], version = "^0.22.0"}
 websockets = "^11.0"
@@ -23,6 +23,9 @@ pytest-cov = "^4.1.0"
 httpx = "^0.24.0"
 hypothesis = "^6.111.0"
 ruff = "^0.6.2"
+
+[tool.poetry.scripts]
+hexapod-calibrate = "hexapod.calibrate_web:main"
 
 [tool.poetry.extras]
 pi = ["pigpio", "RPi.GPIO"]

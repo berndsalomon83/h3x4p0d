@@ -27,7 +27,8 @@
       "Bash(./.venv/bin/python3:*)",
       "Bash(PYTHONPATH=src python3:*)",
       "Bash(./.venv/bin/python:*)",
-      "Bash(timeout 5 ./.venv/bin/python:*)"
+      "Bash(timeout 5 ./.venv/bin/python:*)",
+      "Bash(PYTHONPATH=/Users/berndsalomon/Documents/hexapod/src python3:*)"
     ],
     "deny": [],
     "ask": []

@@ -152,6 +152,38 @@ class TestKillExistingServers:
             kill_existing_servers()
 
 
+class TestKillServersOnPort:
+    """Tests for kill_servers_on_port() function."""
+
+    def test_kills_server_on_specific_port(self):
+        """Test killing a server on a specific port."""
+        with patch('subprocess.run') as mock_run:
+            with patch('time.sleep'):
+                mock_run.side_effect = [
+                    MagicMock(stdout="12345", returncode=0),  # lsof
+                    MagicMock(returncode=0),  # kill -15
+                    MagicMock(returncode=1),  # kill -0 (process gone)
+                ]
+
+                from hexapod.main import kill_servers_on_port
+                kill_servers_on_port(8001)
+
+                # Should have used port 8001
+                calls = mock_run.call_args_list
+                assert ":8001" in str(calls[0])
+
+    def test_handles_empty_result(self):
+        """Test handling when no servers running on port."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(stdout='', returncode=0)
+
+            from hexapod.main import kill_servers_on_port
+            kill_servers_on_port(9999)
+
+            # Should only call lsof once
+            assert mock_run.call_count == 1
+
+
 class TestMainModule:
     """Tests for main module structure."""
 
@@ -159,23 +191,27 @@ class TestMainModule:
         """Test that main module can be imported."""
         import hexapod.main
         assert hasattr(hexapod.main, 'kill_existing_servers')
-        assert hasattr(hexapod.main, 'create_app')
+        assert hasattr(hexapod.main, 'kill_servers_on_port')
+        assert hasattr(hexapod.main, 'start_calibration_server')
 
     def test_argparse_defaults(self):
         """Test argument parser default values."""
         import argparse
-        from hexapod.main import kill_existing_servers
 
         # Create parser similar to main.py
         parser = argparse.ArgumentParser()
         parser.add_argument("--controller", action="store_true")
         parser.add_argument("--port", type=int, default=8000)
+        parser.add_argument("--calibration-port", type=int, default=8001)
         parser.add_argument("--host", type=str, default="0.0.0.0")
+        parser.add_argument("--hardware", action="store_true")
 
         args = parser.parse_args([])
         assert args.controller is False
         assert args.port == 8000
+        assert args.calibration_port == 8001
         assert args.host == "0.0.0.0"
+        assert args.hardware is False
 
     def test_argparse_with_controller(self):
         """Test argument parser with --controller flag."""
@@ -184,10 +220,23 @@ class TestMainModule:
         parser = argparse.ArgumentParser()
         parser.add_argument("--controller", action="store_true")
         parser.add_argument("--port", type=int, default=8000)
+        parser.add_argument("--calibration-port", type=int, default=8001)
         parser.add_argument("--host", type=str, default="0.0.0.0")
+        parser.add_argument("--hardware", action="store_true")
 
         args = parser.parse_args(["--controller"])
         assert args.controller is True
+
+    def test_argparse_with_hardware(self):
+        """Test argument parser with --hardware flag."""
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--controller", action="store_true")
+        parser.add_argument("--hardware", action="store_true")
+
+        args = parser.parse_args(["--hardware"])
+        assert args.hardware is True
 
     def test_argparse_custom_port(self):
         """Test argument parser with custom port."""
@@ -195,6 +244,8 @@ class TestMainModule:
 
         parser = argparse.ArgumentParser()
         parser.add_argument("--port", type=int, default=8000)
+        parser.add_argument("--calibration-port", type=int, default=8001)
 
-        args = parser.parse_args(["--port", "9000"])
+        args = parser.parse_args(["--port", "9000", "--calibration-port", "9001"])
         assert args.port == 9000
+        assert args.calibration_port == 9001
