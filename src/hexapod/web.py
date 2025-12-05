@@ -166,65 +166,87 @@ class HexapodController:
             print(f"Controller error: {e}")
 
     def calculate_standing_pose(self) -> List[Tuple[float, float, float]]:
-        """Calculate IK for standing pose at current body height.
+        """Calculate IK for standing pose at current body height and pose.
 
+        Applies body pitch, roll, and yaw to keep feet grounded while body tilts.
         Returns list of (coxa, femur, tibia) angles in degrees for all 6 legs.
         Uses servo convention: 90° = neutral/horizontal.
         """
         angles = []
         ground_level = -10.0  # mm
-        vertical_drop = self.body_height - ground_level
+
+        # Leg mount positions relative to body center (X=front/back, Z=left/right)
+        # Matches frontend legPositions array
+        leg_mount_positions = [
+            (60.0, 50.0),    # leg 0: front-right
+            (0.0, 60.0),     # leg 1: mid-right
+            (-60.0, 50.0),   # leg 2: rear-right
+            (-60.0, -50.0),  # leg 3: rear-left
+            (0.0, -60.0),    # leg 4: mid-left
+            (60.0, -50.0),   # leg 5: front-left
+        ]
 
         # Calculate stance width dynamically based on actual leg geometry
-        # IK solver has the actual leg lengths: L1=coxa, L2=femur, L3=tibia
         coxa_len = self.gait.ik.L1
         femur_len = self.gait.ik.L2
         tibia_len = self.gait.ik.L3
-        max_leg_reach = femur_len + tibia_len  # Maximum reach from femur pivot
+        max_leg_reach = femur_len + tibia_len
 
-        # Calculate max horizontal reach at current body height
-        # reach² = horizontal² + vertical²  =>  horizontal = sqrt(reach² - vertical²)
+        # Base vertical drop (body height to ground)
+        base_vertical_drop = self.body_height - ground_level
+
         # Use 85% of max reach to stay within comfortable range
         usable_reach = max_leg_reach * 0.85
-        if vertical_drop >= usable_reach:
-            # Body too high, use minimum horizontal spread
-            horizontal_from_femur = max_leg_reach * 0.3
-        else:
-            horizontal_from_femur = math.sqrt(usable_reach**2 - vertical_drop**2)
 
-        # Stance width = distance from body center to foot = coxa + horizontal reach from femur
-        stance_width = coxa_len + horizontal_from_femur
+        # Convert body pose angles to radians
+        pitch_rad = math.radians(self.body_pitch)  # forward tilt (+pitch = nose down)
+        roll_rad = math.radians(self.body_roll)    # side tilt (+roll = right side down)
 
         for leg_idx in range(6):
-            # For standing pose, use IK in leg-local coordinates
-            # After frontend leg group rotation, each leg points radially outward
-            # So target in leg-local frame is:
-            # - stance_width radially (IK's x-axis)
-            # - 0 tangentially (IK's y-axis)
-            # - vertical_drop down (IK's z-axis)
+            mount_x, mount_z = leg_mount_positions[leg_idx]
+
+            # Calculate height offset at this leg's position due to body tilt
+            # When body pitches forward (positive), front goes down, rear goes up
+            # When body rolls right (positive), right side goes down, left side goes up
+            # Height change at position (x,z) = x*sin(pitch) + z*sin(roll)
+            height_offset = mount_x * math.sin(pitch_rad) + mount_z * math.sin(roll_rad)
+
+            # Adjusted vertical drop for this leg (positive = leg needs to reach further down)
+            vertical_drop = base_vertical_drop + height_offset
+
+            # Clamp vertical drop to valid range
+            vertical_drop = max(10.0, min(vertical_drop, usable_reach * 0.95))
+
+            # Recalculate horizontal reach for this leg's vertical drop
+            if vertical_drop >= usable_reach:
+                leg_horizontal = max_leg_reach * 0.3
+            else:
+                leg_horizontal = math.sqrt(usable_reach**2 - vertical_drop**2)
+
+            leg_stance_width = coxa_len + leg_horizontal
+
+            # Apply yaw to the coxa angle (all legs rotate together)
+            coxa_yaw_offset = self.body_yaw
 
             try:
                 # IK solve in leg-local frame
                 ik_coxa, ik_femur, ik_tibia = self.gait.ik.solve(
-                    stance_width,  # radial distance
-                    0.0,           # no tangential offset
-                    -vertical_drop # down
+                    leg_stance_width,  # radial distance (adjusted for this leg)
+                    0.0,               # no tangential offset
+                    -vertical_drop     # down (adjusted for body tilt)
                 )
 
-                # Convert IK's absolute coxa angle to servo convention
-                # IK returns atan2(0, stance_width) = 0° for straight ahead
-                # Servo convention: 90° = neutral (straight), so add 90°
-                coxa = 90.0  # Neutral for standing (legs point straight out)
-
-                # Femur and tibia are already in correct convention from IK
+                # Base coxa is 90° (neutral), add yaw offset
+                coxa = 90.0 + coxa_yaw_offset
                 femur = ik_femur
                 tibia = ik_tibia
 
                 angles.append((coxa, femur, tibia))
             except ValueError as e:
                 # Target unreachable, use safe default angles
-                print(f"IK failed for leg {leg_idx} at height {self.body_height}mm: {e}")
-                angles.append((90.0, 70.0, 90.0))  # neutral standing position
+                print(f"IK failed for leg {leg_idx} at height {self.body_height}mm, "
+                      f"pose p={self.body_pitch} r={self.body_roll}: {e}")
+                angles.append((90.0 + coxa_yaw_offset, 70.0, 90.0))
 
         return angles
 
@@ -236,15 +258,47 @@ class HexapodController:
             # stance phase when swing=False inside gait engine
             self.ground_contacts = [not swing for swing in self.gait.last_swing_states]
         else:
-            # Standing: use IK for body height
+            # Standing: use IK for body height (already includes body pose)
             base_angles = self.calculate_standing_pose()
             self.ground_contacts = [True] * 6
 
-        # Apply heading rotation to all coxa angles and update servos
+        # Leg mount positions for body pose adjustment during walking
+        leg_mount_positions = [
+            (60.0, 50.0),    # leg 0: front-right
+            (0.0, 60.0),     # leg 1: mid-right
+            (-60.0, 50.0),   # leg 2: rear-right
+            (-60.0, -50.0),  # leg 3: rear-left
+            (0.0, -60.0),    # leg 4: mid-left
+            (60.0, -50.0),   # leg 5: front-left
+        ]
+
+        # Convert body pose to radians for walking adjustments
+        pitch_rad = math.radians(self.body_pitch)
+        roll_rad = math.radians(self.body_roll)
+
+        # Apply heading rotation, yaw, and body pose to all angles
         angles = []
         for leg_idx, (coxa, femur, tibia) in enumerate(base_angles):
-            # Add heading rotation to coxa
-            coxa_adjusted = coxa + self.heading
+            # Add heading rotation and yaw to coxa
+            coxa_adjusted = coxa + self.heading + self.body_yaw
+
+            # Apply body pitch/roll adjustments during walking
+            # (Standing pose already includes these via IK)
+            if self.running:
+                mount_x, mount_z = leg_mount_positions[leg_idx]
+
+                # Calculate femur angle adjustment based on body tilt
+                # Pitch: front legs need to lower femur (larger angle), rear legs raise femur
+                # Roll: right legs adjust for roll, left legs opposite
+                # Approximate: 1 degree of body tilt = ~0.5 degree femur adjustment
+                femur_pitch_adj = mount_x * math.sin(pitch_rad) * 0.3
+                femur_roll_adj = mount_z * math.sin(roll_rad) * 0.3
+
+                femur += femur_pitch_adj + femur_roll_adj
+
+                # Clamp femur to safe range
+                femur = max(30.0, min(150.0, femur))
+
             angles.append((coxa_adjusted, femur, tibia))
             try:
                 self.servo.set_servo_angle(leg_idx, 0, coxa_adjusted)

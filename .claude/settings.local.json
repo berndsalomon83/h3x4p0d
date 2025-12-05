@@ -33,7 +33,9 @@
       "Bash(git stash:*)",
       "Bash(.venv/bin/ruff check src/ tests/)",
       "Bash(.venv/bin/ruff check src/ tests/ --fix)",
-      "Bash(.venv/bin/ruff check src/ tests/ --fix --unsafe-fixes)"
+      "Bash(.venv/bin/ruff check src/ tests/ --fix --unsafe-fixes)",
+      "Bash(ls:*)",
+      "Bash(.venv/bin/ruff check src/hexapod/web.py)"
     ],
     "deny": [],
     "ask": []
