@@ -1,5 +1,12 @@
 # Changelog
 
+## 2025-12-07
+
+### Testing Improvements
+
+- Added property-based tests for configuration and mock servo calibration to cover clamp boundaries, JSON round-trips, and calibration-aware servo commands using Hypothesis. (tests/test_config_properties.py)
+- Declared Hypothesis and Ruff as development dependencies to support property-based testing and linting. (pyproject.toml)
+
 ## 2025-12-06
 
 ### Fixes

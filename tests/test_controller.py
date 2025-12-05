@@ -219,13 +219,14 @@ class TestBLEDeviceScanner:
         # Good callback should still be called
         assert len(received) == 1
 
-    @pytest.mark.asyncio
-    async def test_scan_without_bleak(self):
+    def test_scan_without_bleak(self):
         """Test scan gracefully handles missing bleak library."""
         scanner = BLEDeviceScanner()
 
         # Should not raise exception even if bleak not available
-        await scanner.scan(timeout=0.1)
+        import asyncio
+
+        asyncio.run(scanner.scan(timeout=0.1))
 
 
 @pytest.mark.unit
@@ -457,15 +458,16 @@ class TestBLEDeviceScannerEdgeCases:
 
         assert call_order == [1, 2]
 
-    @pytest.mark.asyncio
-    async def test_scanner_multiple_scans(self):
+    def test_scanner_multiple_scans(self):
         """Test running scan multiple times."""
         scanner = BLEDeviceScanner()
 
         # Should not raise
-        await scanner.scan(timeout=0.01)
-        await scanner.scan(timeout=0.01)
-        await scanner.scan(timeout=0.01)
+        import asyncio
+
+        asyncio.run(scanner.scan(timeout=0.01))
+        asyncio.run(scanner.scan(timeout=0.01))
+        asyncio.run(scanner.scan(timeout=0.01))
 
     def test_scanner_emit_preserves_device_info(self):
         """Test that _emit doesn't modify original device info."""
