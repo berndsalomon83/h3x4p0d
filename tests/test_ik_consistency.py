@@ -70,7 +70,8 @@ class TestIKConsistency:
 
         # Foot should be near (40mm horizontal, -70mm vertical)
         assert abs(foot_x - stance_width) < 10, f"Foot x={foot_x:.1f} should be ~{stance_width}mm"
-        assert abs(foot_y - (ground_level - body_height)) < 10, f"Foot y={foot_y:.1f} should be ~{ground_level - body_height}mm"
+        expected_y = ground_level - body_height
+        assert abs(foot_y - expected_y) < 10, f"Foot y={foot_y:.1f} should be ~{expected_y}mm"
 
         print(f"Standing IK: femur={femur:.1f}° tibia={tibia:.1f}° → foot=({foot_x:.1f}, {foot_y:.1f})")
 
@@ -156,10 +157,13 @@ if __name__ == "__main__":
 
         print(f"   Angles: femur={femur:.1f}° tibia={tibia:.1f}°")
         print(f"   Foot: ({foot_x:.1f}, {foot_y:.1f})")
-        print(f"   Target: ({stance_width:.1f}, {ground_level - body_height:.1f})")
-        print(f"   Error: {abs(foot_x - stance_width):.1f}mm horizontal, {abs(foot_y - (ground_level - body_height)):.1f}mm vertical")
+        target_y = ground_level - body_height
+        print(f"   Target: ({stance_width:.1f}, {target_y:.1f})")
+        err_x = abs(foot_x - stance_width)
+        err_y = abs(foot_y - target_y)
+        print(f"   Error: {err_x:.1f}mm horizontal, {err_y:.1f}mm vertical")
 
-        if abs(foot_x - stance_width) < 10 and abs(foot_y - (ground_level - body_height)) < 10:
+        if err_x < 10 and err_y < 10:
             print("   ✓ PASS")
         else:
             print("   ✗ FAIL")

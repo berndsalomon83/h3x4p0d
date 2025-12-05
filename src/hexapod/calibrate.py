@@ -5,7 +5,6 @@ Saves calibration to ~/.hexapod_calibration.json
 """
 
 import json
-import os
 from pathlib import Path
 from .hardware import PCA9685ServoController, MockServoController
 
@@ -42,9 +41,9 @@ def interactive_calibration():
     print("=" * 60)
     print("HEXAPOD SERVO CALIBRATION TOOL")
     print("=" * 60)
-    
+
     use_pca = input("\nUse PCA9685 hardware? (y/n, default: n): ").strip().lower() == "y"
-    
+
     if use_pca:
         try:
             servo = PCA9685ServoController()
@@ -56,14 +55,14 @@ def interactive_calibration():
     else:
         servo = MockServoController()
         print("Using mock servo controller (no hardware)")
-    
+
     calibration = load_existing_calibration()
-    
+
     # Interactive mapping
     print("\nLeg/joint → servo channel mapping:")
     print("(Enter channel number or press Enter to skip)")
     print()
-    
+
     legs_joints = []
     for leg in range(6):
         for joint in range(3):
@@ -71,7 +70,7 @@ def interactive_calibration():
             key = f"{leg},{joint}"
             current = calibration.get(key)
             prompt = f"Leg {leg} ({joint_name})"
-            
+
             if current is not None:
                 default = f"[{current}]"
                 inp = input(f"  {prompt} → channel {default}: ").strip()
@@ -79,29 +78,29 @@ def interactive_calibration():
                     try:
                         calibration[key] = int(inp)
                     except ValueError:
-                        print(f"    Skipped (invalid input)")
+                        print("    Skipped (invalid input)")
             else:
                 inp = input(f"  {prompt} → channel: ").strip()
                 if inp:
                     try:
                         calibration[key] = int(inp)
                     except ValueError:
-                        print(f"    Skipped")
-            
+                        print("    Skipped")
+
             legs_joints.append((leg, joint, key))
-    
+
     # Test servos
     print("\n" + "=" * 60)
     print("SERVO TEST")
     print("=" * 60)
     print("Testing each configured servo at 90° (neutral)...\n")
-    
+
     for leg, joint, key in legs_joints:
         if key in calibration:
             ch = calibration[key]
             if use_pca and hasattr(servo, 'servos') and ch < len(servo.servos):
                 test_servo(servo, ch, 90.0)
-    
+
     # Save
     print("\n" + "=" * 60)
     save_response = input("Save calibration? (y/n, default: y): ").strip().lower() != "n"
@@ -110,7 +109,7 @@ def interactive_calibration():
         print("\nCalibration saved!")
     else:
         print("Calibration discarded.")
-    
+
     print("\nCalibration tool complete.")
 
 

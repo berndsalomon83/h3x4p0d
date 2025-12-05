@@ -33,3 +33,14 @@ pi = ["pigpio", "RPi.GPIO"]
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+src = ["src", "tests"]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E402"]  # Allow imports after statements (logging setup, conditional imports)
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_main.py" = ["F401"]  # Allow unused imports for availability checks
