@@ -5,9 +5,13 @@ import uvicorn
 import subprocess
 import sys
 import argparse
+import os
+import time
+
 
 def kill_existing_servers():
     """Kill any existing hexapod server instances on port 8000."""
+    current_pid = os.getpid()
     try:
         # Find processes using port 8000
         result = subprocess.run(
@@ -19,11 +23,22 @@ def kill_existing_servers():
             pids = result.stdout.strip().split('\n')
             for pid in pids:
                 try:
+                    pid_int = int(pid)
                     # Don't kill ourselves
-                    import os
-                    if int(pid) != os.getpid():
-                        subprocess.run(["kill", "-9", pid])
-                        print(f"Killed existing server process: {pid}")
+                    if pid_int != current_pid:
+                        # First try graceful termination with SIGTERM
+                        subprocess.run(["kill", "-15", pid])
+                        print(f"Sent SIGTERM to server process: {pid}")
+                        # Give it a moment to shut down gracefully
+                        time.sleep(0.5)
+                        # Check if still running, then force kill
+                        check = subprocess.run(
+                            ["kill", "-0", pid],
+                            capture_output=True
+                        )
+                        if check.returncode == 0:
+                            subprocess.run(["kill", "-9", pid])
+                            print(f"Force killed server process: {pid}")
                 except ValueError:
                     pass
     except FileNotFoundError:

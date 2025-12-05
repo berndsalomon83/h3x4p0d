@@ -14,7 +14,7 @@ def load_existing_calibration() -> dict:
     """Load existing calibration if available."""
     cal_file = Path.home() / ".hexapod_calibration.json"
     if cal_file.exists():
-        with open(cal_file) as f:
+        with open(cal_file, encoding='utf-8') as f:
             return json.load(f)
     return {}
 
@@ -22,7 +22,7 @@ def load_existing_calibration() -> dict:
 def save_calibration(cal: dict):
     """Save calibration to JSON file."""
     cal_file = Path.home() / ".hexapod_calibration.json"
-    with open(cal_file, "w") as f:
+    with open(cal_file, "w", encoding='utf-8') as f:
         json.dump(cal, f, indent=2)
     print(f"Calibration saved to {cal_file}")
 

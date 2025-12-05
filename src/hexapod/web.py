@@ -32,6 +32,7 @@ Telemetry (server → client):
     - ground_contacts: Which legs are in stance phase
     - running, speed, heading, body pose, sensor readings
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
@@ -75,7 +76,8 @@ class ConnectionManager:
         for ws in list(self.active):
             try:
                 await ws.send_json(message)
-            except Exception:
+            except Exception as e:
+                logger.debug(f"WebSocket send failed, disconnecting client: {e}")
                 self.disconnect(ws)
 
 
@@ -305,7 +307,69 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
     Returns:
         FastAPI application instance.
     """
-    app = FastAPI(title="Hexapod Controller", version="1.0.0")
+    # Initialize components before defining lifespan
+    servo_ctrl = servo if servo is not None else MockServoController()
+    sensor = SensorReader(mock=True)
+    controller = HexapodController(servo_ctrl, sensor)
+    manager = ConnectionManager()
+
+    # Static files directory
+    static_dir = Path(__file__).parent.parent.parent / "web_static"
+
+    async def gait_loop():
+        """Background loop: update servos and broadcast telemetry."""
+        last_time = asyncio.get_event_loop().time()
+        telemetry_interval = 0.05  # broadcast every 50ms
+        last_telemetry = 0
+
+        while True:
+            now = asyncio.get_event_loop().time()
+            dt = now - last_time
+            last_time = now
+
+            # Apply rotation speed to heading (degrees per second)
+            if controller.rotation_speed != 0:
+                controller.heading += controller.rotation_speed * dt
+                # Normalize heading to -180 to 180
+                while controller.heading > 180:
+                    controller.heading -= 360
+                while controller.heading < -180:
+                    controller.heading += 360
+
+            # Only update gait time when running
+            if controller.running and controller.speed > 0:
+                controller.gait.update(dt * controller.speed)
+
+            # Update servo angles (always returns angles for visualization)
+            angles = controller.update_servos()
+
+            # Broadcast telemetry periodically
+            if now - last_telemetry > telemetry_interval:
+                last_telemetry = now
+                telem = controller.get_telemetry()
+                telem["type"] = "telemetry"
+                if angles:
+                    telem["angles"] = angles
+                await manager.broadcast(telem)
+
+            await asyncio.sleep(0.01)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Lifespan context manager for startup and shutdown events."""
+        # Startup
+        if use_controller:
+            asyncio.create_task(controller.start_controller())
+            print("Controller input task started")
+        asyncio.create_task(gait_loop())
+        logger.info("Gait loop started")
+
+        yield
+
+        # Shutdown (if needed in the future)
+        logger.info("Shutting down...")
+
+    app = FastAPI(title="Hexapod Controller", version="1.0.0", lifespan=lifespan)
 
     # Add CORS middleware for cross-origin requests
     app.add_middleware(
@@ -315,9 +379,6 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # Static files directory
-    static_dir = Path(__file__).parent.parent.parent / "web_static"
 
     # Custom static file handler with no-cache headers
     @app.get("/static/{file_path:path}")
@@ -333,19 +394,6 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                 }
             )
         return Response(status_code=404)
-    
-    # Initialize components
-    servo_ctrl = servo if servo is not None else MockServoController()
-    sensor = SensorReader(mock=True)
-    controller = HexapodController(servo_ctrl, sensor)
-    manager = ConnectionManager()
-
-    # Start controller input on startup if requested
-    if use_controller:
-        @app.on_event("startup")
-        async def start_controller_on_startup():
-            asyncio.create_task(controller.start_controller())
-            print("Controller input task started")
 
     @app.get("/")
     async def index():
@@ -690,49 +738,6 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                     controller.body_height = height
         except WebSocketDisconnect:
             manager.disconnect(websocket)
-
-    async def gait_loop():
-        """Background loop: update servos and broadcast telemetry."""
-        last_time = asyncio.get_event_loop().time()
-        telemetry_interval = 0.05  # broadcast every 50ms
-        last_telemetry = 0
-
-        while True:
-            now = asyncio.get_event_loop().time()
-            dt = now - last_time
-            last_time = now
-
-            # Apply rotation speed to heading (degrees per second)
-            if controller.rotation_speed != 0:
-                controller.heading += controller.rotation_speed * dt
-                # Normalize heading to -180 to 180
-                while controller.heading > 180:
-                    controller.heading -= 360
-                while controller.heading < -180:
-                    controller.heading += 360
-
-            # Only update gait time when running
-            if controller.running and controller.speed > 0:
-                controller.gait.update(dt * controller.speed)
-
-            # Update servo angles (always returns angles for visualization)
-            angles = controller.update_servos()
-
-            # Broadcast telemetry periodically
-            if now - last_telemetry > telemetry_interval:
-                last_telemetry = now
-                telem = controller.get_telemetry()
-                telem["type"] = "telemetry"
-                if angles:
-                    telem["angles"] = angles
-                await manager.broadcast(telem)
-
-            await asyncio.sleep(0.01)
-
-    # Start background gait loop on app startup
-    @app.on_event("startup")
-    async def startup_event():
-        asyncio.create_task(gait_loop())
 
     return app
 

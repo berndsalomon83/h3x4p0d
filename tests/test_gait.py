@@ -26,8 +26,9 @@ class TestInverseKinematics:
         ik = InverseKinematics(30, 60, 80)
         coxa, femur, tibia = ik.solve(100, 0, -80)
 
-        # Coxa should be near 0 for forward point
-        assert abs(coxa) < 5
+        # Coxa should be near 90° (neutral) for forward point
+        # Servo convention: 90° = leg pointing straight out
+        assert abs(coxa - 90) < 5
 
         # Angles should be in valid range
         assert 0 <= femur <= 180
@@ -38,8 +39,9 @@ class TestInverseKinematics:
         ik = InverseKinematics(30, 60, 80)
         coxa, femur, tibia = ik.solve(0, 100, -80)
 
-        # Coxa should rotate to the side (~90 degrees)
-        assert 80 <= abs(coxa) <= 100
+        # Coxa should rotate to the side (~180° in servo convention)
+        # Servo convention: 90° = neutral, so +90° rotation = 180°
+        assert 170 <= coxa <= 180
 
     def test_solve_unreachable_point_far(self):
         """Test that unreachable points (too far) raise ValueError."""

@@ -67,9 +67,8 @@ def get_leg_positions() -> List[Tuple[float, float]]:
     ]
 
 
-# Backwards compatibility
-LEG_COXA_LEN, LEG_FEMUR_LEN, LEG_TIBIA_LEN = get_leg_geometry()
-LEG_POSITIONS = get_leg_positions()
+# Note: Module-level constants were removed to avoid stale values when config
+# changes at runtime. Use get_leg_geometry() and get_leg_positions() instead.
 
 class GaitEngine:
     """Generates walking gait patterns for a 6-legged hexapod robot.
@@ -277,8 +276,10 @@ class InverseKinematics:
         Raises ValueError if target unreachable.
         """
         # coxa rotation: yaw around vertical axis
+        # Convert to servo convention where 90° is neutral (leg pointing straight out)
+        # atan2 returns -π to π, so we add 90° to center the range around neutral
         coxa_rad = math.atan2(y, x)
-        coxa_deg = math.degrees(coxa_rad)
+        coxa_deg = 90.0 + math.degrees(coxa_rad)
         
         # project to 2D side view: (horizontal distance, vertical)
         r_horiz = math.sqrt(x**2 + y**2) - self.L1  # distance from coxa joint
@@ -327,7 +328,8 @@ class InverseKinematics:
         return (coxa_deg, femur_deg, tibia_deg)
 
 if __name__ == "__main__":
-    ik = InverseKinematics(LEG_COXA_LEN, LEG_FEMUR_LEN, LEG_TIBIA_LEN)
+    coxa, femur, tibia = get_leg_geometry()
+    ik = InverseKinematics(coxa, femur, tibia)
     # test IK for a point 30mm away horizontally, 80mm down
     try:
         c, f, t = ik.solve(30, 0, -80)

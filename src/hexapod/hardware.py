@@ -94,7 +94,7 @@ class PCA9685ServoController(ServoController):
         """Load servo channel mapping from JSON file."""
         cal_file = os.path.expanduser("~/.hexapod_calibration.json")
         if os.path.exists(cal_file):
-            with open(cal_file) as f:
+            with open(cal_file, encoding='utf-8') as f:
                 data = json.load(f)
                 # convert string keys back to tuples
                 return {tuple(map(int, k.split(","))): v for k,v in data.items()}
@@ -108,7 +108,7 @@ class PCA9685ServoController(ServoController):
     def save_calibration(self, cal: Dict[Tuple[int,int], int]):
         """Save calibration to JSON."""
         cal_file = os.path.expanduser("~/.hexapod_calibration.json")
-        with open(cal_file, "w") as f:
+        with open(cal_file, "w", encoding='utf-8') as f:
             # convert tuples to string keys for JSON
             data = {f"{k[0]},{k[1]}": v for k,v in cal.items()}
             json.dump(data, f, indent=2)

@@ -127,7 +127,7 @@ class HexapodConfig:
         that may have been added since the file was created.
         """
         if self.config_file.exists():
-            with open(self.config_file, 'r') as f:
+            with open(self.config_file, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
                 # Start with defaults, then overlay with loaded values
                 # This ensures new default keys are preserved
@@ -136,7 +136,7 @@ class HexapodConfig:
     def save(self) -> None:
         """Save configuration to file."""
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, 'w') as f:
+        with open(self.config_file, 'w', encoding='utf-8') as f:
             json.dump(self._config, f, indent=2)
 
     def to_dict(self) -> Dict[str, Any]:
