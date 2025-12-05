@@ -1502,159 +1502,27 @@
         </div>
       </div>
 
-      <!-- Legs Tab (Combined Dimensions & Calibration) -->
+      <!-- Legs Tab -->
       <div class="settings-content" id="tab-legs">
-        <div class="calibration-container">
-          <!-- Interactive Hexapod Diagram -->
-          <div class="hexapod-diagram">
-            <div style="text-align: center; font-size: 10px; color: #666; margin-bottom: 8px;">Click a leg to configure</div>
-            <svg class="hexapod-svg" viewBox="0 0 200 140" id="hexapodDiagram">
-              <!-- Body -->
-              <ellipse cx="100" cy="70" rx="35" ry="25" fill="#333" stroke="#555" stroke-width="2"/>
-              <text x="100" y="74" text-anchor="middle" fill="#666" font-size="8" font-weight="bold">BODY</text>
-              <!-- Direction indicator -->
-              <polygon points="100,35 95,45 105,45" fill="var(--accent)" opacity="0.6"/>
-
-              <!-- Legs (clickable) -->
-              <!-- Leg 0: Front Right -->
-              <g class="leg-btn" data-leg="0">
-                <line x1="130" y1="50" x2="165" y2="25" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
-                <circle cx="165" cy="25" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
-                <text x="175" y="28" fill="#888" font-size="8">0</text>
-              </g>
-              <!-- Leg 1: Mid Right -->
-              <g class="leg-btn" data-leg="1">
-                <line x1="135" y1="70" x2="180" y2="70" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
-                <circle cx="180" cy="70" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
-                <text x="188" y="73" fill="#888" font-size="8">1</text>
-              </g>
-              <!-- Leg 2: Rear Right -->
-              <g class="leg-btn" data-leg="2">
-                <line x1="130" y1="90" x2="165" y2="115" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
-                <circle cx="165" cy="115" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
-                <text x="175" y="118" fill="#888" font-size="8">2</text>
-              </g>
-              <!-- Leg 3: Rear Left -->
-              <g class="leg-btn" data-leg="3">
-                <line x1="70" y1="90" x2="35" y2="115" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
-                <circle cx="35" cy="115" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
-                <text x="20" y="118" fill="#888" font-size="8">3</text>
-              </g>
-              <!-- Leg 4: Mid Left -->
-              <g class="leg-btn" data-leg="4">
-                <line x1="65" y1="70" x2="20" y2="70" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
-                <circle cx="20" cy="70" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
-                <text x="5" y="73" fill="#888" font-size="8">4</text>
-              </g>
-              <!-- Leg 5: Front Left -->
-              <g class="leg-btn" data-leg="5">
-                <line x1="70" y1="50" x2="35" y2="25" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
-                <circle cx="35" cy="25" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
-                <text x="20" y="28" fill="#888" font-size="8">5</text>
-              </g>
-            </svg>
+        <div class="settings-group">
+          <div class="settings-group-title">Leg Configuration</div>
+          <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">
+            Configure leg dimensions, servo offsets, and channel mapping in the dedicated Calibration Tool.
+          </p>
+          <div style="background: var(--control-bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">The Calibration Tool includes:</div>
+            <ul style="font-size: 11px; color: var(--text-primary); margin: 0; padding-left: 18px; line-height: 1.8;">
+              <li><strong>Channel Mapping</strong> - Map servo channels to leg joints</li>
+              <li><strong>Leg Configuration</strong> - Set dimensions and offsets per leg</li>
+              <li><strong>Quick Test</strong> - Test individual servos and channels</li>
+            </ul>
           </div>
-
-          <!-- Leg Detail Panel -->
-          <div class="leg-detail-panel" id="legDetailPanel">
-            <div class="leg-detail-header">
-              <span class="leg-detail-title" id="selectedLegTitle">Select a leg</span>
-              <span class="leg-detail-status" id="legOffsetStatus">No offsets</span>
-            </div>
-
-            <!-- Leg Dimensions Section -->
-            <div class="leg-dimension-section" id="legDimensionSection" style="display: none;">
-              <div class="leg-dimension-title">Dimensions</div>
-              <div class="dimension-slider-row">
-                <div class="dimension-slider-header">
-                  <span class="dimension-slider-label">Coxa Length</span>
-                  <span class="dimension-slider-value" id="coxaLengthValue">15.0 mm</span>
-                </div>
-                <input type="range" class="dimension-slider" id="coxaLengthSlider" min="5" max="30" value="15" step="0.5">
-              </div>
-              <div class="dimension-slider-row">
-                <div class="dimension-slider-header">
-                  <span class="dimension-slider-label">Femur Length</span>
-                  <span class="dimension-slider-value" id="femurLengthValue">50.0 mm</span>
-                </div>
-                <input type="range" class="dimension-slider" id="femurLengthSlider" min="20" max="80" value="50" step="0.5">
-              </div>
-              <div class="dimension-slider-row">
-                <div class="dimension-slider-header">
-                  <span class="dimension-slider-label">Tibia Length</span>
-                  <span class="dimension-slider-value" id="tibiaLengthValue">55.0 mm</span>
-                </div>
-                <input type="range" class="dimension-slider" id="tibiaLengthSlider" min="20" max="80" value="55" step="0.5">
-              </div>
-            </div>
-
-            <div class="section-divider" id="sectionDivider" style="display: none;"></div>
-
-            <!-- Visual Servo Gauges (Calibration) -->
-            <div class="servo-gauge-row" id="servoGaugeRow" style="display: none;">
-              <div class="servo-gauge" id="coxaGauge">
-                <div class="servo-gauge-label">Coxa</div>
-                <canvas class="servo-gauge-canvas" id="coxaGaugeCanvas" width="70" height="50"></canvas>
-                <div class="servo-gauge-value" id="coxaGaugeValue">0.0°</div>
-              </div>
-              <div class="servo-gauge" id="femurGauge">
-                <div class="servo-gauge-label">Femur</div>
-                <canvas class="servo-gauge-canvas" id="femurGaugeCanvas" width="70" height="50"></canvas>
-                <div class="servo-gauge-value" id="femurGaugeValue">0.0°</div>
-              </div>
-              <div class="servo-gauge" id="tibiaGauge">
-                <div class="servo-gauge-label">Tibia</div>
-                <canvas class="servo-gauge-canvas" id="tibiaGaugeCanvas" width="70" height="50"></canvas>
-                <div class="servo-gauge-value" id="tibiaGaugeValue">0.0°</div>
-              </div>
-            </div>
-
-            <!-- Calibration Sliders -->
-            <div id="calibrationSliders" style="display: none;">
-              <div style="font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; margin-bottom: 10px;">Servo Offsets</div>
-              <div class="servo-slider-row">
-                <div class="servo-slider-header">
-                  <span class="servo-slider-label">Coxa Offset</span>
-                  <span class="servo-slider-value" id="coxaSliderValue">0.0°</span>
-                </div>
-                <input type="range" class="servo-slider" id="coxaOffsetSlider" min="-45" max="45" value="0" step="0.5">
-              </div>
-              <div class="servo-slider-row">
-                <div class="servo-slider-header">
-                  <span class="servo-slider-label">Femur Offset</span>
-                  <span class="servo-slider-value" id="femurSliderValue">0.0°</span>
-                </div>
-                <input type="range" class="servo-slider" id="femurOffsetSlider" min="-45" max="45" value="0" step="0.5">
-              </div>
-              <div class="servo-slider-row">
-                <div class="servo-slider-header">
-                  <span class="servo-slider-label">Tibia Offset</span>
-                  <span class="servo-slider-value" id="tibiaSliderValue">0.0°</span>
-                </div>
-                <input type="range" class="servo-slider" id="tibiaOffsetSlider" min="-45" max="45" value="0" step="0.5">
-              </div>
-            </div>
-
-            <!-- Actions -->
-            <div class="calibration-actions" id="legActions" style="display: none;">
-              <button class="calibration-btn test" id="testServoBtn" title="Move this leg's servos to verify calibration">Test</button>
-              <button class="calibration-btn preset" id="copyToAllBtn" title="Apply this leg's dimensions and offsets to all other legs">Copy to All</button>
-              <button class="calibration-btn reset" id="resetLegBtn" title="Reset this leg to default dimensions and zero offsets">Reset Leg</button>
-            </div>
-          </div>
-
-          <!-- Global Actions -->
-          <div class="calibration-footer">
-            <button class="calibration-btn preset" id="resetAllLegs" style="flex: 1;" title="Reset all legs to factory default dimensions and zero calibration offsets">Reset All Legs</button>
-            <button class="calibration-btn test" id="saveCalibrationBtn" style="flex: 1;" title="Save all leg configurations and calibration offsets to the server">Save All</button>
-          </div>
-
-          <!-- Servo Channel Calibration Link -->
-          <div class="settings-group" style="margin-top: 16px;">
-            <div class="settings-group-title">Servo Channel Mapping</div>
-            <p style="font-size: 11px; color: #888; margin-bottom: 10px;">Map physical servo channels to leg joints and test individual servos.</p>
-            <a href="http://localhost:8001" target="_blank" class="calibration-btn test" style="display: block; text-align: center; text-decoration: none;">Open Servo Calibration Tool</a>
-          </div>
+          <a href="http://localhost:8001" target="_blank" style="display: block; width: 100%; padding: 12px; background: linear-gradient(135deg, var(--accent), var(--accent-strong)); color: #041019; text-align: center; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; transition: all 0.2s; box-shadow: 0 2px 8px rgba(0, 210, 255, 0.3);">
+            Open Calibration Tool
+          </a>
+          <p style="font-size: 10px; color: var(--text-subtle); text-align: center; margin-top: 10px;">
+            Opens in a new tab at port 8001
+          </p>
         </div>
       </div>
 

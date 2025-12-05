@@ -7,21 +7,29 @@
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <style>
     :root {
-      --bg: #0a0e14;
-      --panel: #0f1419;
-      --border: #1f2937;
-      --text: #e6efff;
-      --muted: #9ca3af;
-      --accent: #3b82f6;
-      --success: #22c55e;
-      --warning: #f59e0b;
-      --danger: #ef4444;
+      --page-bg: #050913;
+      --panel-bg: #0c1423;
+      --panel-border: #1f2c46;
+      --panel-strong: #2d3b5a;
+      --card-bg: #0c1423;
+      --control-bg: #111a2c;
+      --input-bg: #0d1727;
+      --text-primary: #e6efff;
+      --text-muted: #93a4c7;
+      --text-subtle: #6f7f9c;
+      --accent: #00d2ff;
+      --accent-strong: #00b3ff;
+      --success: #51cf66;
+      --danger: #ff6b6b;
+      --warning: #ffb347;
+      --border-soft: #1b263b;
+      --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.6);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--page-bg);
+      color: var(--text-primary);
       min-height: 100vh;
       padding: 20px;
     }
@@ -33,7 +41,7 @@
       text-align: center;
       margin-bottom: 30px;
       padding-bottom: 20px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--panel-border);
     }
     h1 {
       font-size: 28px;
@@ -45,7 +53,7 @@
       justify-content: center;
       gap: 20px;
       font-size: 14px;
-      color: var(--muted);
+      color: var(--text-muted);
     }
     .status-item {
       display: flex;
@@ -70,30 +78,30 @@
     .overview-card {
       flex: 1;
       min-width: 240px;
-      background: var(--panel);
-      border: 1px solid var(--border);
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
       border-radius: 12px;
       padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 6px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      box-shadow: var(--shadow-strong);
     }
     .overview-label {
       text-transform: uppercase;
       letter-spacing: 0.06em;
       font-size: 11px;
-      color: var(--muted);
+      color: var(--text-muted);
     }
     .overview-value {
       font-size: 15px;
       font-weight: 700;
-      color: var(--text);
+      color: var(--text-primary);
       word-break: break-all;
     }
     .overview-meta {
       font-size: 13px;
-      color: var(--muted);
+      color: var(--text-muted);
     }
 
     .main-grid {
@@ -106,10 +114,11 @@
     }
 
     .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
       border-radius: 12px;
       padding: 20px;
+      box-shadow: var(--shadow-strong);
     }
     .panel-title {
       font-size: 16px;
@@ -123,10 +132,11 @@
 
     /* Hexapod Diagram */
     .hexapod-diagram {
-      background: #1a1f2e;
+      background: var(--control-bg);
       border-radius: 8px;
       padding: 20px;
       margin-bottom: 16px;
+      border: 1px solid var(--panel-border);
     }
     .hexapod-svg {
       width: 100%;
@@ -168,9 +178,10 @@
       gap: 16px;
     }
     .joint-row {
-      background: #1a1f2e;
+      background: var(--control-bg);
       border-radius: 8px;
       padding: 16px;
+      border: 1px solid var(--panel-border);
     }
     .joint-header {
       display: flex;
@@ -190,10 +201,10 @@
     .channel-input {
       width: 60px;
       padding: 6px 10px;
-      background: var(--bg);
-      border: 1px solid var(--border);
+      background: var(--input-bg);
+      border: 1px solid var(--panel-border);
       border-radius: 4px;
-      color: var(--text);
+      color: var(--text-primary);
       font-size: 14px;
       text-align: center;
     }
@@ -298,11 +309,12 @@
       background: #dc2626;
     }
     .action-btn.secondary {
-      background: rgba(156, 163, 175, 0.15);
-      color: var(--text);
+      background: var(--control-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--panel-border);
     }
     .action-btn.secondary:hover {
-      background: rgba(156, 163, 175, 0.25);
+      background: var(--panel-strong);
     }
 
     /* Channel Map */
@@ -314,8 +326,8 @@
     }
     .channel-slot {
       aspect-ratio: 1;
-      background: #0f1419;
-      border: 1px solid var(--border);
+      background: var(--input-bg);
+      border: 1px solid var(--panel-border);
       border-radius: 6px;
       display: flex;
       flex-direction: column;
@@ -329,12 +341,12 @@
       border-color: var(--accent);
     }
     .channel-slot.occupied {
-      background: rgba(59, 130, 246, 0.2);
+      background: rgba(0, 210, 255, 0.15);
       border-color: var(--accent);
     }
     .channel-slot.available {
-      border-color: rgba(59, 130, 246, 0.25);
-      background: rgba(59, 130, 246, 0.08);
+      border-color: rgba(0, 210, 255, 0.25);
+      background: rgba(0, 210, 255, 0.08);
     }
     .channel-slot .ch-num {
       font-weight: 700;
@@ -343,28 +355,28 @@
     }
     .channel-slot .ch-label {
       font-size: 9px;
-      color: var(--muted);
+      color: var(--text-muted);
       margin-top: 2px;
     }
 
     /* Log */
     .log-area {
       height: 150px;
-      background: #0a0e14;
-      border: 1px solid var(--border);
+      background: var(--page-bg);
+      border: 1px solid var(--panel-border);
       border-radius: 6px;
       padding: 10px;
       font-family: 'Consolas', monospace;
       font-size: 11px;
       overflow-y: auto;
-      color: #22c55e;
+      color: var(--success);
     }
     .log-entry {
       margin-bottom: 4px;
     }
     .log-entry.error { color: var(--danger); }
     .log-entry.warn { color: var(--warning); }
-    .log-entry.info { color: var(--muted); }
+    .log-entry.info { color: var(--text-muted); }
 
     /* Quick Test Panel */
     .quick-test {
@@ -374,17 +386,17 @@
     }
     .quick-btn {
       padding: 9px;
-      background: rgba(59, 130, 246, 0.12);
-      border: 1px solid rgba(59, 130, 246, 0.35);
+      background: rgba(0, 210, 255, 0.12);
+      border: 1px solid rgba(0, 210, 255, 0.35);
       border-radius: 8px;
-      color: var(--text);
+      color: var(--text-primary);
       font-size: 12px;
       cursor: pointer;
       transition: all 0.15s ease;
     }
     .quick-btn:hover {
-      background: rgba(59, 130, 246, 0.2);
-      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
+      background: rgba(0, 210, 255, 0.2);
+      box-shadow: 0 8px 20px rgba(0, 210, 255, 0.15);
     }
 
     /* Assistant */
@@ -394,8 +406,8 @@
       gap: 12px;
     }
     .assistant-card {
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.02));
-      border: 1px solid rgba(59, 130, 246, 0.25);
+      background: linear-gradient(135deg, rgba(0, 210, 255, 0.08), rgba(0, 210, 255, 0.02));
+      border: 1px solid rgba(0, 210, 255, 0.25);
       border-radius: 12px;
       padding: 12px;
       display: flex;
@@ -406,16 +418,16 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
       font-size: 11px;
-      color: var(--muted);
+      color: var(--text-muted);
     }
     .assistant-value {
       font-size: 18px;
       font-weight: 700;
-      color: var(--text);
+      color: var(--text-primary);
     }
     .assistant-meta {
       font-size: 13px;
-      color: var(--muted);
+      color: var(--text-muted);
     }
     .assistant-actions {
       margin-top: 12px;
@@ -425,31 +437,31 @@
       align-items: center;
     }
     .assistant-input {
-      background: #111827;
-      border: 1px solid var(--border);
-      color: var(--text);
+      background: var(--input-bg);
+      border: 1px solid var(--panel-border);
+      color: var(--text-primary);
       padding: 9px 10px;
       border-radius: 8px;
       width: 100%;
     }
     .assistant-btn {
       padding: 10px 14px;
-      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent));
       border: none;
       border-radius: 8px;
-      color: #fff;
+      color: #041019;
       cursor: pointer;
       font-weight: 600;
-      box-shadow: 0 10px 30px rgba(37, 99, 235, 0.35);
+      box-shadow: 0 10px 30px rgba(0, 210, 255, 0.35);
       transition: transform 0.1s ease, box-shadow 0.1s ease;
     }
     .assistant-btn:hover {
       transform: translateY(-1px);
-      box-shadow: 0 12px 32px rgba(37, 99, 235, 0.45);
+      box-shadow: 0 12px 32px rgba(0, 210, 255, 0.45);
     }
     .assistant-list {
       margin-top: 6px;
-      color: var(--muted);
+      color: var(--text-muted);
       font-size: 13px;
       line-height: 1.4;
     }
@@ -459,13 +471,290 @@
       margin-top: 30px;
       text-align: center;
       padding-top: 20px;
-      border-top: 1px solid var(--border);
-      color: var(--muted);
+      border-top: 1px solid var(--panel-border);
+      color: var(--text-muted);
       font-size: 12px;
     }
     footer a {
       color: var(--accent);
       text-decoration: none;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Ribbon Tabs */
+    .ribbon-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--panel-bg);
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--shadow-strong);
+    }
+    .ribbon-tab {
+      padding: 10px 20px;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .ribbon-tab:hover {
+      color: var(--text-primary);
+      background: var(--control-bg);
+    }
+    .ribbon-tab.active {
+      color: var(--accent);
+      background: var(--control-bg);
+    }
+    .ribbon-tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60%;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 1px;
+    }
+    .ribbon-tab-icon {
+      margin-right: 8px;
+      font-size: 14px;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Leg Config Panel (moved from main UI) */
+    .leg-detail-panel {
+      background: var(--control-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .leg-detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .leg-detail-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .leg-detail-status {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--panel-border);
+      color: var(--text-muted);
+    }
+    .leg-detail-status.modified {
+      background: rgba(0, 210, 255, 0.2);
+      color: var(--accent);
+    }
+    .leg-dimension-section {
+      margin-bottom: 16px;
+    }
+    .leg-dimension-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .dimension-slider-row {
+      margin-bottom: 12px;
+    }
+    .dimension-slider-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .dimension-slider-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .dimension-slider-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .dimension-slider {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      background: var(--panel-border);
+      border-radius: 3px;
+      outline: none;
+    }
+    .dimension-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .section-divider {
+      height: 1px;
+      background: var(--panel-border);
+      margin: 16px 0;
+    }
+    .servo-gauge-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .servo-gauge {
+      text-align: center;
+      flex: 1;
+    }
+    .servo-gauge-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .servo-gauge-canvas {
+      display: block;
+      margin: 0 auto;
+    }
+    .servo-gauge-value {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+    .servo-gauge-value.positive { color: var(--success); }
+    .servo-gauge-value.negative { color: var(--danger); }
+    .servo-slider-row {
+      margin-bottom: 12px;
+    }
+    .servo-slider-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .servo-slider-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .servo-slider-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .servo-slider-value.positive { color: var(--success); }
+    .servo-slider-value.negative { color: var(--danger); }
+    .servo-slider {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      background: linear-gradient(to right, var(--danger) 0%, var(--panel-border) 50%, var(--success) 100%);
+      border-radius: 3px;
+      outline: none;
+    }
+    .servo-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--text-primary);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .calibration-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .calibration-btn {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .calibration-btn.test {
+      background: rgba(0, 210, 255, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(0, 210, 255, 0.3);
+    }
+    .calibration-btn.test:hover {
+      background: rgba(0, 210, 255, 0.25);
+    }
+    .calibration-btn.test.active {
+      background: var(--accent);
+      color: #041019;
+    }
+    .calibration-btn.preset {
+      background: var(--control-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--panel-border);
+    }
+    .calibration-btn.preset:hover {
+      background: var(--panel-strong);
+    }
+    .calibration-btn.reset {
+      background: rgba(255, 107, 107, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+    }
+    .calibration-btn.reset:hover {
+      background: rgba(255, 107, 107, 0.25);
+    }
+    .calibration-footer {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--panel-border);
+    }
+    .hexapod-diagram-legs {
+      background: var(--control-bg);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid var(--panel-border);
+    }
+    .hexapod-svg-legs {
+      width: 100%;
+      height: 180px;
+    }
+    .leg-btn {
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .leg-btn:hover circle {
+      fill: var(--accent);
+      filter: drop-shadow(0 0 8px var(--accent));
+    }
+    .leg-btn.selected circle {
+      fill: var(--accent);
+      stroke: var(--accent);
+    }
+    .leg-btn.has-offset circle {
+      fill: var(--success);
+    }
+    .leg-btn.has-offset.selected circle {
+      fill: var(--accent);
     }
   </style>
 </head>
@@ -485,25 +774,40 @@
       </div>
     </header>
 
-    <div class="overview-grid">
-      <div class="overview-card">
-        <div class="overview-label">Server endpoint</div>
-        <div class="overview-value" id="serverEndpoint">localhost:8001</div>
-        <div class="overview-meta">REST + WebSocket connection</div>
-      </div>
-      <div class="overview-card">
-        <div class="overview-label">Calibration file</div>
-        <div class="overview-value" id="calibrationPath">Not detected</div>
-        <div class="overview-meta" id="calibrationMeta">Waiting for status...</div>
-      </div>
-      <div class="overview-card">
-        <div class="overview-label">Mapping coverage</div>
-        <div class="overview-value" id="mappingSummary">No joints mapped</div>
-        <div class="overview-meta" id="mappingMeta">Tracks configured channels per leg</div>
-      </div>
+    <!-- Ribbon Tabs Navigation -->
+    <div class="ribbon-tabs">
+      <button class="ribbon-tab active" data-tab="channels">
+        <span class="ribbon-tab-icon">⚡</span>Channel Mapping
+      </button>
+      <button class="ribbon-tab" data-tab="legs">
+        <span class="ribbon-tab-icon">🦿</span>Leg Configuration
+      </button>
+      <button class="ribbon-tab" data-tab="quicktest">
+        <span class="ribbon-tab-icon">🔧</span>Quick Test
+      </button>
     </div>
 
-    <div class="main-grid">
+    <!-- Tab: Channel Mapping -->
+    <div class="tab-content active" id="tab-channels">
+      <div class="overview-grid">
+        <div class="overview-card">
+          <div class="overview-label">Server endpoint</div>
+          <div class="overview-value" id="serverEndpoint">localhost:8001</div>
+          <div class="overview-meta">REST + WebSocket connection</div>
+        </div>
+        <div class="overview-card">
+          <div class="overview-label">Calibration file</div>
+          <div class="overview-value" id="calibrationPath">Not detected</div>
+          <div class="overview-meta" id="calibrationMeta">Waiting for status...</div>
+        </div>
+        <div class="overview-card">
+          <div class="overview-label">Mapping coverage</div>
+          <div class="overview-value" id="mappingSummary">No joints mapped</div>
+          <div class="overview-meta" id="mappingMeta">Tracks configured channels per leg</div>
+        </div>
+      </div>
+
+      <div class="main-grid">
       <!-- Left Panel: Hexapod & Leg Selection -->
       <div class="panel">
         <div class="panel-title">
@@ -578,15 +882,15 @@
             <div class="joint-header">
               <span class="joint-name">Coxa (horizontal rotation)</span>
               <div class="joint-channel">
-                <span style="color: var(--muted); font-size: 12px;">Channel:</span>
+                <span style="color: var(--text-muted); font-size: 12px;">Channel:</span>
                 <input type="number" class="channel-input" id="coxaChannel" min="0" max="17" placeholder="-">
                 <button class="test-btn" data-joint="0">Test</button>
               </div>
             </div>
             <div class="angle-control">
-              <span style="color: var(--muted); font-size: 11px;">0°</span>
+              <span style="color: var(--text-muted); font-size: 11px;">0°</span>
               <input type="range" class="angle-slider" id="coxaAngle" min="0" max="180" value="90" disabled>
-              <span style="color: var(--muted); font-size: 11px;">180°</span>
+              <span style="color: var(--text-muted); font-size: 11px;">180°</span>
               <span class="angle-value" id="coxaAngleValue">90°</span>
             </div>
           </div>
@@ -596,15 +900,15 @@
             <div class="joint-header">
               <span class="joint-name">Femur (upper leg)</span>
               <div class="joint-channel">
-                <span style="color: var(--muted); font-size: 12px;">Channel:</span>
+                <span style="color: var(--text-muted); font-size: 12px;">Channel:</span>
                 <input type="number" class="channel-input" id="femurChannel" min="0" max="17" placeholder="-">
                 <button class="test-btn" data-joint="1">Test</button>
               </div>
             </div>
             <div class="angle-control">
-              <span style="color: var(--muted); font-size: 11px;">0°</span>
+              <span style="color: var(--text-muted); font-size: 11px;">0°</span>
               <input type="range" class="angle-slider" id="femurAngle" min="0" max="180" value="90" disabled>
-              <span style="color: var(--muted); font-size: 11px;">180°</span>
+              <span style="color: var(--text-muted); font-size: 11px;">180°</span>
               <span class="angle-value" id="femurAngleValue">90°</span>
             </div>
           </div>
@@ -614,15 +918,15 @@
             <div class="joint-header">
               <span class="joint-name">Tibia (lower leg)</span>
               <div class="joint-channel">
-                <span style="color: var(--muted); font-size: 12px;">Channel:</span>
+                <span style="color: var(--text-muted); font-size: 12px;">Channel:</span>
                 <input type="number" class="channel-input" id="tibiaChannel" min="0" max="17" placeholder="-">
                 <button class="test-btn" data-joint="2">Test</button>
               </div>
             </div>
             <div class="angle-control">
-              <span style="color: var(--muted); font-size: 11px;">0°</span>
+              <span style="color: var(--text-muted); font-size: 11px;">0°</span>
               <input type="range" class="angle-slider" id="tibiaAngle" min="0" max="180" value="90" disabled>
-              <span style="color: var(--muted); font-size: 11px;">180°</span>
+              <span style="color: var(--text-muted); font-size: 11px;">180°</span>
               <span class="angle-value" id="tibiaAngleValue">90°</span>
             </div>
           </div>
@@ -649,33 +953,211 @@
       </div>
     </div>
 
-    <div class="panel" style="margin-top: 18px;">
-      <div class="panel-title">
-        <span>Configuration Assistant</span>
-      </div>
-      <div class="assistant-grid">
-        <div class="assistant-card">
-          <div class="assistant-label">Unmapped joints</div>
-          <div class="assistant-value" id="unmappedCount">-</div>
-          <div class="assistant-meta" id="unmappedMeta">Waiting for status...</div>
-          <div class="assistant-list" id="unmappedList"></div>
+      <div class="panel" style="margin-top: 18px;">
+        <div class="panel-title">
+          <span>Configuration Assistant</span>
         </div>
-        <div class="assistant-card">
-          <div class="assistant-label">Available channels</div>
-          <div class="assistant-value" id="availableCount">-</div>
-          <div class="assistant-meta" id="availableMeta">Fetching...</div>
+        <div class="assistant-grid">
+          <div class="assistant-card">
+            <div class="assistant-label">Unmapped joints</div>
+            <div class="assistant-value" id="unmappedCount">-</div>
+            <div class="assistant-meta" id="unmappedMeta">Waiting for status...</div>
+            <div class="assistant-list" id="unmappedList"></div>
+          </div>
+          <div class="assistant-card">
+            <div class="assistant-label">Available channels</div>
+            <div class="assistant-value" id="availableCount">-</div>
+            <div class="assistant-meta" id="availableMeta">Fetching...</div>
+          </div>
+          <div class="assistant-card">
+            <div class="assistant-label">Coverage snapshot</div>
+            <div class="assistant-value" id="coverageValue">-</div>
+            <div class="assistant-meta" id="coverageMeta">Awaiting data</div>
+          </div>
         </div>
-        <div class="assistant-card">
-          <div class="assistant-label">Coverage snapshot</div>
-          <div class="assistant-value" id="coverageValue">-</div>
-          <div class="assistant-meta" id="coverageMeta">Awaiting data</div>
+        <div class="assistant-actions">
+          <input type="number" min="0" max="31" id="autoStartChannel" class="assistant-input" placeholder="Start channel for auto-assign (e.g. 0)">
+          <button class="assistant-btn" id="autoAssignBtn">Auto-assign unmapped</button>
         </div>
-      </div>
-      <div class="assistant-actions">
-        <input type="number" min="0" max="31" id="autoStartChannel" class="assistant-input" placeholder="Start channel for auto-assign (e.g. 0)">
-        <button class="assistant-btn" id="autoAssignBtn">Auto-assign unmapped</button>
       </div>
     </div>
+    <!-- End Tab: Channel Mapping -->
+
+    <!-- Tab: Leg Configuration -->
+    <div class="tab-content" id="tab-legs">
+      <div class="panel">
+        <div class="panel-title">Leg Dimensions & Servo Offsets</div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+          Configure leg dimensions and servo calibration offsets for each leg. Click a leg on the diagram to select it.
+        </p>
+
+        <!-- Hexapod Diagram for Leg Selection -->
+        <div class="hexapod-diagram-legs">
+          <div style="text-align: center; font-size: 10px; color: var(--text-muted); margin-bottom: 8px;">Click a leg to configure</div>
+          <svg class="hexapod-svg-legs" viewBox="0 0 200 140" id="legsDiagram">
+            <!-- Body -->
+            <ellipse cx="100" cy="70" rx="35" ry="25" fill="#333" stroke="#555" stroke-width="2"/>
+            <text x="100" y="74" text-anchor="middle" fill="#666" font-size="8" font-weight="bold">BODY</text>
+            <!-- Direction indicator -->
+            <polygon points="100,35 95,45 105,45" fill="var(--accent)" opacity="0.6"/>
+
+            <!-- Legs (clickable) -->
+            <g class="leg-btn" data-leg="0">
+              <line x1="130" y1="50" x2="165" y2="25" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="165" cy="25" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
+              <text x="175" y="28" fill="#888" font-size="8">0</text>
+            </g>
+            <g class="leg-btn" data-leg="1">
+              <line x1="135" y1="70" x2="180" y2="70" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="180" cy="70" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
+              <text x="188" y="73" fill="#888" font-size="8">1</text>
+            </g>
+            <g class="leg-btn" data-leg="2">
+              <line x1="130" y1="90" x2="165" y2="115" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="165" cy="115" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
+              <text x="175" y="118" fill="#888" font-size="8">2</text>
+            </g>
+            <g class="leg-btn" data-leg="3">
+              <line x1="70" y1="90" x2="35" y2="115" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="35" cy="115" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
+              <text x="20" y="118" fill="#888" font-size="8">3</text>
+            </g>
+            <g class="leg-btn" data-leg="4">
+              <line x1="65" y1="70" x2="20" y2="70" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="20" cy="70" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
+              <text x="5" y="73" fill="#888" font-size="8">4</text>
+            </g>
+            <g class="leg-btn" data-leg="5">
+              <line x1="70" y1="50" x2="35" y2="25" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/>
+              <circle cx="35" cy="25" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/>
+              <text x="20" y="28" fill="#888" font-size="8">5</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Leg Detail Panel -->
+        <div class="leg-detail-panel" id="legsDetailPanel">
+          <div class="leg-detail-header">
+            <span class="leg-detail-title" id="legsSelectedLegTitle">Select a leg</span>
+            <span class="leg-detail-status" id="legsOffsetStatus">No offsets</span>
+          </div>
+
+          <!-- Leg Dimensions Section -->
+          <div class="leg-dimension-section" id="legsDimensionSection" style="display: none;">
+            <div class="leg-dimension-title">Dimensions</div>
+            <div class="dimension-slider-row">
+              <div class="dimension-slider-header">
+                <span class="dimension-slider-label">Coxa Length</span>
+                <span class="dimension-slider-value" id="legsCoxaLengthValue">15.0 mm</span>
+              </div>
+              <input type="range" class="dimension-slider" id="legsCoxaLengthSlider" min="5" max="30" value="15" step="0.5">
+            </div>
+            <div class="dimension-slider-row">
+              <div class="dimension-slider-header">
+                <span class="dimension-slider-label">Femur Length</span>
+                <span class="dimension-slider-value" id="legsFemurLengthValue">50.0 mm</span>
+              </div>
+              <input type="range" class="dimension-slider" id="legsFemurLengthSlider" min="20" max="80" value="50" step="0.5">
+            </div>
+            <div class="dimension-slider-row">
+              <div class="dimension-slider-header">
+                <span class="dimension-slider-label">Tibia Length</span>
+                <span class="dimension-slider-value" id="legsTibiaLengthValue">55.0 mm</span>
+              </div>
+              <input type="range" class="dimension-slider" id="legsTibiaLengthSlider" min="20" max="80" value="55" step="0.5">
+            </div>
+          </div>
+
+          <div class="section-divider" id="legsSectionDivider" style="display: none;"></div>
+
+          <!-- Visual Servo Gauges -->
+          <div class="servo-gauge-row" id="legsServoGaugeRow" style="display: none;">
+            <div class="servo-gauge">
+              <div class="servo-gauge-label">Coxa</div>
+              <canvas class="servo-gauge-canvas" id="legsCoxaGaugeCanvas" width="70" height="50"></canvas>
+              <div class="servo-gauge-value" id="legsCoxaGaugeValue">0.0°</div>
+            </div>
+            <div class="servo-gauge">
+              <div class="servo-gauge-label">Femur</div>
+              <canvas class="servo-gauge-canvas" id="legsFemurGaugeCanvas" width="70" height="50"></canvas>
+              <div class="servo-gauge-value" id="legsFemurGaugeValue">0.0°</div>
+            </div>
+            <div class="servo-gauge">
+              <div class="servo-gauge-label">Tibia</div>
+              <canvas class="servo-gauge-canvas" id="legsTibiaGaugeCanvas" width="70" height="50"></canvas>
+              <div class="servo-gauge-value" id="legsTibiaGaugeValue">0.0°</div>
+            </div>
+          </div>
+
+          <!-- Servo Offset Sliders -->
+          <div id="legsCalibrationSliders" style="display: none;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; margin-bottom: 10px;">Servo Offsets</div>
+            <div class="servo-slider-row">
+              <div class="servo-slider-header">
+                <span class="servo-slider-label">Coxa Offset</span>
+                <span class="servo-slider-value" id="legsCoxaSliderValue">0.0°</span>
+              </div>
+              <input type="range" class="servo-slider" id="legsCoxaOffsetSlider" min="-45" max="45" value="0" step="0.5">
+            </div>
+            <div class="servo-slider-row">
+              <div class="servo-slider-header">
+                <span class="servo-slider-label">Femur Offset</span>
+                <span class="servo-slider-value" id="legsFemurSliderValue">0.0°</span>
+              </div>
+              <input type="range" class="servo-slider" id="legsFemurOffsetSlider" min="-45" max="45" value="0" step="0.5">
+            </div>
+            <div class="servo-slider-row">
+              <div class="servo-slider-header">
+                <span class="servo-slider-label">Tibia Offset</span>
+                <span class="servo-slider-value" id="legsTibiaSliderValue">0.0°</span>
+              </div>
+              <input type="range" class="servo-slider" id="legsTibiaOffsetSlider" min="-45" max="45" value="0" step="0.5">
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="calibration-actions" id="legsActions" style="display: none;">
+            <button class="calibration-btn test" id="legsTestServoBtn">Test</button>
+            <button class="calibration-btn preset" id="legsCopyToAllBtn">Copy to All</button>
+            <button class="calibration-btn reset" id="legsResetLegBtn">Reset Leg</button>
+          </div>
+        </div>
+
+        <!-- Global Actions -->
+        <div class="calibration-footer">
+          <button class="calibration-btn preset" id="legsResetAllBtn" style="flex: 1;">Reset All Legs</button>
+          <button class="calibration-btn test" id="legsSaveAllBtn" style="flex: 1;">Save All</button>
+        </div>
+      </div>
+    </div>
+    <!-- End Tab: Leg Configuration -->
+
+    <!-- Tab: Quick Test -->
+    <div class="tab-content" id="tab-quicktest">
+      <div class="panel">
+        <div class="panel-title">Quick Servo Test</div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+          Test all servos quickly by moving them to preset angles or running sweep tests.
+        </p>
+
+        <div class="quick-test" style="margin-bottom: 20px;">
+          <button class="quick-btn" data-angle="0">All to 0°</button>
+          <button class="quick-btn" data-angle="45">All to 45°</button>
+          <button class="quick-btn" data-angle="90">All to 90°</button>
+          <button class="quick-btn" data-angle="135">All to 135°</button>
+          <button class="quick-btn" data-angle="180">All to 180°</button>
+          <button class="quick-btn" data-action="sweep">Sweep All</button>
+          <button class="quick-btn" data-action="center-all">Center All</button>
+          <button class="quick-btn" data-action="stop">Stop</button>
+        </div>
+
+        <div class="panel-title" style="margin-top: 24px;">
+          <span>Test Log</span>
+        </div>
+        <div class="log-area" id="quickTestLogArea" style="height: 200px;"></div>
+      </div>
+    </div>
+    <!-- End Tab: Quick Test -->
 
     <footer>
       <p>Hexapod Calibration Tool | <a href="http://localhost:8000" target="_blank">Back to Controller</a></p>
@@ -683,7 +1165,35 @@
   </div>
 
   <script>
-    // State
+    // ========== Tab Navigation ==========
+    document.querySelectorAll('.ribbon-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Update active tab button
+        document.querySelectorAll('.ribbon-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Show corresponding tab content
+        const tabName = tab.dataset.tab;
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.remove('active');
+        });
+        document.getElementById('tab-' + tabName).classList.add('active');
+      });
+    });
+
+    // ========== Leg Configuration Tab State ==========
+    const legsState = {
+      selectedLeg: null,
+      offsets: Array(6).fill(null).map(() => ({coxa: 0, femur: 0, tibia: 0})),
+      dimensions: Array(6).fill(null).map(() => ({coxa: 15, femur: 50, tibia: 55})),
+      testMode: false,
+      testInterval: null,
+      testAngle: 0,
+      testDirection: 1
+    };
+    const legNames = ['Front Right', 'Mid Right', 'Rear Right', 'Rear Left', 'Mid Left', 'Front Left'];
+
+    // ========== Channel Mapping State ==========
     let selectedLeg = null;
     let calibration = {};
     let coverage = null;
@@ -1234,6 +1744,381 @@
 
       // Connect WebSocket
       connect();
+
+      // Initialize Legs Tab
+      initLegsTab();
+    }
+
+    // ========== Legs Tab Functions ==========
+    function initLegsTab() {
+      // Leg diagram click handlers
+      document.querySelectorAll('#legsDiagram .leg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const legIndex = parseInt(btn.dataset.leg);
+          selectLegsLeg(legIndex);
+        });
+      });
+
+      // Dimension sliders
+      ['coxa', 'femur', 'tibia'].forEach(joint => {
+        const slider = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}LengthSlider`);
+        const valueEl = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}LengthValue`);
+        if (slider) {
+          slider.addEventListener('input', () => {
+            const value = parseFloat(slider.value);
+            if (valueEl) valueEl.textContent = value.toFixed(1) + ' mm';
+            if (legsState.selectedLeg !== null) {
+              legsState.dimensions[legsState.selectedLeg][joint] = value;
+              saveLegsConfig();
+            }
+          });
+        }
+      });
+
+      // Offset sliders
+      ['coxa', 'femur', 'tibia'].forEach((joint, jointIndex) => {
+        const slider = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}OffsetSlider`);
+        const valueEl = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}SliderValue`);
+        const gaugeCanvas = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeCanvas`);
+        const gaugeValue = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeValue`);
+        if (slider) {
+          slider.addEventListener('input', () => {
+            const value = parseFloat(slider.value);
+            if (valueEl) {
+              valueEl.textContent = value.toFixed(1) + '°';
+              valueEl.classList.toggle('positive', value > 0);
+              valueEl.classList.toggle('negative', value < 0);
+            }
+            if (gaugeValue) {
+              gaugeValue.textContent = value.toFixed(1) + '°';
+              gaugeValue.classList.toggle('positive', value > 0);
+              gaugeValue.classList.toggle('negative', value < 0);
+            }
+            if (gaugeCanvas) drawLegsGauge(gaugeCanvas, value);
+            if (legsState.selectedLeg !== null) {
+              legsState.offsets[legsState.selectedLeg][joint] = value;
+              updateLegsDiagramStatus();
+            }
+          });
+        }
+      });
+
+      // Test button
+      const testBtn = document.getElementById('legsTestServoBtn');
+      if (testBtn) {
+        testBtn.addEventListener('click', () => {
+          legsState.testMode = !legsState.testMode;
+          testBtn.classList.toggle('active', legsState.testMode);
+          testBtn.textContent = legsState.testMode ? 'Stop Test' : 'Test';
+
+          if (legsState.testMode && legsState.selectedLeg !== null) {
+            const baseOffsets = { ...legsState.offsets[legsState.selectedLeg] };
+            legsState.testAngle = 0;
+            legsState.testDirection = 1;
+
+            legsState.testInterval = setInterval(() => {
+              if (legsState.selectedLeg === null || !legsState.testMode) {
+                clearInterval(legsState.testInterval);
+                legsState.testInterval = null;
+                return;
+              }
+
+              const sweepRange = 15;
+              legsState.testAngle += legsState.testDirection * 1.5;
+              if (legsState.testAngle >= sweepRange) legsState.testDirection = -1;
+              else if (legsState.testAngle <= -sweepRange) legsState.testDirection = 1;
+
+              ['coxa', 'femur', 'tibia'].forEach(joint => {
+                const newValue = Math.max(-45, Math.min(45, baseOffsets[joint] + legsState.testAngle));
+                const slider = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}OffsetSlider`);
+                const valueEl = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}SliderValue`);
+                const gaugeCanvas = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeCanvas`);
+                const gaugeValue = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeValue`);
+                if (slider) slider.value = newValue;
+                if (valueEl) {
+                  valueEl.textContent = newValue.toFixed(1) + '°';
+                  valueEl.classList.toggle('positive', newValue > 0);
+                  valueEl.classList.toggle('negative', newValue < 0);
+                }
+                if (gaugeCanvas) drawLegsGauge(gaugeCanvas, newValue);
+                if (gaugeValue) {
+                  gaugeValue.textContent = newValue.toFixed(1) + '°';
+                  gaugeValue.classList.toggle('positive', newValue > 0);
+                  gaugeValue.classList.toggle('negative', newValue < 0);
+                }
+              });
+            }, 50);
+            log('Testing leg ' + legsState.selectedLeg + ' - sweeping servos');
+          } else {
+            if (legsState.testInterval) {
+              clearInterval(legsState.testInterval);
+              legsState.testInterval = null;
+            }
+            // Restore original offsets
+            if (legsState.selectedLeg !== null) {
+              const offsets = legsState.offsets[legsState.selectedLeg];
+              ['coxa', 'femur', 'tibia'].forEach(joint => {
+                const value = offsets[joint];
+                const slider = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}OffsetSlider`);
+                const valueEl = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}SliderValue`);
+                const gaugeCanvas = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeCanvas`);
+                const gaugeValue = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeValue`);
+                if (slider) slider.value = value;
+                if (valueEl) {
+                  valueEl.textContent = value.toFixed(1) + '°';
+                  valueEl.classList.toggle('positive', value > 0);
+                  valueEl.classList.toggle('negative', value < 0);
+                }
+                if (gaugeCanvas) drawLegsGauge(gaugeCanvas, value);
+                if (gaugeValue) {
+                  gaugeValue.textContent = value.toFixed(1) + '°';
+                  gaugeValue.classList.toggle('positive', value > 0);
+                  gaugeValue.classList.toggle('negative', value < 0);
+                }
+              });
+            }
+            log('Test mode deactivated');
+          }
+        });
+      }
+
+      // Copy to all button
+      const copyBtn = document.getElementById('legsCopyToAllBtn');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+          if (legsState.selectedLeg === null) return;
+          const source = legsState.selectedLeg;
+          for (let i = 0; i < 6; i++) {
+            if (i !== source) {
+              legsState.dimensions[i] = { ...legsState.dimensions[source] };
+              legsState.offsets[i] = { ...legsState.offsets[source] };
+            }
+          }
+          updateLegsDiagramStatus();
+          saveLegsConfig();
+          log('Copied leg ' + source + ' config to all legs');
+        });
+      }
+
+      // Reset leg button
+      const resetBtn = document.getElementById('legsResetLegBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          if (legsState.selectedLeg === null) return;
+          legsState.dimensions[legsState.selectedLeg] = {coxa: 15, femur: 50, tibia: 55};
+          legsState.offsets[legsState.selectedLeg] = {coxa: 0, femur: 0, tibia: 0};
+          selectLegsLeg(legsState.selectedLeg); // Refresh UI
+          updateLegsDiagramStatus();
+          saveLegsConfig();
+          log('Reset leg ' + legsState.selectedLeg);
+        });
+      }
+
+      // Reset all button
+      const resetAllBtn = document.getElementById('legsResetAllBtn');
+      if (resetAllBtn) {
+        resetAllBtn.addEventListener('click', () => {
+          for (let i = 0; i < 6; i++) {
+            legsState.dimensions[i] = {coxa: 15, femur: 50, tibia: 55};
+            legsState.offsets[i] = {coxa: 0, femur: 0, tibia: 0};
+          }
+          if (legsState.selectedLeg !== null) selectLegsLeg(legsState.selectedLeg);
+          updateLegsDiagramStatus();
+          saveLegsConfig();
+          log('Reset all legs to defaults');
+        });
+      }
+
+      // Save all button
+      const saveBtn = document.getElementById('legsSaveAllBtn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+          saveLegsConfig();
+          log('Saved all leg configurations');
+        });
+      }
+
+      // Draw initial gauges
+      ['coxa', 'femur', 'tibia'].forEach(joint => {
+        const canvas = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeCanvas`);
+        if (canvas) drawLegsGauge(canvas, 0);
+      });
+
+      // Load config from main server
+      loadLegsConfig();
+    }
+
+    function selectLegsLeg(legIndex) {
+      // Stop any test
+      if (legsState.testInterval) {
+        clearInterval(legsState.testInterval);
+        legsState.testInterval = null;
+        legsState.testMode = false;
+        const testBtn = document.getElementById('legsTestServoBtn');
+        if (testBtn) {
+          testBtn.classList.remove('active');
+          testBtn.textContent = 'Test';
+        }
+      }
+
+      legsState.selectedLeg = legIndex;
+
+      // Update title
+      const titleEl = document.getElementById('legsSelectedLegTitle');
+      if (titleEl) titleEl.textContent = `Leg ${legIndex}: ${legNames[legIndex]}`;
+
+      // Show sections
+      ['legsDimensionSection', 'legsSectionDivider', 'legsServoGaugeRow', 'legsCalibrationSliders', 'legsActions'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === 'legsServoGaugeRow' ? 'flex' : 'block';
+      });
+
+      // Update sliders
+      const dims = legsState.dimensions[legIndex];
+      const offs = legsState.offsets[legIndex];
+
+      ['coxa', 'femur', 'tibia'].forEach(joint => {
+        // Dimensions
+        const dimSlider = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}LengthSlider`);
+        const dimValue = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}LengthValue`);
+        if (dimSlider) dimSlider.value = dims[joint];
+        if (dimValue) dimValue.textContent = dims[joint].toFixed(1) + ' mm';
+
+        // Offsets
+        const offSlider = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}OffsetSlider`);
+        const offValue = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}SliderValue`);
+        const gaugeCanvas = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeCanvas`);
+        const gaugeValue = document.getElementById(`legs${joint.charAt(0).toUpperCase() + joint.slice(1)}GaugeValue`);
+        if (offSlider) offSlider.value = offs[joint];
+        if (offValue) {
+          offValue.textContent = offs[joint].toFixed(1) + '°';
+          offValue.classList.toggle('positive', offs[joint] > 0);
+          offValue.classList.toggle('negative', offs[joint] < 0);
+        }
+        if (gaugeCanvas) drawLegsGauge(gaugeCanvas, offs[joint]);
+        if (gaugeValue) {
+          gaugeValue.textContent = offs[joint].toFixed(1) + '°';
+          gaugeValue.classList.toggle('positive', offs[joint] > 0);
+          gaugeValue.classList.toggle('negative', offs[joint] < 0);
+        }
+      });
+
+      // Update status
+      const statusEl = document.getElementById('legsOffsetStatus');
+      const hasOffset = offs.coxa !== 0 || offs.femur !== 0 || offs.tibia !== 0;
+      if (statusEl) {
+        statusEl.textContent = hasOffset ? 'Modified' : 'No offsets';
+        statusEl.className = 'leg-detail-status' + (hasOffset ? ' modified' : '');
+      }
+
+      updateLegsDiagramStatus();
+    }
+
+    function updateLegsDiagramStatus() {
+      document.querySelectorAll('#legsDiagram .leg-btn').forEach((btn, index) => {
+        const offs = legsState.offsets[index];
+        const hasOffset = offs.coxa !== 0 || offs.femur !== 0 || offs.tibia !== 0;
+        btn.classList.toggle('has-offset', hasOffset);
+        btn.classList.toggle('selected', index === legsState.selectedLeg);
+      });
+    }
+
+    function drawLegsGauge(canvas, value) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h - 5;
+      const radius = Math.min(w, h) - 10;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Background arc
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, Math.PI, 0, false);
+      ctx.strokeStyle = 'var(--panel-border)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      // Value arc
+      const normalizedValue = value / 45; // -1 to 1
+      const startAngle = Math.PI;
+      const endAngle = Math.PI + (normalizedValue + 1) * (Math.PI / 2);
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, startAngle, endAngle, false);
+      ctx.strokeStyle = value > 0 ? 'var(--success)' : value < 0 ? 'var(--danger)' : 'var(--accent)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      // Center marker
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, Math.PI * 1.5 - 0.02, Math.PI * 1.5 + 0.02, false);
+      ctx.strokeStyle = 'var(--text-primary)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    async function loadLegsConfig() {
+      try {
+        const response = await fetch('http://localhost:8000/api/config');
+        const data = await response.json();
+        // Load leg dimensions and offsets if available
+        for (let i = 0; i < 6; i++) {
+          if (data[`leg${i}_coxa_length`]) legsState.dimensions[i].coxa = data[`leg${i}_coxa_length`];
+          else if (data.leg_coxa_length) legsState.dimensions[i].coxa = data.leg_coxa_length;
+
+          if (data[`leg${i}_femur_length`]) legsState.dimensions[i].femur = data[`leg${i}_femur_length`];
+          else if (data.leg_femur_length) legsState.dimensions[i].femur = data.leg_femur_length;
+
+          if (data[`leg${i}_tibia_length`]) legsState.dimensions[i].tibia = data[`leg${i}_tibia_length`];
+          else if (data.leg_tibia_length) legsState.dimensions[i].tibia = data.leg_tibia_length;
+
+          // Offsets
+          if (data.servo_offsets && data.servo_offsets[i]) {
+            legsState.offsets[i] = {
+              coxa: data.servo_offsets[i][0] || 0,
+              femur: data.servo_offsets[i][1] || 0,
+              tibia: data.servo_offsets[i][2] || 0
+            };
+          }
+        }
+        updateLegsDiagramStatus();
+        log('Loaded leg configuration from main server');
+      } catch (e) {
+        log('Could not load leg config: ' + e.message, 'warn');
+      }
+    }
+
+    async function saveLegsConfig() {
+      try {
+        const config = {};
+        for (let i = 0; i < 6; i++) {
+          config[`leg${i}_coxa_length`] = legsState.dimensions[i].coxa;
+          config[`leg${i}_femur_length`] = legsState.dimensions[i].femur;
+          config[`leg${i}_tibia_length`] = legsState.dimensions[i].tibia;
+        }
+        await fetch('http://localhost:8000/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+
+        // Save offsets
+        for (let leg = 0; leg < 6; leg++) {
+          for (let joint = 0; joint < 3; joint++) {
+            const jointName = ['coxa', 'femur', 'tibia'][joint];
+            const offset = legsState.offsets[leg][jointName];
+            await fetch('http://localhost:8000/api/servo_offset', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ leg, joint, offset })
+            });
+          }
+        }
+        log('Saved leg configuration');
+      } catch (e) {
+        log('Failed to save leg config: ' + e.message, 'error');
+      }
     }
 
     init();

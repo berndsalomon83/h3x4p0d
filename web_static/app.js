@@ -2208,15 +2208,18 @@
     logMsg('All legs reset to defaults (dimensions and offsets)');
   }
 
-  // Reset all legs
-  document.getElementById('resetAllLegs').addEventListener('click', () => {
-    if (confirm('Reset all leg dimensions and servo offsets to default values?')) {
-      resetAllLegsToDefaults();
-      // Update UI if calibration is active
-      if (typeof updateGauges === 'function') updateGauges();
-      if (typeof updateDiagramStatus === 'function') updateDiagramStatus();
-    }
-  });
+  // Reset all legs (only if button exists in UI)
+  const resetAllLegsBtn = document.getElementById('resetAllLegs');
+  if (resetAllLegsBtn) {
+    resetAllLegsBtn.addEventListener('click', () => {
+      if (confirm('Reset all leg dimensions and servo offsets to default values?')) {
+        resetAllLegsToDefaults();
+        // Update UI if calibration is active
+        if (typeof updateGauges === 'function') updateGauges();
+        if (typeof updateDiagramStatus === 'function') updateDiagramStatus();
+      }
+    });
+  }
 
   // ========== Visual Settings ==========
 
@@ -2594,6 +2597,9 @@
     selectedLeg: null,
     offsets: Array(6).fill(null).map(() => ({coxa: 0, femur: 0, tibia: 0})),
     testMode: false,
+    testInterval: null,
+    testAngle: 0,
+    testDirection: 1,
     mirrorPairs: {0: 5, 1: 4, 2: 3, 3: 2, 4: 1, 5: 0} // Left-right pairs
   };
 
@@ -2727,6 +2733,18 @@
   // Select a leg for calibration and dimensions
   function selectLeg(legIndex) {
     try {
+    // Stop any running test sweep when switching legs
+    if (calibrationState.testInterval) {
+      clearInterval(calibrationState.testInterval);
+      calibrationState.testInterval = null;
+      calibrationState.testMode = false;
+      const testBtn = document.getElementById('testServoBtn');
+      if (testBtn) {
+        testBtn.classList.remove('active');
+        testBtn.textContent = 'Test';
+      }
+    }
+
     calibrationState.selectedLeg = legIndex;
 
     // Update title
@@ -2935,7 +2953,7 @@
       });
     });
 
-    // Test mode toggle (test servos for selected leg)
+    // Test mode toggle (test servos for selected leg) - sweeps sliders visually
     const testServoBtn = document.getElementById('testServoBtn');
     if (testServoBtn) {
       testServoBtn.addEventListener('click', () => {
@@ -2945,14 +2963,111 @@
         testServoBtn.textContent = calibrationState.testMode ? 'Stop Test' : 'Test';
 
         if (calibrationState.testMode && calibrationState.selectedLeg !== null) {
-          // Apply current offsets to 3D view
           const legIndex = calibrationState.selectedLeg;
-          const offsets = calibrationState.offsets[legIndex];
-          applyTestOffset(legIndex, 0, offsets.coxa);
-          applyTestOffset(legIndex, 1, offsets.femur);
-          applyTestOffset(legIndex, 2, offsets.tibia);
-          logMsg(`Test mode active for leg ${legIndex}`);
+          const baseOffsets = { ...calibrationState.offsets[legIndex] };
+          calibrationState.testAngle = 0;
+          calibrationState.testDirection = 1;
+
+          // Sweep the sliders back and forth
+          calibrationState.testInterval = setInterval(() => {
+            if (calibrationState.selectedLeg === null || !calibrationState.testMode) {
+              clearInterval(calibrationState.testInterval);
+              calibrationState.testInterval = null;
+              return;
+            }
+
+            // Update test angle (sweep ±15 degrees from current offset)
+            const sweepRange = 15;
+            const step = 1.5;
+            calibrationState.testAngle += calibrationState.testDirection * step;
+
+            if (calibrationState.testAngle >= sweepRange) {
+              calibrationState.testDirection = -1;
+            } else if (calibrationState.testAngle <= -sweepRange) {
+              calibrationState.testDirection = 1;
+            }
+
+            // Apply sweep to all joints and update sliders
+            const joints = ['coxa', 'femur', 'tibia'];
+            const sliderIds = ['coxaOffsetSlider', 'femurOffsetSlider', 'tibiaOffsetSlider'];
+            const valueIds = ['coxaSliderValue', 'femurSliderValue', 'tibiaSliderValue'];
+
+            joints.forEach((joint, jointIndex) => {
+              const newValue = baseOffsets[joint] + calibrationState.testAngle;
+              const clampedValue = Math.max(-45, Math.min(45, newValue));
+
+              // Update slider visually
+              const slider = document.getElementById(sliderIds[jointIndex]);
+              const valueDisplay = document.getElementById(valueIds[jointIndex]);
+              if (slider) {
+                slider.value = clampedValue;
+              }
+              if (valueDisplay) {
+                valueDisplay.textContent = clampedValue.toFixed(1) + '°';
+                valueDisplay.classList.toggle('positive', clampedValue > 0);
+                valueDisplay.classList.toggle('negative', clampedValue < 0);
+              }
+
+              // Apply to 3D view
+              applyTestOffset(legIndex, jointIndex, clampedValue);
+
+              // Update gauges
+              const gaugeCanvases = ['coxaGaugeCanvas', 'femurGaugeCanvas', 'tibiaGaugeCanvas'];
+              drawGauge(gaugeCanvases[jointIndex], clampedValue);
+              const gaugeValues = ['coxaGaugeValue', 'femurGaugeValue', 'tibiaGaugeValue'];
+              const gaugeValueEl = document.getElementById(gaugeValues[jointIndex]);
+              if (gaugeValueEl) {
+                gaugeValueEl.textContent = clampedValue.toFixed(1) + '°';
+                gaugeValueEl.classList.toggle('positive', clampedValue > 0);
+                gaugeValueEl.classList.toggle('negative', clampedValue < 0);
+              }
+            });
+          }, 50);
+
+          logMsg(`Testing leg ${legIndex} - sweeping servos`);
         } else {
+          // Stop test mode - clear interval and restore original offsets
+          if (calibrationState.testInterval) {
+            clearInterval(calibrationState.testInterval);
+            calibrationState.testInterval = null;
+          }
+
+          // Restore sliders to their saved offsets
+          if (calibrationState.selectedLeg !== null) {
+            const legIndex = calibrationState.selectedLeg;
+            const offsets = calibrationState.offsets[legIndex];
+
+            const joints = ['coxa', 'femur', 'tibia'];
+            const sliderIds = ['coxaOffsetSlider', 'femurOffsetSlider', 'tibiaOffsetSlider'];
+            const valueIds = ['coxaSliderValue', 'femurSliderValue', 'tibiaSliderValue'];
+            const gaugeCanvases = ['coxaGaugeCanvas', 'femurGaugeCanvas', 'tibiaGaugeCanvas'];
+            const gaugeValues = ['coxaGaugeValue', 'femurGaugeValue', 'tibiaGaugeValue'];
+
+            joints.forEach((joint, jointIndex) => {
+              const value = offsets[joint];
+              const slider = document.getElementById(sliderIds[jointIndex]);
+              const valueDisplay = document.getElementById(valueIds[jointIndex]);
+              if (slider) slider.value = value;
+              if (valueDisplay) {
+                valueDisplay.textContent = value.toFixed(1) + '°';
+                valueDisplay.classList.toggle('positive', value > 0);
+                valueDisplay.classList.toggle('negative', value < 0);
+              }
+
+              // Apply original offset to 3D view
+              applyTestOffset(legIndex, jointIndex, value);
+
+              // Update gauge
+              drawGauge(gaugeCanvases[jointIndex], value);
+              const gaugeValueEl = document.getElementById(gaugeValues[jointIndex]);
+              if (gaugeValueEl) {
+                gaugeValueEl.textContent = value.toFixed(1) + '°';
+                gaugeValueEl.classList.toggle('positive', value > 0);
+                gaugeValueEl.classList.toggle('negative', value < 0);
+              }
+            });
+          }
+
           logMsg('Test mode deactivated');
         }
       });
@@ -3094,7 +3209,11 @@
     manualControlTimestamps[legIndex] = performance.now();
   }
 
-  initializeCalibrationUI();
+  // Only initialize calibration UI if the required elements exist (e.g., on calibrate.html)
+  // The main index.html now has a simplified Legs tab that links to the calibration page
+  if (document.getElementById('hexapodDiagram') && document.querySelector('.leg-btn')) {
+    initializeCalibrationUI();
+  }
 
   // ========== Bluetooth Tab ==========
 

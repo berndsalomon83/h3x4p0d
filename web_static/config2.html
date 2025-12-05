@@ -1,0 +1,2937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexapod Configuration v2</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <style>
+    :root {
+      --page-bg: #050913;
+      --panel-bg: #0c1423;
+      --panel-border: #1f2c46;
+      --panel-strong: #2d3b5a;
+      --card-bg: #101828;
+      --control-bg: #111a2c;
+      --input-bg: #0d1727;
+      --text-primary: #e6efff;
+      --text-muted: #93a4c7;
+      --text-subtle: #6f7f9c;
+      --accent: #00d2ff;
+      --accent-strong: #00b3ff;
+      --success: #51cf66;
+      --danger: #ff6b6b;
+      --warning: #ffb347;
+      --border-soft: #1b263b;
+      --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.6);
+      --nav-width: 240px;
+      --header-height: 60px;
+      --right-panel-width: 380px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--page-bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ===== HEADER ===== */
+    .app-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--header-height);
+      background: var(--panel-bg);
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      z-index: 1000;
+      gap: 20px;
+    }
+    .app-logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .app-logo svg {
+      width: 28px;
+      height: 28px;
+    }
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex: 1;
+    }
+    .header-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .header-select {
+      padding: 6px 12px;
+      background: var(--control-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .header-select:hover {
+      border-color: var(--accent);
+    }
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-left: auto;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+    .status-dot.connected { background: var(--success); }
+    .status-dot.warning { background: var(--warning); }
+    .estop-btn {
+      padding: 8px 16px;
+      background: linear-gradient(145deg, #ff4444, #cc0000);
+      border: 2px solid #ff6666;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.1s;
+    }
+    .estop-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+    }
+
+    /* ===== LEFT NAVIGATION ===== */
+    .nav-sidebar {
+      position: fixed;
+      left: 0;
+      top: var(--header-height);
+      bottom: 0;
+      width: var(--nav-width);
+      background: var(--panel-bg);
+      border-right: 1px solid var(--panel-border);
+      overflow-y: auto;
+      z-index: 900;
+    }
+    .nav-section {
+      padding: 12px 0;
+    }
+    .nav-section-title {
+      padding: 8px 16px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-subtle);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+      border-left: 3px solid transparent;
+    }
+    .nav-item:hover {
+      background: var(--control-bg);
+      color: var(--text-primary);
+    }
+    .nav-item.active {
+      background: rgba(0, 210, 255, 0.08);
+      color: var(--accent);
+      border-left-color: var(--accent);
+    }
+    .nav-item-icon {
+      width: 20px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .nav-item-badge {
+      margin-left: auto;
+      padding: 2px 6px;
+      background: var(--danger);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 10px;
+    }
+
+    /* ===== MAIN CONTENT ===== */
+    .main-content {
+      margin-left: var(--nav-width);
+      margin-top: var(--header-height);
+      margin-right: var(--right-panel-width);
+      padding: 24px;
+      min-height: calc(100vh - var(--header-height));
+    }
+
+    /* ===== RIGHT PANEL (3D Preview + Status) ===== */
+    .right-panel {
+      position: fixed;
+      right: 0;
+      top: var(--header-height);
+      bottom: 0;
+      width: var(--right-panel-width);
+      background: var(--panel-bg);
+      border-left: 1px solid var(--panel-border);
+      display: flex;
+      flex-direction: column;
+      z-index: 900;
+    }
+    .preview-container {
+      flex: 1;
+      background: #0a0f18;
+      position: relative;
+      min-height: 300px;
+    }
+    .preview-canvas {
+      width: 100%;
+      height: 100%;
+    }
+    .preview-controls {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      display: flex;
+      gap: 4px;
+    }
+    .preview-btn {
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid var(--panel-border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .preview-btn:hover {
+      background: var(--control-bg);
+      color: var(--text-primary);
+    }
+    .preview-btn.active {
+      background: var(--accent);
+      color: #000;
+    }
+    .status-panel {
+      padding: 16px;
+      border-top: 1px solid var(--panel-border);
+      max-height: 40%;
+      overflow-y: auto;
+    }
+    .status-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .status-item {
+      background: var(--control-bg);
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid var(--panel-border);
+    }
+    .status-item-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .status-item-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .test-actions {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .test-btn {
+      padding: 8px 12px;
+      background: rgba(0, 210, 255, 0.1);
+      border: 1px solid rgba(0, 210, 255, 0.3);
+      border-radius: 6px;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .test-btn:hover {
+      background: rgba(0, 210, 255, 0.2);
+    }
+
+    /* ===== SECTION STYLES ===== */
+    .section {
+      display: none;
+    }
+    .section.active {
+      display: block;
+    }
+    .section-header {
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .section-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ===== CARDS ===== */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ===== FORM ELEMENTS ===== */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .form-input, .form-select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--input-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+    .form-input:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .slider-group {
+      margin-bottom: 16px;
+    }
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .slider-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .slider-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 50px;
+      text-align: right;
+    }
+    .slider {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      background: var(--panel-border);
+      border-radius: 3px;
+      outline: none;
+    }
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: #041019;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 4px 12px rgba(0, 210, 255, 0.4);
+    }
+    .btn-secondary {
+      background: var(--control-bg);
+      color: var(--text-primary);
+      border: 1px solid var(--panel-border);
+    }
+    .btn-secondary:hover {
+      background: var(--panel-strong);
+    }
+    .btn-success {
+      background: var(--success);
+      color: #041019;
+    }
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
+    .btn-warning {
+      background: var(--warning);
+      color: #041019;
+    }
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 11px;
+    }
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ===== TABLES ===== */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th, .data-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .data-table th {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      background: var(--control-bg);
+    }
+    .data-table tr:hover {
+      background: rgba(0, 210, 255, 0.05);
+    }
+    .data-table td {
+      font-size: 13px;
+    }
+
+    /* ===== TAGS ===== */
+    .tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .tag-primary {
+      background: rgba(0, 210, 255, 0.15);
+      color: var(--accent);
+    }
+    .tag-success {
+      background: rgba(81, 207, 102, 0.15);
+      color: var(--success);
+    }
+    .tag-warning {
+      background: rgba(255, 179, 71, 0.15);
+      color: var(--warning);
+    }
+    .tag-danger {
+      background: rgba(255, 107, 107, 0.15);
+      color: var(--danger);
+    }
+
+    /* ===== TABS ===== */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .tab {
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab:hover {
+      color: var(--text-primary);
+    }
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* ===== SUMMARY CARDS ===== */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .summary-card {
+      background: linear-gradient(135deg, rgba(0, 210, 255, 0.08), rgba(0, 210, 255, 0.02));
+      border: 1px solid rgba(0, 210, 255, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .summary-card-icon {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    .summary-card-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .summary-card-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .summary-card-meta {
+      font-size: 11px;
+      color: var(--text-subtle);
+      margin-top: 4px;
+    }
+
+    /* ===== HEXAPOD DIAGRAM ===== */
+    .hexapod-diagram {
+      background: var(--control-bg);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid var(--panel-border);
+    }
+    .hexapod-svg {
+      width: 100%;
+      height: 200px;
+    }
+    .leg-btn {
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .leg-btn:hover circle {
+      fill: var(--accent);
+      filter: drop-shadow(0 0 8px var(--accent));
+    }
+    .leg-btn.selected circle {
+      fill: var(--accent);
+      stroke: var(--accent);
+    }
+    .leg-btn.configured circle {
+      fill: var(--success);
+    }
+
+    /* ===== GAUGE ===== */
+    .gauge-row {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .gauge {
+      text-align: center;
+      flex: 1;
+      max-width: 100px;
+    }
+    .gauge-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .gauge-canvas {
+      display: block;
+      margin: 0 auto;
+    }
+    .gauge-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-top: 4px;
+    }
+    .gauge-value.positive { color: var(--success); }
+    .gauge-value.negative { color: var(--danger); }
+
+    /* ===== TIMELINE (for gait phases) ===== */
+    .phase-timeline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      background: var(--control-bg);
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+    .phase-node {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      position: relative;
+    }
+    .phase-node.active {
+      background: var(--accent);
+      color: #000;
+    }
+    .phase-node.stance {
+      background: var(--success);
+      color: #000;
+    }
+    .phase-node.swing {
+      background: var(--danger);
+      color: #fff;
+    }
+    .phase-connector {
+      flex: 1;
+      height: 2px;
+      background: var(--panel-border);
+    }
+
+    /* ===== SPARKLINE ===== */
+    .sparkline-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+    }
+    .sparkline-label {
+      min-width: 80px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .sparkline {
+      flex: 1;
+      height: 30px;
+      background: var(--control-bg);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .sparkline-value {
+      min-width: 50px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* ===== LOG PANEL ===== */
+    .log-panel {
+      background: var(--page-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .log-entry:last-child {
+      border-bottom: none;
+    }
+    .log-time {
+      color: var(--text-subtle);
+      margin-right: 8px;
+    }
+    .log-level {
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 9px;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+    .log-level.info { background: rgba(0, 210, 255, 0.2); color: var(--accent); }
+    .log-level.warn { background: rgba(255, 179, 71, 0.2); color: var(--warning); }
+    .log-level.error { background: rgba(255, 107, 107, 0.2); color: var(--danger); }
+    .log-level.debug { background: var(--panel-border); color: var(--text-muted); }
+    .log-message {
+      color: var(--text-primary);
+    }
+
+    /* ===== CHECKBOX & TOGGLE ===== */
+    .toggle-group {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .toggle-label {
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+    .toggle-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--panel-border);
+      border-radius: 24px;
+      transition: 0.2s;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    .toggle input:checked + .toggle-slider {
+      background: var(--accent);
+    }
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 1400px) {
+      :root {
+        --right-panel-width: 320px;
+      }
+    }
+    @media (max-width: 1200px) {
+      :root {
+        --nav-width: 200px;
+        --right-panel-width: 300px;
+      }
+    }
+    @media (max-width: 1000px) {
+      .right-panel {
+        display: none;
+      }
+      .main-content {
+        margin-right: 0;
+      }
+    }
+    @media (max-width: 768px) {
+      .nav-sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s;
+      }
+      .nav-sidebar.open {
+        transform: translateX(0);
+      }
+      .main-content {
+        margin-left: 0;
+        padding: 16px;
+      }
+    }
+
+    /* ===== KEYBOARD MAPPING ===== */
+    .key-binding {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background: var(--control-bg);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .key-action {
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+    .key-combo {
+      display: flex;
+      gap: 4px;
+    }
+    .key {
+      padding: 4px 8px;
+      background: var(--panel-border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-primary);
+      min-width: 28px;
+      text-align: center;
+    }
+
+    /* ===== FRAME TRANSFORM ===== */
+    .transform-editor {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 16px;
+      background: var(--control-bg);
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+    .transform-axis {
+      text-align: center;
+    }
+    .transform-axis-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .transform-axis-input {
+      width: 100%;
+      padding: 8px;
+      background: var(--input-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 4px;
+      color: var(--text-primary);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    /* ===== ANIMATION KEYFRAMES ===== */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .pulsing {
+      animation: pulse 1.5s infinite;
+    }
+  </style>
+</head>
+<body>
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+      </svg>
+      Hexapod Config
+    </div>
+
+    <div class="header-controls">
+      <div class="header-group">
+        <span class="header-label">Profile</span>
+        <select class="header-select" id="profileSelect">
+          <option value="default">Default</option>
+          <option value="outdoor_rough">Outdoor Rough</option>
+          <option value="indoor_demo">Indoor Demo</option>
+          <option value="calibration">Calibration</option>
+        </select>
+      </div>
+
+      <div class="header-group">
+        <span class="header-label">Target</span>
+        <select class="header-select" id="targetSelect">
+          <option value="simulation">Simulation</option>
+          <option value="real">Real Robot</option>
+          <option value="both">Both</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div class="status-indicator">
+        <span class="status-dot connected" id="connectionDot"></span>
+        <span id="connectionText">Connected</span>
+      </div>
+      <div class="status-indicator">
+        <span class="status-dot warning"></span>
+        <span>Battery: 11.4V</span>
+      </div>
+      <button class="estop-btn" id="estopBtn">E-STOP</button>
+    </div>
+  </header>
+
+  <!-- ===== LEFT NAVIGATION ===== -->
+  <nav class="nav-sidebar">
+    <div class="nav-section">
+      <div class="nav-section-title">Configuration</div>
+      <div class="nav-item active" data-section="overview">
+        <span class="nav-item-icon">&#x1F3E0;</span>
+        Overview & Profiles
+      </div>
+      <div class="nav-item" data-section="geometry">
+        <span class="nav-item-icon">&#x1F4D0;</span>
+        Geometry & Frames
+      </div>
+      <div class="nav-item" data-section="servos">
+        <span class="nav-item-icon">&#x2699;</span>
+        Servos & Calibration
+      </div>
+      <div class="nav-item" data-section="posture">
+        <span class="nav-item-icon">&#x1F9CD;</span>
+        Body Posture & Poses
+      </div>
+      <div class="nav-item" data-section="gaits">
+        <span class="nav-item-icon">&#x1F6B6;</span>
+        Gaits & Motion
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">Hardware</div>
+      <div class="nav-item" data-section="sensors">
+        <span class="nav-item-icon">&#x1F4F7;</span>
+        Sensors & Cameras
+      </div>
+      <div class="nav-item" data-section="control">
+        <span class="nav-item-icon">&#x1F3AE;</span>
+        Control & Input
+      </div>
+      <div class="nav-item" data-section="safety">
+        <span class="nav-item-icon">&#x1F6A8;</span>
+        Safety & Limits
+        <span class="nav-item-badge">!</span>
+      </div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-title">System</div>
+      <div class="nav-item" data-section="system">
+        <span class="nav-item-icon">&#x1F5A5;</span>
+        System & Network
+      </div>
+      <div class="nav-item" data-section="logging">
+        <span class="nav-item-icon">&#x1F4CA;</span>
+        Logging & Diagnostics
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main-content">
+    <!-- ===== SECTION: Overview & Profiles ===== -->
+    <section class="section active" id="section-overview">
+      <div class="section-header">
+        <h1 class="section-title">Overview & Profiles</h1>
+        <p class="section-desc">High-level control and configuration profiles. Pick a preset and go, or dive into the details.</p>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-card-icon">&#x1F4D0;</div>
+          <div class="summary-card-label">Geometry</div>
+          <div class="summary-card-value">300 x 250mm</div>
+          <div class="summary-card-meta">6 legs, 3 segments each</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-card-icon">&#x2699;</div>
+          <div class="summary-card-label">Servos</div>
+          <div class="summary-card-value">18x MG996R</div>
+          <div class="summary-card-meta">6V, 180&deg; range</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-card-icon">&#x1F6B6;</div>
+          <div class="summary-card-label">Default Gait</div>
+          <div class="summary-card-value">Tripod</div>
+          <div class="summary-card-meta">Step: 25mm, Speed: 50%</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-card-icon">&#x1F4F7;</div>
+          <div class="summary-card-label">Cameras</div>
+          <div class="summary-card-value">2 Active</div>
+          <div class="summary-card-meta">Front (main), Rear</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Profile Library</span>
+          <div class="card-actions">
+            <button class="btn btn-secondary btn-sm">Import</button>
+            <button class="btn btn-primary btn-sm">New Profile</button>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Last Modified</th>
+              <th>Tags</th>
+              <th>Default</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Default</strong></td>
+              <td>2025-12-04 14:30</td>
+              <td><span class="tag tag-primary">simulation</span> <span class="tag tag-success">hardware</span></td>
+              <td><span class="tag tag-success">SIM</span> <span class="tag tag-success">REAL</span></td>
+              <td>
+                <button class="btn btn-secondary btn-sm">Edit</button>
+                <button class="btn btn-secondary btn-sm">Duplicate</button>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Outdoor Rough</strong></td>
+              <td>2025-12-03 09:15</td>
+              <td><span class="tag tag-success">hardware</span> <span class="tag tag-warning">rough terrain</span></td>
+              <td>-</td>
+              <td>
+                <button class="btn btn-secondary btn-sm">Edit</button>
+                <button class="btn btn-secondary btn-sm">Duplicate</button>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Indoor Demo</strong></td>
+              <td>2025-12-01 16:45</td>
+              <td><span class="tag tag-primary">demo</span> <span class="tag tag-primary">slow</span></td>
+              <td>-</td>
+              <td>
+                <button class="btn btn-secondary btn-sm">Edit</button>
+                <button class="btn btn-secondary btn-sm">Duplicate</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Quick Actions</span>
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <button class="btn btn-primary btn-icon">
+            &#x1F527; Run Calibration Wizard
+          </button>
+          <button class="btn btn-success btn-icon">
+            &#x1F6B6; Test Walk
+          </button>
+          <button class="btn btn-secondary btn-icon">
+            &#x1F4E4; Export Config (YAML)
+          </button>
+          <button class="btn btn-secondary btn-icon">
+            &#x1F4E4; Export Config (JSON)
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Geometry & Frames ===== -->
+    <section class="section" id="section-geometry">
+      <div class="section-header">
+        <h1 class="section-title">Geometry & Frames</h1>
+        <p class="section-desc">Define all the static math that IK depends on: body dimensions, leg kinematics, and coordinate frames.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="geo-body">Body Geometry</button>
+        <button class="tab" data-tab="geo-legs">Leg Kinematics</button>
+        <button class="tab" data-tab="geo-frames">Reference Frames</button>
+      </div>
+
+      <!-- Body Geometry Tab -->
+      <div class="tab-content active" id="tab-geo-body">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Body Dimensions</span>
+            <button class="btn btn-secondary btn-sm">Reset to Defaults</button>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Body Length</span>
+                <span class="slider-value" id="bodyLengthValue">300 mm</span>
+              </div>
+              <input type="range" class="slider" id="bodyLength" min="150" max="500" value="300">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Body Width</span>
+                <span class="slider-value" id="bodyWidthValue">250 mm</span>
+              </div>
+              <input type="range" class="slider" id="bodyWidth" min="100" max="400" value="250">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Body Height</span>
+                <span class="slider-value" id="bodyHeightGeoValue">50 mm</span>
+              </div>
+              <input type="range" class="slider" id="bodyHeightGeo" min="20" max="100" value="50">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top: 16px;">
+            <label class="form-label">Body Origin</label>
+            <select class="form-select" style="max-width: 300px;">
+              <option value="center">Center</option>
+              <option value="front-center">Front Center</option>
+              <option value="rear-center">Rear Center</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Leg Attach Points</span>
+            <div class="card-actions">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                <input type="checkbox" checked id="symmetryMode"> Symmetry Mode
+              </label>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Leg</th>
+                <th>X (mm)</th>
+                <th>Y (mm)</th>
+                <th>Z (mm)</th>
+                <th>Angle (&deg;)</th>
+              </tr>
+            </thead>
+            <tbody id="legAttachTable">
+              <tr><td>Leg 0 (FR)</td><td><input type="number" class="form-input" value="150" style="width:80px"></td><td><input type="number" class="form-input" value="120" style="width:80px"></td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="45" style="width:80px"></td></tr>
+              <tr><td>Leg 1 (MR)</td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="150" style="width:80px"></td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="90" style="width:80px"></td></tr>
+              <tr><td>Leg 2 (RR)</td><td><input type="number" class="form-input" value="-150" style="width:80px"></td><td><input type="number" class="form-input" value="120" style="width:80px"></td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="135" style="width:80px"></td></tr>
+              <tr><td>Leg 3 (RL)</td><td><input type="number" class="form-input" value="-150" style="width:80px"></td><td><input type="number" class="form-input" value="-120" style="width:80px"></td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="225" style="width:80px"></td></tr>
+              <tr><td>Leg 4 (ML)</td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="-150" style="width:80px"></td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="270" style="width:80px"></td></tr>
+              <tr><td>Leg 5 (FL)</td><td><input type="number" class="form-input" value="150" style="width:80px"></td><td><input type="number" class="form-input" value="-120" style="width:80px"></td><td><input type="number" class="form-input" value="0" style="width:80px"></td><td><input type="number" class="form-input" value="315" style="width:80px"></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Leg Kinematics Tab -->
+      <div class="tab-content" id="tab-geo-legs">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Segment Lengths</span>
+            <div class="card-actions">
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                <input type="checkbox" checked id="allLegsIdentical"> All Legs Identical
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Coxa Length</span>
+                <span class="slider-value" id="coxaLengthValue">40 mm</span>
+              </div>
+              <input type="range" class="slider" id="coxaLength" min="20" max="80" value="40">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Femur Length</span>
+                <span class="slider-value" id="femurLengthValue">80 mm</span>
+              </div>
+              <input type="range" class="slider" id="femurLength" min="40" max="150" value="80">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Tibia Length</span>
+                <span class="slider-value" id="tibiaLengthValue">100 mm</span>
+              </div>
+              <input type="range" class="slider" id="tibiaLength" min="40" max="150" value="100">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Axis Orientation</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Coxa Axis</label>
+              <select class="form-select">
+                <option value="z">Yaw around Z (vertical)</option>
+                <option value="y">Yaw around Y</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Femur Axis</label>
+              <select class="form-select">
+                <option value="y">Pitch around Y</option>
+                <option value="x">Pitch around X</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tibia Axis</label>
+              <select class="form-select">
+                <option value="y">Pitch around Y</option>
+                <option value="x">Pitch around X</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reference Frames Tab -->
+      <div class="tab-content" id="tab-geo-frames">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Coordinate Frames</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Frame</th>
+                <th>Parent</th>
+                <th>Position (x, y, z)</th>
+                <th>Orientation (R, P, Y)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>world</strong></td>
+                <td>-</td>
+                <td>0, 0, 0</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td><span class="tag tag-primary">Fixed</span></td>
+              </tr>
+              <tr>
+                <td><strong>body</strong></td>
+                <td>world</td>
+                <td>0, 0, 120</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td><button class="btn btn-secondary btn-sm">Edit</button></td>
+              </tr>
+              <tr>
+                <td><strong>camera_front</strong></td>
+                <td>body</td>
+                <td>100, 0, 50</td>
+                <td>0&deg;, -10&deg;, 0&deg;</td>
+                <td><button class="btn btn-secondary btn-sm">Edit</button></td>
+              </tr>
+              <tr>
+                <td><strong>camera_rear</strong></td>
+                <td>body</td>
+                <td>-100, 0, 50</td>
+                <td>0&deg;, -10&deg;, 180&deg;</td>
+                <td><button class="btn btn-secondary btn-sm">Edit</button></td>
+              </tr>
+              <tr>
+                <td><strong>imu</strong></td>
+                <td>body</td>
+                <td>0, 0, 10</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td><button class="btn btn-secondary btn-sm">Edit</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top: 16px;">
+            <button class="btn btn-secondary btn-sm">+ Add Frame</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Servos & Calibration ===== -->
+    <section class="section" id="section-servos">
+      <div class="section-header">
+        <h1 class="section-title">Servos & Calibration</h1>
+        <p class="section-desc">Hardware-level servo configuration: channel mapping, limits, offsets, and calibration wizard.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="servo-mapping">Servo Mapping</button>
+        <button class="tab" data-tab="servo-limits">Limits & Tuning</button>
+        <button class="tab" data-tab="servo-wizard">Calibration Wizard</button>
+      </div>
+
+      <!-- Servo Mapping Tab -->
+      <div class="tab-content active" id="tab-servo-mapping">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Channel Assignment</span>
+            <div class="card-actions">
+              <button class="btn btn-secondary btn-sm">Auto-fill Template</button>
+              <button class="btn btn-warning btn-sm">Highlight All</button>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Logical Name</th>
+                <th>Bus/Channel</th>
+                <th>Leg</th>
+                <th>Joint</th>
+                <th>Direction</th>
+                <th>Neutral (&micro;s)</th>
+                <th>Test</th>
+              </tr>
+            </thead>
+            <tbody id="servoMappingTable">
+              <!-- Generated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Servo Limits Tab -->
+      <div class="tab-content" id="tab-servo-limits">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Joint Limits & Tuning</span>
+            <div class="card-actions">
+              <button class="btn btn-secondary btn-sm">Apply to All</button>
+            </div>
+          </div>
+
+          <div class="hexapod-diagram" style="margin-bottom: 20px;">
+            <div style="text-align: center; font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">Click a leg to configure its limits</div>
+            <svg class="hexapod-svg" viewBox="0 0 200 140" id="servoLegDiagram">
+              <ellipse cx="100" cy="70" rx="35" ry="25" fill="#333" stroke="#555" stroke-width="2"/>
+              <text x="100" y="74" text-anchor="middle" fill="#666" font-size="8" font-weight="bold">BODY</text>
+              <polygon points="100,35 95,45 105,45" fill="var(--accent)" opacity="0.6"/>
+              <g class="leg-btn" data-leg="0"><line x1="130" y1="50" x2="165" y2="25" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/><circle cx="165" cy="25" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/><text x="175" y="28" fill="#888" font-size="8">0</text></g>
+              <g class="leg-btn" data-leg="1"><line x1="135" y1="70" x2="180" y2="70" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/><circle cx="180" cy="70" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/><text x="188" y="73" fill="#888" font-size="8">1</text></g>
+              <g class="leg-btn" data-leg="2"><line x1="130" y1="90" x2="165" y2="115" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/><circle cx="165" cy="115" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/><text x="175" y="118" fill="#888" font-size="8">2</text></g>
+              <g class="leg-btn" data-leg="3"><line x1="70" y1="90" x2="35" y2="115" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/><circle cx="35" cy="115" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/><text x="20" y="118" fill="#888" font-size="8">3</text></g>
+              <g class="leg-btn" data-leg="4"><line x1="65" y1="70" x2="20" y2="70" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/><circle cx="20" cy="70" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/><text x="5" y="73" fill="#888" font-size="8">4</text></g>
+              <g class="leg-btn" data-leg="5"><line x1="70" y1="50" x2="35" y2="25" stroke="#aa6633" stroke-width="4" stroke-linecap="round"/><circle cx="35" cy="25" r="8" fill="#44dd88" stroke="#333" stroke-width="2"/><text x="20" y="28" fill="#888" font-size="8">5</text></g>
+            </svg>
+          </div>
+
+          <div id="servoLimitsPanel" style="display: none;">
+            <h4 style="color: var(--accent); margin-bottom: 16px;" id="servoLimitsTitle">Leg 0 - Front Right</h4>
+            <div class="form-row">
+              <div>
+                <h5 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">COXA</h5>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Hard Min</span><span class="slider-value">-60&deg;</span></div>
+                  <input type="range" class="slider" min="-90" max="0" value="-60">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Hard Max</span><span class="slider-value">60&deg;</span></div>
+                  <input type="range" class="slider" min="0" max="90" value="60">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Neutral</span><span class="slider-value">0&deg;</span></div>
+                  <input type="range" class="slider" min="-30" max="30" value="0">
+                </div>
+              </div>
+              <div>
+                <h5 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">FEMUR</h5>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Hard Min</span><span class="slider-value">-30&deg;</span></div>
+                  <input type="range" class="slider" min="-90" max="0" value="-30">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Hard Max</span><span class="slider-value">90&deg;</span></div>
+                  <input type="range" class="slider" min="0" max="120" value="90">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Neutral</span><span class="slider-value">45&deg;</span></div>
+                  <input type="range" class="slider" min="0" max="90" value="45">
+                </div>
+              </div>
+              <div>
+                <h5 style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">TIBIA</h5>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Hard Min</span><span class="slider-value">-120&deg;</span></div>
+                  <input type="range" class="slider" min="-150" max="0" value="-120">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Hard Max</span><span class="slider-value">0&deg;</span></div>
+                  <input type="range" class="slider" min="-30" max="30" value="0">
+                </div>
+                <div class="slider-group">
+                  <div class="slider-header"><span class="slider-label">Neutral</span><span class="slider-value">-90&deg;</span></div>
+                  <input type="range" class="slider" min="-120" max="0" value="-90">
+                </div>
+              </div>
+            </div>
+            <div style="margin-top: 16px; display: flex; gap: 8px;">
+              <button class="btn btn-primary btn-sm">Test Sweep</button>
+              <button class="btn btn-secondary btn-sm">Reset to Defaults</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calibration Wizard Tab -->
+      <div class="tab-content" id="tab-servo-wizard">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Calibration Wizard</span>
+          </div>
+          <div style="padding: 20px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 16px;">&#x1F527;</div>
+            <h3 style="margin-bottom: 8px;">Step-by-Step Calibration</h3>
+            <p style="color: var(--text-muted); margin-bottom: 24px;">
+              This wizard will guide you through calibrating each servo for optimal performance.
+            </p>
+            <div style="background: var(--control-bg); padding: 16px; border-radius: 8px; text-align: left; max-width: 500px; margin: 0 auto;">
+              <ol style="color: var(--text-muted); font-size: 13px; line-height: 2; padding-left: 20px;">
+                <li>Place hexapod on a calibration stand</li>
+                <li>Move all joints to calibration pose (neutral angles)</li>
+                <li>For each leg, align to visually "straight" position</li>
+                <li>Press "Set as neutral" to compute and save offset</li>
+              </ol>
+            </div>
+            <button class="btn btn-primary" style="margin-top: 24px;">Start Calibration Wizard</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Body Posture & Poses ===== -->
+    <section class="section" id="section-posture">
+      <div class="section-header">
+        <h1 class="section-title">Body Posture & Poses</h1>
+        <p class="section-desc">Define static poses and default posture parameters for standing, resting, and special positions.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="posture-default">Default Stance</button>
+        <button class="tab" data-tab="posture-poses">Custom Poses</button>
+      </div>
+
+      <!-- Default Stance Tab -->
+      <div class="tab-content active" id="tab-posture-default">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Standing Parameters</span>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Body Height</span>
+                <span class="slider-value" id="stanceHeightValue">120 mm</span>
+              </div>
+              <input type="range" class="slider" id="stanceHeight" min="50" max="200" value="120">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Leg Spread</span>
+                <span class="slider-value" id="legSpreadValue">100%</span>
+              </div>
+              <input type="range" class="slider" id="legSpread" min="50" max="150" value="100">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Roll</span>
+                <span class="slider-value" id="stanceRollValue">0&deg;</span>
+              </div>
+              <input type="range" class="slider" id="stanceRoll" min="-30" max="30" value="0">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Pitch</span>
+                <span class="slider-value" id="stancePitchValue">0&deg;</span>
+              </div>
+              <input type="range" class="slider" id="stancePitch" min="-30" max="30" value="0">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Yaw</span>
+                <span class="slider-value" id="stanceYawValue">0&deg;</span>
+              </div>
+              <input type="range" class="slider" id="stanceYaw" min="-45" max="45" value="0">
+            </div>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">Keep body level (IMU)</div>
+              <div class="toggle-desc">Automatically compensate for terrain tilt using IMU data</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Custom Poses Tab -->
+      <div class="tab-content" id="tab-posture-poses">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Saved Poses</span>
+            <button class="btn btn-primary btn-sm">+ New Pose</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Height</th>
+                <th>Orientation</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Default Stance</strong></td>
+                <td><span class="tag tag-success">Operation</span></td>
+                <td>120mm</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Low Stance</strong></td>
+                <td><span class="tag tag-success">Operation</span></td>
+                <td>80mm</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>High Stance</strong></td>
+                <td><span class="tag tag-success">Operation</span></td>
+                <td>160mm</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Rest Pose</strong></td>
+                <td><span class="tag tag-primary">Rest</span></td>
+                <td>40mm</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Power Off</strong></td>
+                <td><span class="tag tag-warning">Rest</span></td>
+                <td>0mm</td>
+                <td>0&deg;, 0&deg;, 0&deg;</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Record Current Pose</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Capture the robot's current joint states and save as a new pose.
+          </p>
+          <div class="form-row" style="align-items: flex-end;">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Pose Name</label>
+              <input type="text" class="form-input" placeholder="Enter pose name...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select class="form-select">
+                <option>Operation</option>
+                <option>Rest</option>
+                <option>Debug</option>
+              </select>
+            </div>
+            <button class="btn btn-success">Record Pose</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Gaits & Motion ===== -->
+    <section class="section" id="section-gaits">
+      <div class="section-header">
+        <h1 class="section-title">Gaits & Motion</h1>
+        <p class="section-desc">Configure walking gaits, motion parameters, and movement smoothing.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="gait-templates">Gait Templates</button>
+        <button class="tab" data-tab="gait-params">Gait Parameters</button>
+        <button class="tab" data-tab="gait-smoothing">Motion Smoothing</button>
+      </div>
+
+      <!-- Gait Templates Tab -->
+      <div class="tab-content active" id="tab-gait-templates">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Available Gaits</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Gait</th>
+                <th>Speed Range</th>
+                <th>Stability</th>
+                <th>Best For</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="radio" name="activeGait" checked></td>
+                <td><strong>Tripod</strong></td>
+                <td>Medium - Fast</td>
+                <td><span class="tag tag-warning">Medium</span></td>
+                <td>Flat terrain, speed</td>
+                <td><span class="tag tag-success">Active</span></td>
+              </tr>
+              <tr>
+                <td><input type="radio" name="activeGait"></td>
+                <td><strong>Wave</strong></td>
+                <td>Slow</td>
+                <td><span class="tag tag-success">High</span></td>
+                <td>Rough terrain, stability</td>
+                <td>-</td>
+              </tr>
+              <tr>
+                <td><input type="radio" name="activeGait"></td>
+                <td><strong>Ripple</strong></td>
+                <td>Medium</td>
+                <td><span class="tag tag-success">High</span></td>
+                <td>General purpose</td>
+                <td>-</td>
+              </tr>
+              <tr>
+                <td><input type="radio" name="activeGait"></td>
+                <td><strong>Creep</strong></td>
+                <td>Very Slow</td>
+                <td><span class="tag tag-success">Very High</span></td>
+                <td>Precision, obstacles</td>
+                <td>-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Gait Parameters Tab -->
+      <div class="tab-content" id="tab-gait-params">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Tripod Gait Parameters</span>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Stride Length</span>
+                <span class="slider-value">100 mm</span>
+              </div>
+              <input type="range" class="slider" min="30" max="150" value="100">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Step Height</span>
+                <span class="slider-value">30 mm</span>
+              </div>
+              <input type="range" class="slider" min="10" max="80" value="30">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Duty Factor</span>
+                <span class="slider-value">65%</span>
+              </div>
+              <input type="range" class="slider" min="40" max="80" value="65">
+            </div>
+          </div>
+
+          <div class="card-header" style="margin-top: 24px;">
+            <span class="card-title">Phase Offsets</span>
+          </div>
+          <div class="phase-timeline">
+            <div class="phase-node stance">L0<br><small>0&deg;</small></div>
+            <div class="phase-connector"></div>
+            <div class="phase-node swing">L1<br><small>120&deg;</small></div>
+            <div class="phase-connector"></div>
+            <div class="phase-node stance">L2<br><small>240&deg;</small></div>
+            <div class="phase-connector"></div>
+            <div class="phase-node stance">L3<br><small>0&deg;</small></div>
+            <div class="phase-connector"></div>
+            <div class="phase-node swing">L4<br><small>120&deg;</small></div>
+            <div class="phase-connector"></div>
+            <div class="phase-node stance">L5<br><small>240&deg;</small></div>
+          </div>
+          <p style="text-align: center; color: var(--text-muted); font-size: 11px; margin-top: 8px;">
+            <span style="color: var(--success);">&#9632;</span> Stance (ground contact) &nbsp;&nbsp;
+            <span style="color: var(--danger);">&#9632;</span> Swing (in air)
+          </p>
+
+          <div class="card-header" style="margin-top: 24px;">
+            <span class="card-title">Turn Behavior</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Turn Mode</label>
+              <select class="form-select">
+                <option>In-place rotation</option>
+                <option>Arc turn</option>
+                <option>Differential</option>
+              </select>
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Yaw Rate</span>
+                <span class="slider-value">60 &deg;/s</span>
+              </div>
+              <input type="range" class="slider" min="20" max="120" value="60">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Motion Smoothing Tab -->
+      <div class="tab-content" id="tab-gait-smoothing">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Acceleration Limits</span>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Linear Acceleration</span>
+                <span class="slider-value">0.5 m/s&sup2;</span>
+              </div>
+              <input type="range" class="slider" min="0.1" max="2" step="0.1" value="0.5">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Angular Acceleration</span>
+                <span class="slider-value">90 &deg;/s&sup2;</span>
+              </div>
+              <input type="range" class="slider" min="30" max="180" value="90">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Command Smoothing</span>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">Smooth Joystick Input</div>
+              <div class="toggle-desc">Apply exponential smoothing to control inputs</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="slider-group" style="margin-top: 16px;">
+            <div class="slider-header">
+              <span class="slider-label">Smoothing Factor</span>
+              <span class="slider-value">0.15</span>
+            </div>
+            <input type="range" class="slider" min="0.05" max="0.5" step="0.01" value="0.15">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Sensors & Cameras ===== -->
+    <section class="section" id="section-sensors">
+      <div class="section-header">
+        <h1 class="section-title">Sensors & Cameras</h1>
+        <p class="section-desc">Configure cameras, IMU, foot contact sensors, and other sensing hardware.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="sensor-cameras">Cameras</button>
+        <button class="tab" data-tab="sensor-imu">IMU</button>
+        <button class="tab" data-tab="sensor-other">Other Sensors</button>
+      </div>
+
+      <!-- Cameras Tab -->
+      <div class="tab-content active" id="tab-sensor-cameras">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Camera Configuration</span>
+            <button class="btn btn-primary btn-sm">+ Add Camera</button>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Interface</th>
+                <th>Role</th>
+                <th>Resolution</th>
+                <th>FPS</th>
+                <th>Stream</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>front_cam</strong></td>
+                <td>/dev/video0</td>
+                <td><span class="tag tag-success">Main Navigation</span></td>
+                <td>1280x720</td>
+                <td>30</td>
+                <td>/api/stream/front</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>rear_cam</strong></td>
+                <td>/dev/video1</td>
+                <td><span class="tag tag-primary">Rear View</span></td>
+                <td>640x480</td>
+                <td>15</td>
+                <td>/api/stream/rear</td>
+                <td>
+                  <button class="btn btn-secondary btn-sm">Edit</button>
+                  <button class="btn btn-secondary btn-sm">Preview</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Camera Transform: front_cam</span>
+          </div>
+          <div class="transform-editor">
+            <div class="transform-axis">
+              <div class="transform-axis-label">Position X</div>
+              <input type="number" class="transform-axis-input" value="100">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Position Y</div>
+              <input type="number" class="transform-axis-input" value="0">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Position Z</div>
+              <input type="number" class="transform-axis-input" value="50">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Roll</div>
+              <input type="number" class="transform-axis-input" value="0">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Pitch</div>
+              <input type="number" class="transform-axis-input" value="-10">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Yaw</div>
+              <input type="number" class="transform-axis-input" value="0">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IMU Tab -->
+      <div class="tab-content" id="tab-sensor-imu">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">IMU Configuration</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">IMU Device</label>
+              <select class="form-select">
+                <option>MPU6050 (I2C)</option>
+                <option>BNO055 (I2C)</option>
+                <option>ICM20948 (SPI)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Filter Type</label>
+              <select class="form-select">
+                <option>Complementary Filter</option>
+                <option>Extended Kalman Filter</option>
+                <option>Madgwick Filter</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-header" style="margin-top: 16px;">
+            <span class="card-title">Mounting Orientation</span>
+          </div>
+          <div class="transform-editor">
+            <div class="transform-axis">
+              <div class="transform-axis-label">Roll Offset</div>
+              <input type="number" class="transform-axis-input" value="0">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Pitch Offset</div>
+              <input type="number" class="transform-axis-input" value="0">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Yaw Offset</div>
+              <input type="number" class="transform-axis-input" value="0">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Other Sensors Tab -->
+      <div class="tab-content" id="tab-sensor-other">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Foot Contact Sensors</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Leg</th>
+                <th>Enabled</th>
+                <th>Type</th>
+                <th>Threshold</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Leg 0 (FR)</td>
+                <td><input type="checkbox" checked></td>
+                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option><option>Force Sensor</option><option>Switch</option></select></td>
+                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
+              </tr>
+              <tr>
+                <td>Leg 1 (MR)</td>
+                <td><input type="checkbox" checked></td>
+                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
+                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
+              </tr>
+              <tr>
+                <td>Leg 2 (RR)</td>
+                <td><input type="checkbox" checked></td>
+                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
+                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
+              </tr>
+              <tr>
+                <td>Leg 3 (RL)</td>
+                <td><input type="checkbox" checked></td>
+                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
+                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
+              </tr>
+              <tr>
+                <td>Leg 4 (ML)</td>
+                <td><input type="checkbox" checked></td>
+                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
+                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
+              </tr>
+              <tr>
+                <td>Leg 5 (FL)</td>
+                <td><input type="checkbox" checked></td>
+                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
+                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Control & Input ===== -->
+    <section class="section" id="section-control">
+      <div class="section-header">
+        <h1 class="section-title">Control & Input Mapping</h1>
+        <p class="section-desc">Map external inputs (gamepad, keyboard, API) to robot motion commands.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="control-modes">Control Modes</button>
+        <button class="tab" data-tab="control-gamepad">Gamepad</button>
+        <button class="tab" data-tab="control-keyboard">Keyboard & API</button>
+      </div>
+
+      <!-- Control Modes Tab -->
+      <div class="tab-content active" id="tab-control-modes">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Available Modes</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Mode</th>
+                <th>Description</th>
+                <th>Priority</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="radio" name="controlMode" checked></td>
+                <td><strong>Manual Joystick</strong></td>
+                <td>Direct control via gamepad or virtual joystick</td>
+                <td><span class="tag tag-danger">High</span></td>
+              </tr>
+              <tr>
+                <td><input type="radio" name="controlMode"></td>
+                <td><strong>Keyboard</strong></td>
+                <td>WASD + arrow key control</td>
+                <td><span class="tag tag-danger">High</span></td>
+              </tr>
+              <tr>
+                <td><input type="radio" name="controlMode"></td>
+                <td><strong>Autonomous Navigation</strong></td>
+                <td>AI-driven movement with obstacle avoidance</td>
+                <td><span class="tag tag-warning">Medium</span></td>
+              </tr>
+              <tr>
+                <td><input type="radio" name="controlMode"></td>
+                <td><strong>Scripted Motion</strong></td>
+                <td>Pre-programmed movement sequences</td>
+                <td><span class="tag tag-primary">Low</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="form-group" style="margin-top: 16px;">
+            <label class="form-label">Default Mode at Startup</label>
+            <select class="form-select" style="max-width: 300px;">
+              <option>Manual Joystick</option>
+              <option>Keyboard</option>
+              <option>Autonomous Navigation</option>
+              <option>Scripted Motion</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gamepad Tab -->
+      <div class="tab-content" id="tab-control-gamepad">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Gamepad Mapping</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Connected Controller</label>
+              <select class="form-select">
+                <option>Xbox Controller (Detected)</option>
+                <option>PlayStation Controller</option>
+                <option>Generic Gamepad</option>
+              </select>
+            </div>
+          </div>
+
+          <h4 style="color: var(--text-muted); font-size: 12px; margin: 16px 0 12px;">Stick Mapping</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Left Stick X</label>
+              <select class="form-select"><option>Strafe (left/right)</option><option>Yaw</option><option>Disabled</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Left Stick Y</label>
+              <select class="form-select"><option>Forward/Back</option><option>Body Pitch</option><option>Disabled</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Right Stick X</label>
+              <select class="form-select"><option>Yaw</option><option>Strafe</option><option>Disabled</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Right Stick Y</label>
+              <select class="form-select"><option>Body Height</option><option>Body Pitch</option><option>Disabled</option></select>
+            </div>
+          </div>
+
+          <h4 style="color: var(--text-muted); font-size: 12px; margin: 16px 0 12px;">Button Mapping</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">A Button</label>
+              <select class="form-select"><option>Toggle Gait</option><option>Start/Stop</option><option>Disabled</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">B Button</label>
+              <select class="form-select"><option>Crouch/Stand</option><option>E-Stop</option><option>Disabled</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">X Button</label>
+              <select class="form-select"><option>Camera Switch</option><option>Toggle Gait</option><option>Disabled</option></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Y Button</label>
+              <select class="form-select"><option>Predefined Pose</option><option>Record Pose</option><option>Disabled</option></select>
+            </div>
+          </div>
+
+          <h4 style="color: var(--text-muted); font-size: 12px; margin: 16px 0 12px;">Input Tuning</h4>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Deadzone</span>
+                <span class="slider-value">10%</span>
+              </div>
+              <input type="range" class="slider" min="0" max="30" value="10">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Exponential Curve</span>
+                <span class="slider-value">1.5</span>
+              </div>
+              <input type="range" class="slider" min="1" max="3" step="0.1" value="1.5">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Keyboard & API Tab -->
+      <div class="tab-content" id="tab-control-keyboard">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Keyboard Mapping</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div class="key-binding"><span class="key-action">Move Forward</span><div class="key-combo"><span class="key">W</span><span class="key">&uarr;</span></div></div>
+            <div class="key-binding"><span class="key-action">Move Backward</span><div class="key-combo"><span class="key">S</span><span class="key">&darr;</span></div></div>
+            <div class="key-binding"><span class="key-action">Strafe Left</span><div class="key-combo"><span class="key">A</span><span class="key">&larr;</span></div></div>
+            <div class="key-binding"><span class="key-action">Strafe Right</span><div class="key-combo"><span class="key">D</span><span class="key">&rarr;</span></div></div>
+            <div class="key-binding"><span class="key-action">Rotate Left</span><div class="key-combo"><span class="key">Q</span></div></div>
+            <div class="key-binding"><span class="key-action">Rotate Right</span><div class="key-combo"><span class="key">E</span></div></div>
+            <div class="key-binding"><span class="key-action">Start/Stop</span><div class="key-combo"><span class="key">Space</span></div></div>
+            <div class="key-binding"><span class="key-action">Emergency Stop</span><div class="key-combo"><span class="key">Esc</span></div></div>
+            <div class="key-binding"><span class="key-action">Gait: Tripod</span><div class="key-combo"><span class="key">1</span></div></div>
+            <div class="key-binding"><span class="key-action">Gait: Wave</span><div class="key-combo"><span class="key">2</span></div></div>
+            <div class="key-binding"><span class="key-action">Gait: Ripple</span><div class="key-combo"><span class="key">3</span></div></div>
+            <div class="key-binding"><span class="key-action">Gait: Creep</span><div class="key-combo"><span class="key">4</span></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">API Endpoints</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Method</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/api/cmd/vel</code></td><td>POST</td><td>Set velocity command (vx, vy, vyaw)</td></tr>
+              <tr><td><code>/api/cmd/pose</code></td><td>POST</td><td>Set body pose (height, roll, pitch, yaw)</td></tr>
+              <tr><td><code>/api/config/apply</code></td><td>POST</td><td>Apply configuration changes</td></tr>
+              <tr><td><code>/api/gait/set</code></td><td>POST</td><td>Change active gait</td></tr>
+              <tr><td><code>/api/estop</code></td><td>POST</td><td>Trigger emergency stop</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Safety & Limits ===== -->
+    <section class="section" id="section-safety">
+      <div class="section-header">
+        <h1 class="section-title">Safety & Limits</h1>
+        <p class="section-desc">Configure safety limits, emergency stop behavior, and fault handling to protect your hardware.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="safety-limits">Joint & Speed Limits</button>
+        <button class="tab" data-tab="safety-workspace">Workspace & Terrain</button>
+        <button class="tab" data-tab="safety-estop">E-Stop & Faults</button>
+      </div>
+
+      <!-- Joint & Speed Limits Tab -->
+      <div class="tab-content active" id="tab-safety-limits">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Global Motion Limits</span>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Body Translation Speed</span>
+                <span class="slider-value">0.3 m/s</span>
+              </div>
+              <input type="range" class="slider" min="0.1" max="1" step="0.05" value="0.3">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Rotation Speed</span>
+                <span class="slider-value">60 &deg;/s</span>
+              </div>
+              <input type="range" class="slider" min="20" max="120" value="60">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Joint Speed</span>
+                <span class="slider-value">300 &deg;/s</span>
+              </div>
+              <input type="range" class="slider" min="60" max="600" value="300">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Temperature Limit</span>
+                <span class="slider-value">70 &deg;C</span>
+              </div>
+              <input type="range" class="slider" min="40" max="85" value="70">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workspace & Terrain Tab -->
+      <div class="tab-content" id="tab-safety-workspace">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Terrain Safety</span>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Body Tilt (Auto-Stop)</span>
+                <span class="slider-value">30&deg;</span>
+              </div>
+              <input type="range" class="slider" min="10" max="45" value="30">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Body Tilt (Auto-Correct)</span>
+                <span class="slider-value">15&deg;</span>
+              </div>
+              <input type="range" class="slider" min="5" max="25" value="15">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Max Step Height</span>
+                <span class="slider-value">50 mm</span>
+              </div>
+              <input type="range" class="slider" min="20" max="100" value="50">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Min Ground Clearance</span>
+                <span class="slider-value">30 mm</span>
+              </div>
+              <input type="range" class="slider" min="10" max="80" value="30">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- E-Stop & Faults Tab -->
+      <div class="tab-content" id="tab-safety-estop">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Emergency Stop Behavior</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">E-Stop Action</label>
+            <select class="form-select" style="max-width: 400px;">
+              <option value="disable_torque">Disable All Torque (servos go limp)</option>
+              <option value="hold_pose">Hold Current Pose</option>
+              <option value="safe_collapse">Gently Collapse to Rest Pose</option>
+              <option value="cut_power">Cut Power Completely</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Auto E-Stop Triggers</span>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">Loss of Communication</div>
+              <div class="toggle-desc">Trigger E-Stop if connection lost for &gt;500ms</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">Servo Error/Overheating</div>
+              <div class="toggle-desc">Trigger E-Stop on servo fault or temperature &gt;limit</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">IMU Roll/Pitch Exceeded</div>
+              <div class="toggle-desc">Trigger E-Stop if body tilt exceeds max limit</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">Low Battery Voltage</div>
+              <div class="toggle-desc">Trigger E-Stop if voltage drops below 9.5V</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Fault Recovery</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">After Fault Clear</label>
+            <select class="form-select" style="max-width: 400px;">
+              <option value="stay_stopped">Stay Stopped Until Manual Reset</option>
+              <option value="return_safe">Attempt Return to Safe Pose</option>
+              <option value="auto_resume">Auto Resume Previous State</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: System & Network ===== -->
+    <section class="section" id="section-system">
+      <div class="section-header">
+        <h1 class="section-title">System & Networking</h1>
+        <p class="section-desc">Configure network settings, system parameters, and view firmware information.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="sys-network">Network</button>
+        <button class="tab" data-tab="sys-time">Time & Sync</button>
+        <button class="tab" data-tab="sys-firmware">Firmware</button>
+      </div>
+
+      <!-- Network Tab -->
+      <div class="tab-content active" id="tab-sys-network">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Network Configuration</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Hostname</label>
+              <input type="text" class="form-input" value="hexapod-01">
+            </div>
+            <div class="form-group">
+              <label class="form-label">IP Address</label>
+              <input type="text" class="form-input" value="192.168.1.100" disabled>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">IP Mode</label>
+              <select class="form-select">
+                <option>DHCP</option>
+                <option>Static</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Web UI Port</label>
+              <input type="number" class="form-input" value="8000">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Authentication</span>
+          </div>
+          <div class="toggle-group">
+            <div>
+              <div class="toggle-label">Require Authentication</div>
+              <div class="toggle-desc">Password protect web interface and API</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="form-row" style="margin-top: 16px;">
+            <div class="form-group">
+              <label class="form-label">API Token</label>
+              <input type="text" class="form-input" value="••••••••••••••••" style="font-family: monospace;">
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+              <button class="btn btn-secondary btn-sm">Regenerate Token</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time & Sync Tab -->
+      <div class="tab-content" id="tab-sys-time">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Time Configuration</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Timezone</label>
+              <select class="form-select">
+                <option>UTC</option>
+                <option>America/Los_Angeles</option>
+                <option>America/New_York</option>
+                <option>Europe/London</option>
+                <option>Europe/Berlin</option>
+                <option>Asia/Tokyo</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Current Time</label>
+              <input type="text" class="form-input" value="2025-12-05 10:30:45" disabled>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">NTP Servers</label>
+            <input type="text" class="form-input" value="pool.ntp.org, time.google.com">
+          </div>
+        </div>
+      </div>
+
+      <!-- Firmware Tab -->
+      <div class="tab-content" id="tab-sys-firmware">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Version Information</span>
+          </div>
+          <table class="data-table">
+            <tbody>
+              <tr><td><strong>Firmware Version</strong></td><td>1.2.0</td></tr>
+              <tr><td><strong>Config Schema</strong></td><td>v3</td></tr>
+              <tr><td><strong>Servo Driver</strong></td><td>PCA9685 (v2.1)</td></tr>
+              <tr><td><strong>Python Runtime</strong></td><td>3.11.5</td></tr>
+              <tr><td><strong>Build Date</strong></td><td>2025-12-01</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Updates</span>
+          </div>
+          <p style="color: var(--text-muted); margin-bottom: 16px;">Check for firmware and configuration updates.</p>
+          <button class="btn btn-primary">Check for Updates</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SECTION: Logging & Diagnostics ===== -->
+    <section class="section" id="section-logging">
+      <div class="section-header">
+        <h1 class="section-title">Logging & Diagnostics</h1>
+        <p class="section-desc">Configure logging levels, view live telemetry, and run self-test routines.</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="log-levels">Logging Levels</button>
+        <button class="tab" data-tab="log-telemetry">Live Telemetry</button>
+        <button class="tab" data-tab="log-selftest">Self-Test</button>
+      </div>
+
+      <!-- Logging Levels Tab -->
+      <div class="tab-content active" id="tab-log-levels">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Per-Channel Log Levels</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Level</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Kinematics & IK</td>
+                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option selected>INFO</option><option>DEBUG</option></select></td>
+                <td>Inverse kinematics calculations and leg positioning</td>
+              </tr>
+              <tr>
+                <td>Servo Commands</td>
+                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option>INFO</option><option selected>DEBUG</option></select></td>
+                <td>Servo angle commands and feedback</td>
+              </tr>
+              <tr>
+                <td>Sensors (IMU, Cameras)</td>
+                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option selected>INFO</option><option>DEBUG</option></select></td>
+                <td>Sensor readings and processing</td>
+              </tr>
+              <tr>
+                <td>Gait Planner</td>
+                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option selected>INFO</option><option>DEBUG</option></select></td>
+                <td>Gait state machine and foot placement</td>
+              </tr>
+              <tr>
+                <td>Network/API</td>
+                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option selected>WARN</option><option>INFO</option><option>DEBUG</option></select></td>
+                <td>WebSocket, REST API, and network events</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live Telemetry Tab -->
+      <div class="tab-content" id="tab-log-telemetry">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Real-Time Status</span>
+            <div class="card-actions">
+              <button class="btn btn-success btn-sm" id="recordBtn">Record Session</button>
+              <button class="btn btn-secondary btn-sm">Download Logs</button>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div>
+              <h4 style="color: var(--text-muted); font-size: 11px; margin-bottom: 12px;">JOINT ANGLES</h4>
+              <div class="sparkline-container"><span class="sparkline-label">L0 Coxa</span><div class="sparkline" id="spark-l0-coxa"></div><span class="sparkline-value">12.5&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">L0 Femur</span><div class="sparkline" id="spark-l0-femur"></div><span class="sparkline-value">45.2&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">L0 Tibia</span><div class="sparkline" id="spark-l0-tibia"></div><span class="sparkline-value">-92.1&deg;</span></div>
+            </div>
+            <div>
+              <h4 style="color: var(--text-muted); font-size: 11px; margin-bottom: 12px;">BODY POSE</h4>
+              <div class="sparkline-container"><span class="sparkline-label">Roll</span><div class="sparkline" id="spark-roll"></div><span class="sparkline-value">0.3&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">Pitch</span><div class="sparkline" id="spark-pitch"></div><span class="sparkline-value">-1.2&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">Yaw</span><div class="sparkline" id="spark-yaw"></div><span class="sparkline-value">45.0&deg;</span></div>
+            </div>
+          </div>
+
+          <h4 style="color: var(--text-muted); font-size: 11px; margin-bottom: 12px;">FOOT CONTACT</h4>
+          <div style="display: flex; gap: 16px; justify-content: center; margin-bottom: 16px;">
+            <div style="text-align: center;"><div style="width: 30px; height: 30px; border-radius: 50%; background: var(--success); margin: 0 auto;"></div><div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">L0</div></div>
+            <div style="text-align: center;"><div style="width: 30px; height: 30px; border-radius: 50%; background: var(--danger); margin: 0 auto;"></div><div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">L1</div></div>
+            <div style="text-align: center;"><div style="width: 30px; height: 30px; border-radius: 50%; background: var(--success); margin: 0 auto;"></div><div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">L2</div></div>
+            <div style="text-align: center;"><div style="width: 30px; height: 30px; border-radius: 50%; background: var(--success); margin: 0 auto;"></div><div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">L3</div></div>
+            <div style="text-align: center;"><div style="width: 30px; height: 30px; border-radius: 50%; background: var(--danger); margin: 0 auto;"></div><div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">L4</div></div>
+            <div style="text-align: center;"><div style="width: 30px; height: 30px; border-radius: 50%; background: var(--success); margin: 0 auto;"></div><div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">L5</div></div>
+          </div>
+          <p style="text-align: center; color: var(--text-muted); font-size: 10px;">
+            <span style="color: var(--success);">&#9632;</span> Ground Contact &nbsp;&nbsp;
+            <span style="color: var(--danger);">&#9632;</span> In Air
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Event Log</span>
+          </div>
+          <div class="log-panel" id="eventLog">
+            <div class="log-entry"><span class="log-time">10:30:45</span><span class="log-level info">INFO</span><span class="log-message">Gait changed to tripod</span></div>
+            <div class="log-entry"><span class="log-time">10:30:42</span><span class="log-level debug">DEBUG</span><span class="log-message">Telemetry rate set to 50Hz</span></div>
+            <div class="log-entry"><span class="log-time">10:30:40</span><span class="log-level info">INFO</span><span class="log-message">WebSocket client connected</span></div>
+            <div class="log-entry"><span class="log-time">10:30:35</span><span class="log-level warn">WARN</span><span class="log-message">Battery voltage: 11.4V (low)</span></div>
+            <div class="log-entry"><span class="log-time">10:30:30</span><span class="log-level info">INFO</span><span class="log-message">System initialized successfully</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Self-Test Tab -->
+      <div class="tab-content" id="tab-log-selftest">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Self-Test Routines</span>
+          </div>
+          <p style="color: var(--text-muted); margin-bottom: 16px;">
+            Run diagnostic tests to verify hardware functionality. Place robot on a stand before running leg tests.
+          </p>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+            <button class="btn btn-secondary btn-icon">&#x1F9BF; Test Single Leg</button>
+            <button class="btn btn-secondary btn-icon">&#x1F6B6; Walk Forward 2 Steps</button>
+            <button class="btn btn-secondary btn-icon">&#x2696; Check Symmetry</button>
+            <button class="btn btn-secondary btn-icon">&#x1F4F7; Camera Test</button>
+            <button class="btn btn-secondary btn-icon">&#x1F9ED; IMU Calibration</button>
+            <button class="btn btn-secondary btn-icon">&#x1F50B; Battery Check</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Test Results</span>
+          </div>
+          <div class="log-panel">
+            <div class="log-entry"><span class="log-time">10:28:15</span><span class="log-level info">INFO</span><span class="log-message">Battery check: 11.4V (83%)</span></div>
+            <div class="log-entry"><span class="log-time">10:28:10</span><span class="log-level info">INFO</span><span class="log-message">IMU calibration complete - offset applied</span></div>
+            <div class="log-entry"><span class="log-time">10:28:05</span><span class="log-level info">INFO</span><span class="log-message">Camera test: front_cam OK, rear_cam OK</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <aside class="right-panel">
+    <div class="preview-container">
+      <canvas class="preview-canvas" id="previewCanvas"></canvas>
+      <div class="preview-controls">
+        <button class="preview-btn active" data-view="iso">Iso</button>
+        <button class="preview-btn" data-view="front">Front</button>
+        <button class="preview-btn" data-view="side">Side</button>
+        <button class="preview-btn" data-view="top">Top</button>
+      </div>
+    </div>
+    <div class="status-panel">
+      <div class="status-title">Live Status</div>
+      <div class="status-grid">
+        <div class="status-item">
+          <div class="status-item-label">Body Height</div>
+          <div class="status-item-value" id="liveHeight">120 mm</div>
+        </div>
+        <div class="status-item">
+          <div class="status-item-label">Speed</div>
+          <div class="status-item-value" id="liveSpeed">0.0 m/s</div>
+        </div>
+        <div class="status-item">
+          <div class="status-item-label">Roll</div>
+          <div class="status-item-value" id="liveRoll">0.3&deg;</div>
+        </div>
+        <div class="status-item">
+          <div class="status-item-label">Pitch</div>
+          <div class="status-item-value" id="livePitch">-1.2&deg;</div>
+        </div>
+        <div class="status-item">
+          <div class="status-item-label">Temperature</div>
+          <div class="status-item-value" id="liveTemp">42&deg;C</div>
+        </div>
+        <div class="status-item">
+          <div class="status-item-label">Battery</div>
+          <div class="status-item-value" id="liveBattery">11.4V</div>
+        </div>
+      </div>
+      <div class="test-actions">
+        <button class="test-btn" id="testStand">Stand</button>
+        <button class="test-btn" id="testCrouch">Crouch</button>
+        <button class="test-btn" id="testWalk">Walk Test</button>
+        <button class="test-btn" id="testReset">Reset Pose</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== SCRIPTS ===== -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+  <script>
+    // ========== Navigation ==========
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        // Update nav
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+
+        // Show section
+        const sectionId = 'section-' + item.dataset.section;
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(sectionId)?.classList.add('active');
+      });
+    });
+
+    // ========== Tabs ==========
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const parent = tab.closest('.section') || document;
+        const tabGroup = tab.closest('.tabs');
+
+        // Update tab buttons
+        tabGroup.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        // Show tab content
+        const tabId = 'tab-' + tab.dataset.tab;
+        parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        parent.querySelector('#' + tabId)?.classList.add('active');
+      });
+    });
+
+    // ========== Sliders ==========
+    document.querySelectorAll('.slider-group').forEach(group => {
+      const slider = group.querySelector('.slider');
+      const valueEl = group.querySelector('.slider-value');
+      if (slider && valueEl) {
+        slider.addEventListener('input', () => {
+          const val = slider.value;
+          const suffix = valueEl.textContent.replace(/[\d.-]+/, '');
+          valueEl.textContent = val + suffix;
+        });
+      }
+    });
+
+    // ========== Servo Mapping Table ==========
+    const servoMappingTable = document.getElementById('servoMappingTable');
+    if (servoMappingTable) {
+      const legNames = ['FR', 'MR', 'RR', 'RL', 'ML', 'FL'];
+      const jointNames = ['coxa', 'femur', 'tibia'];
+
+      for (let leg = 0; leg < 6; leg++) {
+        for (let joint = 0; joint < 3; joint++) {
+          const channel = leg * 3 + joint;
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><strong>leg_${leg}_${jointNames[joint]}</strong></td>
+            <td><input type="number" class="form-input" value="${channel}" style="width:60px"></td>
+            <td>${leg} (${legNames[leg]})</td>
+            <td>${jointNames[joint]}</td>
+            <td><select class="form-select" style="width:100px"><option>Normal</option><option>Reversed</option></select></td>
+            <td><input type="number" class="form-input" value="1500" style="width:70px"></td>
+            <td><button class="btn btn-secondary btn-sm">Test</button></td>
+          `;
+          servoMappingTable.appendChild(row);
+        }
+      }
+    }
+
+    // ========== Servo Limits Diagram ==========
+    document.querySelectorAll('#servoLegDiagram .leg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const legIndex = parseInt(btn.dataset.leg);
+        const legNames = ['Front Right', 'Mid Right', 'Rear Right', 'Rear Left', 'Mid Left', 'Front Left'];
+
+        document.querySelectorAll('#servoLegDiagram .leg-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+
+        document.getElementById('servoLimitsPanel').style.display = 'block';
+        document.getElementById('servoLimitsTitle').textContent = `Leg ${legIndex} - ${legNames[legIndex]}`;
+      });
+    });
+
+    // ========== Preview Controls ==========
+    document.querySelectorAll('.preview-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // Would update 3D camera view here
+      });
+    });
+
+    // ========== E-Stop ==========
+    document.getElementById('estopBtn')?.addEventListener('click', () => {
+      alert('Emergency Stop Triggered!');
+    });
+
+    // ========== 3D Preview (Basic Three.js setup) ==========
+    const previewCanvas = document.getElementById('previewCanvas');
+    if (previewCanvas) {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0f18);
+
+      const camera = new THREE.PerspectiveCamera(45, previewCanvas.clientWidth / previewCanvas.clientHeight, 0.1, 1000);
+      camera.position.set(300, 200, 300);
+      camera.lookAt(0, 50, 0);
+
+      const renderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true });
+      renderer.setSize(previewCanvas.clientWidth, previewCanvas.clientHeight);
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      scene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(100, 200, 100);
+      scene.add(directionalLight);
+
+      // Ground grid
+      const gridHelper = new THREE.GridHelper(400, 20, 0x1f2c46, 0x0d1727);
+      scene.add(gridHelper);
+
+      // Body (simple box for now)
+      const bodyGeometry = new THREE.BoxGeometry(100, 20, 80);
+      const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x2d3b5a });
+      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+      body.position.y = 80;
+      scene.add(body);
+
+      // Simple legs (cylinders)
+      const legMaterial = new THREE.MeshLambertMaterial({ color: 0x44dd88 });
+      const legPositions = [
+        { x: 50, z: 40, angle: 45 },
+        { x: 60, z: 0, angle: 90 },
+        { x: 50, z: -40, angle: 135 },
+        { x: -50, z: -40, angle: 225 },
+        { x: -60, z: 0, angle: 270 },
+        { x: -50, z: 40, angle: 315 }
+      ];
+
+      legPositions.forEach(pos => {
+        const legGroup = new THREE.Group();
+
+        const coxa = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 20, 8), legMaterial);
+        coxa.rotation.z = Math.PI / 2;
+        coxa.position.x = 10;
+        legGroup.add(coxa);
+
+        const femur = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 40, 8), legMaterial);
+        femur.rotation.z = Math.PI / 4;
+        femur.position.set(30, -15, 0);
+        legGroup.add(femur);
+
+        const tibia = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 50, 8), legMaterial);
+        tibia.position.set(45, -50, 0);
+        legGroup.add(tibia);
+
+        legGroup.position.set(pos.x, 80, pos.z);
+        legGroup.rotation.y = (pos.angle * Math.PI) / 180;
+        scene.add(legGroup);
+      });
+
+      // Animation loop
+      function animate() {
+        requestAnimationFrame(animate);
+        body.rotation.y += 0.002;
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      // Resize handler
+      window.addEventListener('resize', () => {
+        const container = previewCanvas.parentElement;
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+    }
+
+    // ========== WebSocket Connection (placeholder) ==========
+    let ws = null;
+    function connectWebSocket() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${location.hostname}:8000/ws`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          document.getElementById('connectionDot').classList.add('connected');
+          document.getElementById('connectionText').textContent = 'Connected';
+        };
+        ws.onclose = () => {
+          document.getElementById('connectionDot').classList.remove('connected');
+          document.getElementById('connectionText').textContent = 'Disconnected';
+          setTimeout(connectWebSocket, 2000);
+        };
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          // Update live status values
+          if (data.battery) document.getElementById('liveBattery').textContent = data.battery.toFixed(1) + 'V';
+          if (data.temperature) document.getElementById('liveTemp').textContent = data.temperature.toFixed(0) + '°C';
+          if (data.roll !== undefined) document.getElementById('liveRoll').textContent = data.roll.toFixed(1) + '°';
+          if (data.pitch !== undefined) document.getElementById('livePitch').textContent = data.pitch.toFixed(1) + '°';
+        };
+      } catch (e) {
+        console.log('WebSocket connection failed:', e);
+      }
+    }
+
+    // Initialize WebSocket connection
+    connectWebSocket();
+
+    console.log('Hexapod Configuration v2 loaded');
+  </script>
+</body>
+</html>

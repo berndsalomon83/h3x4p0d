@@ -14,7 +14,7 @@ A complete Python-based hexapod (6-legged robot) controller with:
 Requirements
 ============
 
-- **Python**: 3.9+
+- **Python**: 3.10+
 - **Poetry**: https://python-poetry.org/
 - **Hardware** (optional):
   - Raspberry Pi (4B+ recommended)
@@ -40,8 +40,10 @@ Quick Start (Development)
    ```bash
    poetry run python -m hexapod.main
    ```
-   
-   The server starts at `http://localhost:8000` or `http://<pi-ip>:8000` if on a Pi.
+
+   This starts two servers:
+   - **Main UI**: `http://localhost:8000` - 3D simulator and controls
+   - **Calibration**: `http://localhost:8001` - Servo channel mapping and testing
 
 4. **Open in a browser**:
    - Navigate to `http://localhost:8000` 
@@ -83,13 +85,18 @@ Connect PCA9685 via I2C to Raspberry Pi:
 
 ### 3. Calibrate Servos
 
-Use the interactive calibration tool to map servo channels and test angles:
+Use the web-based calibration tool at `http://localhost:8001` to:
+- Map servo channels to leg joints (leg 0-5, coxa/femur/tibia)
+- Test individual servo angles with sliders
+- Auto-assign channels for quick setup
+- Save calibration to `~/.hexapod_calibration.json`
 
+The calibration server starts automatically with the main server.
+
+For CLI-based calibration (legacy):
 ```bash
 poetry run python -c "from hexapod.calibrate import interactive_calibration; interactive_calibration()"
 ```
-
-This creates `~/.hexapod_calibration.json` with your servo mapping.
 
 ### 4. Adjust Leg Geometry
 
@@ -166,16 +173,18 @@ hexapod/
 ├── README.md                   # This file
 ├── src/hexapod/
 │   ├── __init__.py
-│   ├── main.py                 # Entry point (runs web server)
+│   ├── main.py                 # Entry point (runs both web servers)
 │   ├── config.py               # Centralized configuration manager
 │   ├── hardware.py             # Servo and sensor abstraction
 │   ├── gait.py                 # Gait engine and inverse kinematics
 │   ├── controller_bluetooth.py # Input controller (joystick/keyboard)
-│   ├── web.py                  # FastAPI server + WebSocket
-│   ├── calibrate.py            # Interactive servo calibration
+│   ├── web.py                  # Main FastAPI server + WebSocket
+│   ├── calibrate_web.py        # Web-based servo calibration server
+│   ├── calibrate.py            # CLI servo calibration (legacy)
 │   └── test_runner.py          # Unit tests
 ├── web_static/
-│   ├── index.html              # Web UI (HTML/CSS)
+│   ├── index.html              # Main web UI (3D simulator)
+│   ├── calibrate.html          # Calibration web UI
 │   ├── app.js                  # 3D simulator and controls (JavaScript)
 │   └── favicon.svg             # Hexapod icon
 └── tests/                      # pytest test suite
@@ -280,12 +289,11 @@ Next Steps & Improvements
 
 1. **Tuning**: Adjust gait parameters via settings panel for smoother movement
 2. **IK refinement**: Implement proper forward kinematics validation
-3. **Calibration UI**: Build a web page for servo tuning without CLI
-4. **Vision**: integrate camera + OpenCV for obstacle detection
-5. **SLAM**: add lidar/SLAM for autonomous navigation
-6. **Logging**: persistent telemetry recording and playback
-7. **Advanced gaits**: implement metachronal wave or insect-inspired patterns
-8. **Mobile UI**: optimize touch controls for tablets and phones
+3. **Vision**: Integrate camera + OpenCV for obstacle detection
+4. **SLAM**: Add lidar/SLAM for autonomous navigation
+5. **Logging**: Persistent telemetry recording and playback
+6. **Advanced gaits**: Implement metachronal wave or insect-inspired patterns
+7. **Mobile UI**: Optimize touch controls for tablets and phones
 
 Contributing
 ============
