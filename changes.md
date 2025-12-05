@@ -1,5 +1,11 @@
 # Changelog
 
+## 2025-12-06
+
+### Fixes
+
+- Wired Q/E turn commands through the backend gait loop so walking turns are calculated server-side (rotation speed derived from differential steering) and reflected consistently in telemetry. Also added backend ground-contact telemetry derived from gait swing states to keep the UI indicators in sync with actual stance phases. (web_static/app.js, src/hexapod/web.py, src/hexapod/gait.py)
+
 ## 2025-12-05
 
 ### Architecture Changes
