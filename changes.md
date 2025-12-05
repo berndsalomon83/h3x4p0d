@@ -165,3 +165,17 @@
 - Refreshed the calibration interface with a configuration overview showing server endpoint, calibration file state, and mapping coverage for quick diagnostics. (web_static/calibrate.html)
 - Added FastAPI TestClient coverage to ensure calibration endpoints expose metadata and create the calibration file on save. (tests/test_calibrate_web.py)
 
+## 2025-12-09
+
+### Calibration Test Sweep Alignment
+
+- Updated the leg joint test buttons to sweep around each joint's currently selected angle instead of a fixed range, keeping movements symmetric and clamped to the slider limits for safer validation. (web_static/calibrate.html)
+
+## 2025-12-10
+
+### Calibration Configuration Assistant
+
+- Added calibration coverage snapshots (mapped counts, unmapped joints, free channels) to the calibration API so the UI can guide setup with real-time status. (src/hexapod/calibrate_web.py)
+- Refreshed the calibration page with a color-themed configuration assistant that highlights unmapped joints, available channels, and provides an auto-assign action plus updated quick-test styling. (web_static/calibrate.html)
+- Expanded calibration tests to assert coverage metadata in status responses and mapping endpoints, ensuring the helper data remains available to the UI. (tests/test_calibrate_web.py)
+

@@ -298,11 +298,11 @@
       background: #dc2626;
     }
     .action-btn.secondary {
-      background: #374151;
-      color: #fff;
+      background: rgba(156, 163, 175, 0.15);
+      color: var(--text);
     }
     .action-btn.secondary:hover {
-      background: #4b5563;
+      background: rgba(156, 163, 175, 0.25);
     }
 
     /* Channel Map */
@@ -314,7 +314,7 @@
     }
     .channel-slot {
       aspect-ratio: 1;
-      background: #1a1f2e;
+      background: #0f1419;
       border: 1px solid var(--border);
       border-radius: 6px;
       display: flex;
@@ -331,6 +331,10 @@
     .channel-slot.occupied {
       background: rgba(59, 130, 246, 0.2);
       border-color: var(--accent);
+    }
+    .channel-slot.available {
+      border-color: rgba(59, 130, 246, 0.25);
+      background: rgba(59, 130, 246, 0.08);
     }
     .channel-slot .ch-num {
       font-weight: 700;
@@ -369,16 +373,85 @@
       gap: 8px;
     }
     .quick-btn {
-      padding: 8px;
-      background: #374151;
-      border: none;
-      border-radius: 4px;
-      color: #fff;
-      font-size: 11px;
+      padding: 9px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 12px;
       cursor: pointer;
+      transition: all 0.15s ease;
     }
     .quick-btn:hover {
-      background: #4b5563;
+      background: rgba(59, 130, 246, 0.2);
+      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.15);
+    }
+
+    /* Assistant */
+    .assistant-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .assistant-card {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.02));
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .assistant-label {
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .assistant-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .assistant-meta {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .assistant-actions {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .assistant-input {
+      background: #111827;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 10px;
+      border-radius: 8px;
+      width: 100%;
+    }
+    .assistant-btn {
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+      box-shadow: 0 10px 30px rgba(37, 99, 235, 0.35);
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .assistant-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 32px rgba(37, 99, 235, 0.45);
+    }
+    .assistant-list {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
     }
 
     /* Footer */
@@ -576,6 +649,34 @@
       </div>
     </div>
 
+    <div class="panel" style="margin-top: 18px;">
+      <div class="panel-title">
+        <span>Configuration Assistant</span>
+      </div>
+      <div class="assistant-grid">
+        <div class="assistant-card">
+          <div class="assistant-label">Unmapped joints</div>
+          <div class="assistant-value" id="unmappedCount">-</div>
+          <div class="assistant-meta" id="unmappedMeta">Waiting for status...</div>
+          <div class="assistant-list" id="unmappedList"></div>
+        </div>
+        <div class="assistant-card">
+          <div class="assistant-label">Available channels</div>
+          <div class="assistant-value" id="availableCount">-</div>
+          <div class="assistant-meta" id="availableMeta">Fetching...</div>
+        </div>
+        <div class="assistant-card">
+          <div class="assistant-label">Coverage snapshot</div>
+          <div class="assistant-value" id="coverageValue">-</div>
+          <div class="assistant-meta" id="coverageMeta">Awaiting data</div>
+        </div>
+      </div>
+      <div class="assistant-actions">
+        <input type="number" min="0" max="31" id="autoStartChannel" class="assistant-input" placeholder="Start channel for auto-assign (e.g. 0)">
+        <button class="assistant-btn" id="autoAssignBtn">Auto-assign unmapped</button>
+      </div>
+    </div>
+
     <footer>
       <p>Hexapod Calibration Tool | <a href="http://localhost:8000" target="_blank">Back to Controller</a></p>
     </footer>
@@ -585,9 +686,13 @@
     // State
     let selectedLeg = null;
     let calibration = {};
+    let coverage = null;
+    let availableChannels = [];
     let ws = null;
     let isHardware = false;
     let sweepInterval = null;
+    const TEST_SWEEP_PERCENT = 0.1; // Move 10% of the slider range to each side during tests
+    const MIN_SWEEP_DEGREES = 10;
 
     const jointNames = ['coxa', 'femur', 'tibia'];
 
@@ -603,6 +708,15 @@
     const mappingSummary = document.getElementById('mappingSummary');
     const mappingMeta = document.getElementById('mappingMeta');
     const selectedLegTitle = document.getElementById('selectedLegTitle');
+    const unmappedCount = document.getElementById('unmappedCount');
+    const unmappedMeta = document.getElementById('unmappedMeta');
+    const unmappedList = document.getElementById('unmappedList');
+    const availableCount = document.getElementById('availableCount');
+    const availableMeta = document.getElementById('availableMeta');
+    const coverageValue = document.getElementById('coverageValue');
+    const coverageMeta = document.getElementById('coverageMeta');
+    const autoStartChannel = document.getElementById('autoStartChannel');
+    const autoAssignBtn = document.getElementById('autoAssignBtn');
 
     // Logging
     function log(msg, type = 'info') {
@@ -639,6 +753,54 @@
     }
 
     function updateMappingSummary() {
+      const mapped = coverage ? coverage.mapped : Object.keys(calibration).length;
+      const totalJoints = coverage ? coverage.total : 18; // 6 legs * 3 joints
+      const legsCovered = coverage
+        ? coverage.legs_configured
+        : new Set(Object.keys(calibration).map(key => key.split(',')[0])).size;
+      const remaining = coverage ? coverage.unmapped.length : Math.max(totalJoints - mapped, 0);
+
+      mappingSummary.textContent = `${mapped} / ${totalJoints} joints mapped`;
+      mappingMeta.textContent = `${legsCovered} of 6 legs configured · ${remaining} remaining`;
+    }
+
+    function updateAssistant() {
+      if (!coverage) {
+        unmappedCount.textContent = '-';
+        unmappedMeta.textContent = 'Waiting for status...';
+        unmappedList.textContent = '';
+        availableCount.textContent = '-';
+        availableMeta.textContent = 'Fetching...';
+        coverageValue.textContent = '-';
+        coverageMeta.textContent = 'Awaiting data';
+        return;
+      }
+
+      availableChannels = coverage.available_channels || [];
+
+      unmappedCount.textContent = coverage.unmapped.length;
+      if (coverage.unmapped.length === 0) {
+        unmappedMeta.textContent = 'All joints are mapped. Great job!';
+        unmappedList.textContent = '';
+      } else {
+        unmappedMeta.textContent = 'Tap a joint or use auto-assign to fill the gaps.';
+        const names = coverage.unmapped.map(item => item.label);
+        const preview = names.slice(0, 4).join(', ');
+        const extra = names.length > 4 ? ` +${names.length - 4} more` : '';
+        unmappedList.textContent = `${preview}${extra}`;
+      }
+
+      availableCount.textContent = availableChannels.length;
+      availableMeta.textContent = availableChannels.length
+        ? `First free channel: ${availableChannels[0]}`
+        : 'All 0-17 channels are in use';
+
+      if (availableChannels.length && !autoStartChannel.value) {
+        autoStartChannel.value = availableChannels[0];
+      }
+
+      coverageValue.textContent = `${coverage.mapped} mapped / ${coverage.total}`;
+      coverageMeta.textContent = `${coverage.legs_configured} legs touched · ${coverage.unmapped.length} remaining`;
       const mapped = Object.keys(calibration).length;
       const totalJoints = 18; // 6 legs * 3 joints
       const legsCovered = new Set(Object.keys(calibration).map(key => key.split(',')[0])).size;
@@ -677,6 +839,10 @@
     }
 
     function handleMessage(data) {
+      if (data.coverage) {
+        coverage = data.coverage;
+      }
+
       if (data.metadata) {
         updateMetadata(data.metadata);
       }
@@ -716,6 +882,9 @@
           log(`Channel ${r.channel}: ${r.success ? 'OK' : r.error}`, r.success ? 'info' : 'error');
         });
       }
+
+      updateMappingSummary();
+      updateAssistant();
     }
 
     // Send command via WebSocket
@@ -755,9 +924,14 @@
           }
         }
 
+        const isAvailable = !usedBy && availableChannels.includes(i);
+        if (isAvailable) {
+          slot.classList.add('available');
+        }
+
         slot.innerHTML = `
           <span class="ch-num">${i}</span>
-          <span class="ch-label">${usedBy || 'unused'}</span>
+          <span class="ch-label">${usedBy || (isAvailable ? 'free slot' : 'unused')}</span>
         `;
 
         slot.addEventListener('click', () => {
@@ -796,6 +970,29 @@
       });
     }
 
+    function autoAssignUnmapped() {
+      if (!coverage || coverage.unmapped.length === 0) {
+        log('Nothing to auto-assign. All joints are already mapped.', 'warn');
+        return;
+      }
+
+      let start = parseInt(autoStartChannel.value || (availableChannels[0] ?? 0), 10);
+      if (Number.isNaN(start)) {
+        start = 0;
+      }
+
+      let channel = start;
+      coverage.unmapped.forEach(item => {
+        while (Object.values(calibration).includes(channel)) {
+          channel += 1;
+        }
+        send({ type: 'set_mapping', leg: item.leg, joint: item.joint, channel });
+        channel += 1;
+      });
+
+      log(`Auto-assigned ${coverage.unmapped.length} joints starting from channel ${start}`);
+    }
+
     // Load joint controls for selected leg
     function loadLegControls(leg) {
       selectedLegTitle.textContent = `Leg ${leg} Configuration`;
@@ -828,6 +1025,8 @@
         log(`Selected Leg ${leg}`);
       });
     });
+
+    autoAssignBtn.addEventListener('click', autoAssignUnmapped);
 
     // Channel input changes
     jointNames.forEach((name, joint) => {
@@ -879,23 +1078,38 @@
         log(`Testing ${name} (channel ${channel})...`);
 
         // Sweep test
-        let angle = 45;
+        const slider = document.getElementById(`${name}Angle`);
+        const centerAngle = parseFloat(slider.value);
+        const sliderMin = parseFloat(slider.min);
+        const sliderMax = parseFloat(slider.max);
+        const sweepAmount = Math.max(
+          MIN_SWEEP_DEGREES,
+          Math.round(TEST_SWEEP_PERCENT * (sliderMax - sliderMin))
+        );
+
+        const minAngle = Math.max(sliderMin, centerAngle - sweepAmount);
+        const maxAngle = Math.min(sliderMax, centerAngle + sweepAmount);
+        const step = Math.max(1, Math.round((maxAngle - minAngle) / 12));
+
+        let angle = minAngle;
         let direction = 1;
         const testInterval = setInterval(() => {
           setServoAngle(channel, angle);
-          document.getElementById(`${name}Angle`).value = angle;
+          slider.value = angle;
           document.getElementById(`${name}AngleValue`).textContent = `${angle}°`;
 
-          angle += direction * 5;
-          if (angle >= 135) direction = -1;
-          if (angle <= 45) {
+          if (angle >= maxAngle) direction = -1;
+          if (angle <= minAngle) {
             clearInterval(testInterval);
-            setServoAngle(channel, 90);
-            document.getElementById(`${name}Angle`).value = 90;
-            document.getElementById(`${name}AngleValue`).textContent = '90°';
+            setServoAngle(channel, centerAngle);
+            slider.value = centerAngle;
+            document.getElementById(`${name}AngleValue`).textContent = `${centerAngle}°`;
             btn.classList.remove('testing');
             log(`${name} test complete`);
+            return;
           }
+
+          angle += direction * step;
         }, 50);
       });
     });
@@ -978,9 +1192,12 @@
         const data = await resp.json();
         if (data.success) {
           calibration = data.calibration;
+          coverage = data.coverage;
           updateMetadata(data.metadata);
           updateChannelMap();
           updateLegDisplay();
+          updateMappingSummary();
+          updateAssistant();
           if (selectedLeg !== null) loadLegControls(selectedLeg);
           log('Calibration reloaded', 'info');
         } else {
@@ -1003,11 +1220,14 @@
         const data = await resp.json();
         calibration = data.calibration || {};
         isHardware = data.hardware;
+        coverage = data.coverage;
         updateMetadata(data.metadata);
         hardwareDot.classList.toggle('hardware', isHardware);
         hardwareText.textContent = `Hardware: ${isHardware ? 'PCA9685' : 'Mock'}`;
         updateChannelMap();
         updateLegDisplay();
+        updateMappingSummary();
+        updateAssistant();
       } catch (e) {
         log('Failed to load calibration: ' + e.message, 'error');
       }
