@@ -976,3 +976,112 @@ body {
   outline: none;
   box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.3);
 }
+
+/* ===== MODAL STYLES ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: var(--card-bg);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ===== CAMERA TABLE STYLES ===== */
+#tab-sensor-cameras .data-table tbody tr {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#tab-sensor-cameras .data-table tbody tr:hover {
+  background: rgba(0, 210, 255, 0.05);
+}
+
+#tab-sensor-cameras .data-table tbody tr.selected {
+  background: rgba(0, 210, 255, 0.1);
+  border-left: 3px solid var(--accent);
+}
+
+/* ===== IMU DISPLAY STYLES ===== */
+.imu-axis {
+  padding: 12px;
+  background: var(--control-bg);
+  border-radius: 8px;
+}
+
+/* ===== FOOT SENSOR STYLES ===== */
+.foot-sensor-indicator:hover {
+  background: rgba(0, 210, 255, 0.1) !important;
+}
+
+.foot-sensor-indicator.active {
+  border-color: var(--accent) !important;
+  background: rgba(0, 210, 255, 0.15) !important;
+}

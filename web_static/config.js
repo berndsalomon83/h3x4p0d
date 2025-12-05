@@ -23,7 +23,8 @@ const state = {
     roll: 0,
     pitch: 0,
     yaw: 0,
-    bodyHeight: 120,
+    bodyHeight: 80,
+    legSpread: 100,  // percentage: 100 = normal, >100 = spread out, <100 = tucked in
     speed: 0
   },
   legAngles: Array(6).fill(null).map(() => ({ coxa: 90, femur: 45, tibia: -90 })),
@@ -702,6 +703,54 @@ document.querySelectorAll('.slider-group').forEach(group => {
 
 // ========== Servo Mapping Table ==========
 const servoMappingTable = document.getElementById('servoMappingTable');
+const servoCalibration = {
+  mapping: {},  // leg,joint -> channel
+  offsets: {},  // leg,joint -> offset in microseconds
+  directions: {},  // leg,joint -> 1 or -1
+  hardware: false
+};
+
+// Load calibration from API
+async function loadCalibration() {
+  try {
+    const response = await fetch('/api/calibration');
+    if (response.ok) {
+      const data = await response.json();
+      servoCalibration.mapping = data.calibration || {};
+      servoCalibration.hardware = data.hardware || false;
+      logEvent('INFO', `Loaded calibration: ${Object.keys(servoCalibration.mapping).length} mappings`);
+      updateServoMappingTable();
+    }
+  } catch (e) {
+    logEvent('WARN', 'Could not load calibration from API, using defaults');
+  }
+}
+
+function updateServoMappingTable() {
+  if (!servoMappingTable) return;
+
+  const rows = servoMappingTable.querySelectorAll('tr');
+  rows.forEach(row => {
+    const leg = parseInt(row.dataset.leg);
+    const joint = parseInt(row.dataset.joint);
+    const key = `${leg},${joint}`;
+
+    const channelInput = row.querySelector('.channel-input');
+    const directionSelect = row.querySelector('.direction-select');
+    const offsetInput = row.querySelector('.offset-input');
+
+    if (servoCalibration.mapping[key] !== undefined) {
+      channelInput.value = servoCalibration.mapping[key];
+    }
+    if (servoCalibration.directions[key] !== undefined) {
+      directionSelect.value = servoCalibration.directions[key];
+    }
+    if (servoCalibration.offsets[key] !== undefined) {
+      offsetInput.value = servoCalibration.offsets[key];
+    }
+  });
+}
+
 if (servoMappingTable) {
   const legNames = ['FR', 'MR', 'RR', 'RL', 'ML', 'FL'];
   const jointNames = ['coxa', 'femur', 'tibia'];
@@ -714,29 +763,202 @@ if (servoMappingTable) {
       row.dataset.joint = joint;
       row.innerHTML = `
         <td><strong>leg_${leg}_${jointNames[joint]}</strong></td>
-        <td><input type="number" class="form-input channel-input" value="${channel}" style="width:60px" data-channel="${channel}"></td>
+        <td><input type="number" class="form-input channel-input" value="${channel}" min="0" max="31" style="width:60px"></td>
         <td>${leg} (${legNames[leg]})</td>
         <td>${jointNames[joint]}</td>
         <td><select class="form-select direction-select" style="width:100px"><option value="1">Normal</option><option value="-1">Reversed</option></select></td>
-        <td><input type="number" class="form-input offset-input" value="1500" style="width:70px"></td>
-        <td><button class="btn btn-secondary btn-sm test-servo-btn">Test</button></td>
+        <td><input type="number" class="form-input offset-input" value="1500" min="500" max="2500" step="10" style="width:70px"></td>
+        <td>
+          <button class="btn btn-secondary btn-sm test-servo-btn" title="Sweep servo">Test</button>
+          <button class="btn btn-primary btn-sm save-servo-btn" title="Save mapping" style="margin-left:4px;">Save</button>
+        </td>
       `;
       servoMappingTable.appendChild(row);
 
-      // Test button handler
+      const channelInput = row.querySelector('.channel-input');
+      const directionSelect = row.querySelector('.direction-select');
+      const offsetInput = row.querySelector('.offset-input');
+
+      // Test button - sweep servo
       row.querySelector('.test-servo-btn').addEventListener('click', () => {
-        testServo(leg, joint);
+        testServo(leg, joint, parseInt(channelInput.value));
+      });
+
+      // Save button - save mapping
+      row.querySelector('.save-servo-btn').addEventListener('click', () => {
+        saveServoMapping(leg, joint, parseInt(channelInput.value), parseInt(directionSelect.value), parseInt(offsetInput.value));
+      });
+
+      // Real-time angle adjustment on channel change
+      channelInput.addEventListener('change', () => {
+        const newChannel = parseInt(channelInput.value);
+        servoCalibration.mapping[`${leg},${joint}`] = newChannel;
       });
     }
   }
+
+  // Auto-fill Template button
+  document.querySelector('#tab-servo-mapping .btn-secondary')?.addEventListener('click', () => {
+    autoFillServoTemplate();
+  });
+
+  // Highlight All button
+  document.querySelector('#tab-servo-mapping .btn-warning')?.addEventListener('click', () => {
+    highlightAllServos();
+  });
+
+  // Load calibration on init
+  loadCalibration();
 }
 
-async function testServo(leg, joint) {
-  logEvent('INFO', `Testing leg ${leg} ${['coxa', 'femur', 'tibia'][joint]}`);
-  sendCommand('test_servo', { leg, joint });
+async function testServo(leg, joint, channel) {
+  const jointNames = ['coxa', 'femur', 'tibia'];
+  logEvent('INFO', `Testing servo: leg ${leg} ${jointNames[joint]} (channel ${channel})`);
+
+  // Disable idle animation during test
+  state.testActionActive = true;
+
+  // Sweep from neutral to min to max and back
+  const servoAngles = [90, 45, 135, 90];
+
+  for (const servoAngle of servoAngles) {
+    try {
+      // Send to hardware API
+      await fetch('/api/servo/angle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel, angle: servoAngle })
+      });
+
+      // Update 3D visualization
+      const jointName = jointNames[joint];
+      if (jointName === 'coxa') {
+        state.legAngles[leg].coxa = servoAngle;
+      } else if (jointName === 'femur') {
+        state.legAngles[leg].femur = servoAngle - 45; // Femur neutral is ~45
+      } else if (jointName === 'tibia') {
+        state.legAngles[leg].tibia = servoAngle - 180; // Tibia neutral is ~-90
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    } catch (e) {
+      logEvent('ERROR', `Failed to set servo angle: ${e.message}`);
+    }
+  }
+
+  // Restore neutral position in 3D
+  state.legAngles[leg] = { coxa: 90, femur: 45, tibia: -90 };
+  state.testActionActive = false;
+  logEvent('INFO', 'Servo test complete');
+}
+
+async function saveServoMapping(leg, joint, channel, direction, offset) {
+  const key = `${leg},${joint}`;
+  servoCalibration.mapping[key] = channel;
+  servoCalibration.directions[key] = direction;
+  servoCalibration.offsets[key] = offset;
+
+  try {
+    const response = await fetch('/api/mapping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leg, joint, channel })
+    });
+    const result = await response.json();
+    if (result.success) {
+      logEvent('INFO', `Saved mapping: leg ${leg} joint ${joint} → channel ${channel}`);
+
+      // Also save offset and direction to config
+      const configUpdate = {};
+      configUpdate[`servo_${leg}_${joint}_direction`] = direction;
+      configUpdate[`servo_${leg}_${joint}_offset`] = offset;
+      saveConfig(configUpdate);
+    } else {
+      logEvent('ERROR', `Failed to save mapping: ${result.error}`);
+    }
+  } catch (e) {
+    logEvent('ERROR', `API error: ${e.message}`);
+  }
+}
+
+function autoFillServoTemplate() {
+  // Standard hexapod template: sequential channels
+  const rows = servoMappingTable.querySelectorAll('tr');
+  rows.forEach((row, index) => {
+    const channelInput = row.querySelector('.channel-input');
+    channelInput.value = index;
+    servoCalibration.mapping[`${row.dataset.leg},${row.dataset.joint}`] = index;
+  });
+  logEvent('INFO', 'Auto-filled servo template (channels 0-17)');
+}
+
+async function highlightAllServos() {
+  logEvent('INFO', 'Highlighting all servos - moving each briefly');
+  const rows = servoMappingTable.querySelectorAll('tr');
+
+  // Disable idle animation during test
+  state.testActionActive = true;
+  const originalAngles = state.legAngles.map(a => ({ ...a }));
+
+  for (const row of rows) {
+    const channel = parseInt(row.querySelector('.channel-input').value);
+    const leg = parseInt(row.dataset.leg);
+    const joint = parseInt(row.dataset.joint);
+    const jointNames = ['coxa', 'femur', 'tibia'];
+
+    row.style.background = 'var(--accent)';
+    row.style.transition = 'background 0.3s';
+
+    // Update 3D visualization
+    if (jointNames[joint] === 'coxa') {
+      state.legAngles[leg].coxa = 100;
+    } else if (jointNames[joint] === 'femur') {
+      state.legAngles[leg].femur = 55;
+    } else if (jointNames[joint] === 'tibia') {
+      state.legAngles[leg].tibia = -80;
+    }
+
+    try {
+      await fetch('/api/servo/angle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel, angle: 100 })
+      });
+      await new Promise(r => setTimeout(r, 200));
+      await fetch('/api/servo/angle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel, angle: 90 })
+      });
+    } catch (e) {
+      // Continue with next servo
+    }
+
+    // Reset this joint in 3D
+    state.legAngles[leg] = { ...originalAngles[leg] };
+
+    setTimeout(() => {
+      row.style.background = '';
+    }, 300);
+
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  // Restore all original positions
+  state.legAngles.forEach((_, i) => {
+    state.legAngles[i] = originalAngles[i];
+  });
+  state.testActionActive = false;
+  logEvent('INFO', 'Highlight complete');
 }
 
 // ========== Servo Limits Diagram ==========
+const servoLimitsDefaults = {
+  coxa: { min: -60, max: 60, neutral: 0 },
+  femur: { min: -30, max: 90, neutral: 45 },
+  tibia: { min: -120, max: 0, neutral: -90 }
+};
+
 document.querySelectorAll('#servoLegDiagram .leg-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const legIndex = parseInt(btn.dataset.leg);
@@ -755,14 +977,418 @@ document.querySelectorAll('#servoLegDiagram .leg-btn').forEach(btn => {
 });
 
 function loadLegLimits(legIndex) {
-  const angles = state.legAngles[legIndex];
-  // Update the limit sliders with current values
-  ['coxa', 'femur', 'tibia'].forEach(joint => {
-    const minSlider = document.querySelector(`[data-limit="${joint}-min"]`);
-    const maxSlider = document.querySelector(`[data-limit="${joint}-max"]`);
-    if (minSlider) minSlider.value = state.config[`leg${legIndex}_${joint}_min`] || -45;
-    if (maxSlider) maxSlider.value = state.config[`leg${legIndex}_${joint}_max`] || 45;
+  const panel = document.getElementById('servoLimitsPanel');
+  if (!panel) return;
+
+  const joints = ['coxa', 'femur', 'tibia'];
+  const sliderGroups = panel.querySelectorAll('.form-row > div');
+
+  sliderGroups.forEach((group, jointIndex) => {
+    if (jointIndex >= joints.length) return;
+    const joint = joints[jointIndex];
+    const sliders = group.querySelectorAll('input[type="range"]');
+
+    // Min, Max, Neutral sliders in order
+    if (sliders[0]) {
+      const minKey = `leg${legIndex}_${joint}_min`;
+      sliders[0].value = state.config[minKey] ?? servoLimitsDefaults[joint].min;
+      updateSliderValue(sliders[0]);
+    }
+    if (sliders[1]) {
+      const maxKey = `leg${legIndex}_${joint}_max`;
+      sliders[1].value = state.config[maxKey] ?? servoLimitsDefaults[joint].max;
+      updateSliderValue(sliders[1]);
+    }
+    if (sliders[2]) {
+      const neutralKey = `leg${legIndex}_${joint}_neutral`;
+      sliders[2].value = state.config[neutralKey] ?? servoLimitsDefaults[joint].neutral;
+      updateSliderValue(sliders[2]);
+    }
   });
+}
+
+function updateSliderValue(slider) {
+  const valueEl = slider.parentElement?.querySelector('.slider-value');
+  if (valueEl) {
+    valueEl.textContent = `${slider.value}°`;
+  }
+}
+
+// Setup slider value display updates
+document.querySelectorAll('#servoLimitsPanel input[type="range"]').forEach(slider => {
+  slider.addEventListener('input', () => {
+    updateSliderValue(slider);
+  });
+
+  slider.addEventListener('change', () => {
+    if (state.selectedLeg === null) return;
+    saveCurrentLegLimits();
+  });
+});
+
+function saveCurrentLegLimits() {
+  const legIndex = state.selectedLeg;
+  if (legIndex === null) return;
+
+  const panel = document.getElementById('servoLimitsPanel');
+  const joints = ['coxa', 'femur', 'tibia'];
+  const sliderGroups = panel.querySelectorAll('.form-row > div');
+  const updates = {};
+
+  sliderGroups.forEach((group, jointIndex) => {
+    if (jointIndex >= joints.length) return;
+    const joint = joints[jointIndex];
+    const sliders = group.querySelectorAll('input[type="range"]');
+
+    if (sliders[0]) updates[`leg${legIndex}_${joint}_min`] = parseInt(sliders[0].value);
+    if (sliders[1]) updates[`leg${legIndex}_${joint}_max`] = parseInt(sliders[1].value);
+    if (sliders[2]) updates[`leg${legIndex}_${joint}_neutral`] = parseInt(sliders[2].value);
+  });
+
+  saveConfig(updates);
+  logEvent('INFO', `Saved limits for leg ${legIndex}`);
+}
+
+// Test Sweep button - searches for button within the panel
+async function runTestSweep() {
+  if (state.selectedLeg === null) {
+    logEvent('WARN', 'No leg selected');
+    return;
+  }
+
+  const legIndex = state.selectedLeg;
+  logEvent('INFO', `Testing sweep for leg ${legIndex}`);
+
+  // Disable idle animation during test
+  state.testActionActive = true;
+
+  // Helper to update 3D and optionally send to hardware
+  async function setJointAngle(joint, jointIndex, angle) {
+    // Update 3D visualization
+    if (joint === 'coxa') {
+      state.legAngles[legIndex].coxa = angle;
+    } else if (joint === 'femur') {
+      state.legAngles[legIndex].femur = angle - 45; // Adjust for default offset
+    } else if (joint === 'tibia') {
+      state.legAngles[legIndex].tibia = angle - 180;
+    }
+
+    // Send to hardware
+    const key = `${legIndex},${jointIndex}`;
+    const channel = servoCalibration.mapping[key];
+    if (channel !== undefined) {
+      try {
+        await fetch('/api/servo/angle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel, angle })
+        });
+      } catch (e) {
+        // Silently continue - hardware may not be connected
+      }
+    }
+  }
+
+  // Sweep each joint through its range
+  const joints = ['coxa', 'femur', 'tibia'];
+  for (let jointIndex = 0; jointIndex < joints.length; jointIndex++) {
+    const joint = joints[jointIndex];
+    const min = state.config[`leg${legIndex}_${joint}_min`] ?? servoLimitsDefaults[joint].min;
+    const max = state.config[`leg${legIndex}_${joint}_max`] ?? servoLimitsDefaults[joint].max;
+    const neutral = state.config[`leg${legIndex}_${joint}_neutral`] ?? servoLimitsDefaults[joint].neutral;
+
+    // Convert to servo angles (neutral at 90)
+    const servoNeutral = 90 + neutral;
+    const servoMin = 90 + min;
+    const servoMax = 90 + max;
+
+    await setJointAngle(joint, jointIndex, servoNeutral);
+    await new Promise(r => setTimeout(r, 300));
+    await setJointAngle(joint, jointIndex, servoMin);
+    await new Promise(r => setTimeout(r, 500));
+    await setJointAngle(joint, jointIndex, servoMax);
+    await new Promise(r => setTimeout(r, 500));
+    await setJointAngle(joint, jointIndex, servoNeutral);
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  // Restore neutral position
+  state.legAngles[legIndex] = { coxa: 90, femur: 45, tibia: -90 };
+  state.testActionActive = false;
+  logEvent('INFO', 'Sweep complete');
+}
+
+// Attach Test Sweep and Reset handlers using IDs
+setTimeout(() => {
+  document.getElementById('btnTestSweep')?.addEventListener('click', runTestSweep);
+  document.getElementById('btnResetLimits')?.addEventListener('click', resetLegLimitsToDefaults);
+}, 100);
+
+// Reset to Defaults function
+function resetLegLimitsToDefaults() {
+  if (state.selectedLeg === null) return;
+
+  const legIndex = state.selectedLeg;
+  const panel = document.getElementById('servoLimitsPanel');
+  const joints = ['coxa', 'femur', 'tibia'];
+  const sliderGroups = panel.querySelectorAll('.form-row > div');
+
+  sliderGroups.forEach((group, jointIndex) => {
+    if (jointIndex >= joints.length) return;
+    const joint = joints[jointIndex];
+    const sliders = group.querySelectorAll('input[type="range"]');
+
+    if (sliders[0]) {
+      sliders[0].value = servoLimitsDefaults[joint].min;
+      updateSliderValue(sliders[0]);
+    }
+    if (sliders[1]) {
+      sliders[1].value = servoLimitsDefaults[joint].max;
+      updateSliderValue(sliders[1]);
+    }
+    if (sliders[2]) {
+      sliders[2].value = servoLimitsDefaults[joint].neutral;
+      updateSliderValue(sliders[2]);
+    }
+  });
+
+  saveCurrentLegLimits();
+  logEvent('INFO', `Reset leg ${legIndex} limits to defaults`);
+}
+
+// Apply to All button in Servo Limits card header
+document.querySelector('#tab-servo-limits .card-header .btn-secondary')?.addEventListener('click', () => {
+  if (state.selectedLeg === null) {
+    logEvent('WARN', 'Select a leg first to copy its limits');
+    return;
+  }
+
+  const sourceLeg = state.selectedLeg;
+  const updates = {};
+  const joints = ['coxa', 'femur', 'tibia'];
+
+  for (let leg = 0; leg < 6; leg++) {
+    if (leg === sourceLeg) continue;
+    joints.forEach(joint => {
+      updates[`leg${leg}_${joint}_min`] = state.config[`leg${sourceLeg}_${joint}_min`] ?? servoLimitsDefaults[joint].min;
+      updates[`leg${leg}_${joint}_max`] = state.config[`leg${sourceLeg}_${joint}_max`] ?? servoLimitsDefaults[joint].max;
+      updates[`leg${leg}_${joint}_neutral`] = state.config[`leg${sourceLeg}_${joint}_neutral`] ?? servoLimitsDefaults[joint].neutral;
+    });
+  }
+
+  saveConfig(updates);
+  logEvent('INFO', `Applied leg ${sourceLeg} limits to all legs`);
+});
+
+// ========== Calibration Wizard ==========
+let wizardState = {
+  active: false,
+  step: 0,
+  currentLeg: 0,
+  currentJoint: 0
+};
+
+const wizardSteps = [
+  { title: 'Prepare Robot', instructions: 'Place the hexapod on a calibration stand with legs free to move. Ensure power is connected.' },
+  { title: 'Set All Neutral', instructions: 'All servos will move to 90° (neutral). Verify each servo responds.' },
+  { title: 'Calibrate Leg 0 (FR)', instructions: 'Adjust the coxa, femur, and tibia offsets until the leg appears straight/neutral.' },
+  { title: 'Calibrate Leg 1 (MR)', instructions: 'Adjust the coxa, femur, and tibia offsets until the leg appears straight/neutral.' },
+  { title: 'Calibrate Leg 2 (RR)', instructions: 'Adjust the coxa, femur, and tibia offsets until the leg appears straight/neutral.' },
+  { title: 'Calibrate Leg 3 (RL)', instructions: 'Adjust the coxa, femur, and tibia offsets until the leg appears straight/neutral.' },
+  { title: 'Calibrate Leg 4 (ML)', instructions: 'Adjust the coxa, femur, and tibia offsets until the leg appears straight/neutral.' },
+  { title: 'Calibrate Leg 5 (FL)', instructions: 'Adjust the coxa, femur, and tibia offsets until the leg appears straight/neutral.' },
+  { title: 'Save & Finish', instructions: 'Calibration complete! Save your settings to persist them.' }
+];
+
+document.querySelector('#tab-servo-wizard .btn-primary')?.addEventListener('click', () => {
+  startCalibrationWizard();
+});
+
+function startCalibrationWizard() {
+  wizardState.active = true;
+  wizardState.step = 0;
+  renderWizardStep();
+  logEvent('INFO', 'Calibration wizard started');
+}
+
+function renderWizardStep() {
+  const container = document.querySelector('#tab-servo-wizard .card > div');
+  if (!container) return;
+
+  const step = wizardSteps[wizardState.step];
+  const isLegStep = wizardState.step >= 2 && wizardState.step <= 7;
+  const legIndex = wizardState.step - 2;
+
+  let html = `
+    <div style="text-align: center; padding: 20px;">
+      <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px;">
+        Step ${wizardState.step + 1} of ${wizardSteps.length}
+      </div>
+      <div style="width: 100%; height: 4px; background: var(--control-bg); border-radius: 2px; margin-bottom: 20px;">
+        <div style="width: ${((wizardState.step + 1) / wizardSteps.length) * 100}%; height: 100%; background: var(--accent); border-radius: 2px;"></div>
+      </div>
+      <h3 style="margin-bottom: 8px; color: var(--accent);">${step.title}</h3>
+      <p style="color: var(--text-muted); margin-bottom: 24px;">${step.instructions}</p>
+  `;
+
+  if (wizardState.step === 1) {
+    // Set all neutral step
+    html += `
+      <button class="btn btn-warning" id="wizardNeutralBtn" style="margin-bottom: 16px;">Move All to Neutral (90°)</button>
+    `;
+  } else if (isLegStep) {
+    // Leg calibration step - show offset sliders
+    html += `
+      <div style="background: var(--control-bg); padding: 16px; border-radius: 8px; max-width: 400px; margin: 0 auto 16px;">
+        <div style="margin-bottom: 12px;">
+          <label style="color: var(--text-muted); font-size: 12px;">Coxa Offset</label>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="range" class="slider wizard-offset" data-joint="coxa" min="-30" max="30" value="0" style="flex: 1;">
+            <span class="wizard-offset-value" data-joint="coxa">0°</span>
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="color: var(--text-muted); font-size: 12px;">Femur Offset</label>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="range" class="slider wizard-offset" data-joint="femur" min="-30" max="30" value="0" style="flex: 1;">
+            <span class="wizard-offset-value" data-joint="femur">0°</span>
+          </div>
+        </div>
+        <div>
+          <label style="color: var(--text-muted); font-size: 12px;">Tibia Offset</label>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="range" class="slider wizard-offset" data-joint="tibia" min="-30" max="30" value="0" style="flex: 1;">
+            <span class="wizard-offset-value" data-joint="tibia">0°</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="wizardTestLegBtn">Test This Leg</button>
+    `;
+  } else if (wizardState.step === wizardSteps.length - 1) {
+    // Final step
+    html += `
+      <button class="btn btn-primary" id="wizardSaveBtn" style="margin-bottom: 16px;">Save Calibration</button>
+    `;
+  }
+
+  html += `
+      <div style="margin-top: 24px; display: flex; justify-content: center; gap: 12px;">
+        ${wizardState.step > 0 ? '<button class="btn btn-secondary" id="wizardPrevBtn">Previous</button>' : ''}
+        ${wizardState.step < wizardSteps.length - 1 ? '<button class="btn btn-primary" id="wizardNextBtn">Next</button>' : ''}
+        <button class="btn btn-danger" id="wizardCancelBtn">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+
+  // Attach event handlers
+  document.getElementById('wizardPrevBtn')?.addEventListener('click', () => {
+    wizardState.step--;
+    renderWizardStep();
+  });
+
+  document.getElementById('wizardNextBtn')?.addEventListener('click', () => {
+    wizardState.step++;
+    renderWizardStep();
+  });
+
+  document.getElementById('wizardCancelBtn')?.addEventListener('click', () => {
+    wizardState.active = false;
+    renderWizardInitial();
+    logEvent('INFO', 'Calibration wizard cancelled');
+  });
+
+  document.getElementById('wizardNeutralBtn')?.addEventListener('click', async () => {
+    logEvent('INFO', 'Setting all servos to neutral');
+    try {
+      await fetch('/api/servo/neutral', { method: 'POST' });
+      logEvent('INFO', 'All servos set to neutral');
+    } catch (e) {
+      logEvent('ERROR', `Failed: ${e.message}`);
+    }
+  });
+
+  document.getElementById('wizardTestLegBtn')?.addEventListener('click', () => {
+    const leg = wizardState.step - 2;
+    for (let joint = 0; joint < 3; joint++) {
+      const channel = servoCalibration.mapping[`${leg},${joint}`];
+      if (channel !== undefined) {
+        testServo(leg, joint, channel);
+      }
+    }
+  });
+
+  document.getElementById('wizardSaveBtn')?.addEventListener('click', async () => {
+    try {
+      await fetch('/api/calibration/save', { method: 'POST' });
+      logEvent('INFO', 'Calibration saved to file');
+      wizardState.active = false;
+      renderWizardInitial();
+    } catch (e) {
+      logEvent('ERROR', `Save failed: ${e.message}`);
+    }
+  });
+
+  // Offset sliders for leg calibration
+  document.querySelectorAll('.wizard-offset').forEach(slider => {
+    const legIndex = wizardState.step - 2;
+    const joint = slider.dataset.joint;
+    const jointIndex = ['coxa', 'femur', 'tibia'].indexOf(joint);
+
+    // Load existing offset
+    const offsetKey = `leg${legIndex}_${joint}_offset`;
+    slider.value = state.config[offsetKey] || 0;
+    const valueEl = document.querySelector(`.wizard-offset-value[data-joint="${joint}"]`);
+    if (valueEl) valueEl.textContent = `${slider.value}°`;
+
+    slider.addEventListener('input', () => {
+      const value = parseInt(slider.value);
+      if (valueEl) valueEl.textContent = `${value}°`;
+
+      // Apply offset to servo in real-time
+      const channel = servoCalibration.mapping[`${legIndex},${jointIndex}`];
+      if (channel !== undefined) {
+        const angle = 90 + value;
+        fetch('/api/servo/angle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel, angle })
+        }).catch(() => {});
+      }
+    });
+
+    slider.addEventListener('change', () => {
+      const value = parseInt(slider.value);
+      const updates = {};
+      updates[`leg${legIndex}_${joint}_offset`] = value;
+      saveConfig(updates);
+    });
+  });
+}
+
+function renderWizardInitial() {
+  const container = document.querySelector('#tab-servo-wizard .card > div');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="padding: 20px; text-align: center;">
+      <div style="font-size: 48px; margin-bottom: 16px;">🔧</div>
+      <h3 style="margin-bottom: 8px;">Step-by-Step Calibration</h3>
+      <p style="color: var(--text-muted); margin-bottom: 24px;">
+        This wizard will guide you through calibrating each servo for optimal performance.
+      </p>
+      <div style="background: var(--control-bg); padding: 16px; border-radius: 8px; text-align: left; max-width: 500px; margin: 0 auto;">
+        <ol style="color: var(--text-muted); font-size: 13px; line-height: 2; padding-left: 20px;">
+          <li>Place hexapod on a calibration stand</li>
+          <li>Move all joints to calibration pose (neutral angles)</li>
+          <li>For each leg, align to visually "straight" position</li>
+          <li>Press "Set as neutral" to compute and save offset</li>
+        </ol>
+      </div>
+      <button class="btn btn-primary" style="margin-top: 24px;" onclick="startCalibrationWizard()">Start Calibration Wizard</button>
+    </div>
+  `;
 }
 
 // ========== Default Geometry Configuration ==========
@@ -1002,8 +1628,8 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   scene.background = new THREE.Color(0x0a0f18);
 
   camera = new THREE.PerspectiveCamera(45, previewCanvas.clientWidth / previewCanvas.clientHeight, 0.1, 1000);
-  camera.position.set(300, 200, 300);
-  camera.lookAt(0, 50, 0);
+  // Use updateCameraPosition to set initial position matching ISO preset
+  updateCameraPosition();
 
   renderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true });
   renderer.setSize(previewCanvas.clientWidth, previewCanvas.clientHeight);
@@ -1062,30 +1688,140 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   // Animation loop
   let animationTime = 0;
 
+  // Leg geometry for IK approximation (in mm, same as defaultGeometry)
+  const LEG_FEMUR = getGeometryValue('leg_femur') || 50;
+  const LEG_TIBIA = getGeometryValue('leg_tibia') || 80;
+  const LEG_TOTAL_REACH = (LEG_FEMUR + LEG_TIBIA) * GEOMETRY_SCALE;
+
+  // Calculate approximate leg angles to reach from attachment point to ground
+  // This is simplified IK for visualization only
+  function calculateLegAngles(attachHeight, legIndex, bodyYaw, legSpread) {
+    const attachPoint = getLegAttachPoint(legIndex);
+    const baseAngle = attachPoint.angle * Math.PI / 180;
+
+    // Target foot position: on ground (y=0), at horizontal offset based on leg spread
+    const spreadFactor = (legSpread || 100) / 100;
+    const horizontalReach = LEG_TOTAL_REACH * 0.6 * spreadFactor; // 60% of max reach at default spread
+
+    // Coxa angle: base angle + counter-rotation for yaw + spread adjustment
+    // When body yaws right (+), legs should counter-rotate left (-) to keep feet in place
+    const coxaBase = 90 + (baseAngle * 180 / Math.PI);
+    const coxaYawCompensation = -bodyYaw; // Counter-rotate for yaw
+    const coxaSpreadAdjust = (spreadFactor - 1) * 15; // Spread legs outward
+    const coxa = coxaBase + coxaYawCompensation + coxaSpreadAdjust;
+
+    // Calculate required vertical reach (from attachment point to ground)
+    const verticalReach = attachHeight;
+
+    // Calculate leg extension based on required reach
+    // When attachment is higher, leg needs to extend more
+    // When attachment is lower, leg needs to contract more
+    const totalReach = Math.sqrt(horizontalReach * horizontalReach + verticalReach * verticalReach);
+    const reachRatio = Math.min(1, totalReach / LEG_TOTAL_REACH);
+
+    // Map reach ratio to femur/tibia angles
+    // reachRatio ~0.5 = default standing (femur=45, tibia=-90)
+    // reachRatio ~1.0 = fully extended (femur=70, tibia=-140)
+    // reachRatio ~0.3 = contracted (femur=20, tibia=-60)
+    const femur = 20 + reachRatio * 60; // Range: 20° to 80°
+    const tibia = -50 - reachRatio * 100; // Range: -50° to -150°
+
+    return { coxa, femur, tibia };
+  }
+
   function animate() {
     requestAnimationFrame(animate);
     animationTime += 0.016; // ~60fps
 
-    // Idle animation when not connected and no test action is active
-    if (!state.connected && !state.testActionActive) {
-      const breathe = Math.sin(animationTime * 1.5) * 0.5;
-      state.telemetry.pitch = breathe;
-      state.telemetry.roll = Math.sin(animationTime * 0.7) * 0.3;
+    const bodyHeight = state.telemetry.bodyHeight || 80;
+    const bodyRollDeg = state.telemetry.roll || 0;
+    const bodyPitchDeg = state.telemetry.pitch || 0;
+    const bodyYawDeg = state.telemetry.yaw || 0;
+    const legSpread = state.telemetry.legSpread || 100;
 
-      // Subtle leg movement
-      legs.forEach((leg, i) => {
-        const phase = (i / 6) * Math.PI * 2;
-        const legBreath = Math.sin(animationTime * 1.5 + phase) * 2;
-        state.legAngles[i].femur = 45 + legBreath;
-        state.legAngles[i].tibia = -90 - legBreath * 0.5;
-      });
+    const bodyRoll = bodyRollDeg * Math.PI / 180;
+    const bodyPitch = bodyPitchDeg * Math.PI / 180;
+    const bodyYaw = bodyYawDeg * Math.PI / 180;
+
+    // Idle breathing animation when not connected and no test action is active
+    let idleBreath = 0;
+    if (!state.connected && !state.testActionActive) {
+      idleBreath = Math.sin(animationTime * 1.5) * 3;
     }
 
-    // Update leg angles from state
+    // Update body pose
+    body.position.y = bodyHeight * GEOMETRY_SCALE;
+    body.rotation.x = bodyPitch;
+    body.rotation.z = bodyRoll;
+    body.rotation.y = bodyYaw;
+
+    // Update each leg
     legs.forEach((leg, i) => {
-      const angles = state.legAngles[i];
-      leg.coxaJoint.rotation.y = (angles.coxa - 90) * Math.PI / 180;
+      const attachPoint = getLegAttachPoint(i);
+
+      // Base attachment position (relative to body center, in scaled units)
+      const baseX = attachPoint.y * GEOMETRY_SCALE;
+      const baseZ = attachPoint.x * GEOMETRY_SCALE;
+      const baseY = attachPoint.z * GEOMETRY_SCALE;
+
+      // Transform attachment point by body rotation
+      // Yaw rotation (around Y axis)
+      const yawCos = Math.cos(bodyYaw);
+      const yawSin = Math.sin(bodyYaw);
+      const afterYawX = baseX * yawCos - baseZ * yawSin;
+      const afterYawZ = baseX * yawSin + baseZ * yawCos;
+
+      // Pitch rotation (around X axis) - affects Y and Z
+      const pitchCos = Math.cos(bodyPitch);
+      const pitchSin = Math.sin(bodyPitch);
+      const afterPitchY = baseY * pitchCos - afterYawZ * pitchSin;
+      const afterPitchZ = baseY * pitchSin + afterYawZ * pitchCos;
+
+      // Roll rotation (around Z axis) - affects X and Y
+      const rollCos = Math.cos(bodyRoll);
+      const rollSin = Math.sin(bodyRoll);
+      const finalX = afterYawX * rollCos - afterPitchY * rollSin;
+      const finalY = afterYawX * rollSin + afterPitchY * rollCos;
+
+      // Position leg at transformed attachment point
+      leg.group.position.set(finalX, bodyHeight * GEOMETRY_SCALE + finalY, afterPitchZ);
+
+      // Calculate the effective height of this attachment point above ground
+      const attachHeightAboveGround = leg.group.position.y;
+
+      // Calculate leg angles for visualization (approximate IK)
+      // When connected or in test mode, use angles from backend (state.legAngles)
+      // Otherwise, calculate angles to make leg reach ground
+      let angles;
+      if (state.connected || state.testActionActive) {
+        // Use angles from backend
+        angles = state.legAngles[i];
+      } else {
+        // Calculate approximate angles for visualization
+        angles = calculateLegAngles(
+          attachHeightAboveGround,
+          i,
+          bodyYawDeg,
+          legSpread
+        );
+        // Add idle breathing animation
+        angles.femur += idleBreath;
+        angles.tibia -= idleBreath * 0.5;
+      }
+
+      // Leg group rotation to match attachment angle (points leg outward)
+      const legAngle = attachPoint.angle * Math.PI / 180;
+      leg.group.rotation.y = legAngle + bodyYaw;
+
+      // Update joint rotations
+      // Coxa: horizontal rotation relative to leg's base direction
+      const coxaOffset = angles.coxa - 90 - (attachPoint.angle || 0);
+      leg.coxaJoint.rotation.y = coxaOffset * Math.PI / 180;
+
+      // Femur: rotation around Z axis (up/down movement)
       leg.femurJoint.rotation.z = (angles.femur - 90) * Math.PI / 180;
+
+      // Tibia: rotation around Z axis relative to femur
       leg.tibiaJoint.rotation.z = (angles.tibia + 90) * Math.PI / 180;
 
       // Update foot color based on contact
@@ -1093,12 +1829,6 @@ if (previewCanvas && typeof THREE !== 'undefined') {
         leg.foot.material.color.set(state.footContacts[i] ? 0x51cf66 : 0xff6b6b);
       }
     });
-
-    // Update body pose
-    body.position.y = state.telemetry.bodyHeight;
-    body.rotation.x = state.telemetry.pitch * Math.PI / 180;
-    body.rotation.z = state.telemetry.roll * Math.PI / 180;
-    body.rotation.y = state.telemetry.yaw * Math.PI / 180;
 
     renderer.render(scene, camera);
   }
@@ -1170,6 +1900,11 @@ function updatePreviewFromSlider(key, value) {
       state.telemetry.yaw = value;
       sendCommand('body_pose', { yaw: value });
       break;
+    case 'legSpread':
+    case 'leg_spread':
+      state.telemetry.legSpread = value;
+      sendCommand('leg_spread', { spread: value });
+      break;
   }
 }
 
@@ -1223,73 +1958,49 @@ document.getElementById('savedPosesTable')?.querySelectorAll('tbody tr').forEach
 });
 
 // ========== Test Action Buttons ==========
+// These buttons send commands to the backend which calculates IK
+// The backend responds with calculated joint angles via WebSocket
+// Frontend only displays what backend sends - no local IK calculations
+
+function requireBackendConnection(action) {
+  if (!state.connected) {
+    logEvent('WARN', `${action} requires backend connection - connect to robot or simulator first`);
+    return false;
+  }
+  return true;
+}
+
 document.getElementById('testStand')?.addEventListener('click', () => {
+  if (!requireBackendConnection('Stand pose')) return;
   state.testActionActive = true;
   sendCommand('pose', { preset: 'stand' });
-
-  // Animate to standing pose
-  animatePoseTransition(120, 0, 0, 0, 800);
-  animateLegsTo({ femur: 30, tibia: -60 }, 800);  // Extended legs
-
-  logEvent('INFO', 'Stand pose commanded');
+  logEvent('INFO', 'Stand pose commanded - backend will calculate IK');
 });
 
 document.getElementById('testCrouch')?.addEventListener('click', () => {
+  if (!requireBackendConnection('Crouch pose')) return;
   state.testActionActive = true;
   sendCommand('pose', { preset: 'crouch' });
-
-  // Animate to crouched pose
-  animatePoseTransition(50, 0, 0, 0, 800);
-  animateLegsTo({ femur: 70, tibia: -120 }, 800);  // Bent legs
-
-  logEvent('INFO', 'Crouch pose commanded');
+  logEvent('INFO', 'Crouch pose commanded - backend will calculate IK');
 });
 
 document.getElementById('testWalk')?.addEventListener('click', () => {
+  if (!requireBackendConnection('Walk test')) return;
   state.testActionActive = true;
   sendCommand('walk', { walking: true });
-  logEvent('INFO', 'Walk test started');
-
-  // Animate a walking motion for demo
-  let walkStep = 0;
-  const walkInterval = setInterval(() => {
-    const roll = Math.sin(walkStep * 0.3) * 5;
-    const pitch = Math.sin(walkStep * 0.5) * 3;
-    state.telemetry.roll = roll;
-    state.telemetry.pitch = pitch;
-
-    // Animate leg walking motion
-    state.legAngles.forEach((angles, i) => {
-      const phase = (i % 2 === 0) ? 0 : Math.PI;  // Alternating legs
-      const liftPhase = Math.sin(walkStep * 0.4 + phase);
-      angles.femur = 45 + liftPhase * 15;
-      angles.tibia = -90 - liftPhase * 10;
-      state.footContacts[i] = liftPhase < 0;
-    });
-
-    walkStep++;
-  }, 50);
-
-  setTimeout(() => {
-    clearInterval(walkInterval);
-    sendCommand('walk', { walking: false });
-    animatePoseTransition(state.telemetry.bodyHeight, 0, 0, 0, 500);
-    animateLegsTo({ femur: 45, tibia: -90 }, 500);
-    // Reset foot contacts
-    state.footContacts = [true, true, true, true, true, true];
-    logEvent('INFO', 'Walk test stopped');
-  }, 3000);
+  logEvent('INFO', 'Walk test commanded - backend will run gait');
 });
 
 document.getElementById('testReset')?.addEventListener('click', () => {
+  if (!requireBackendConnection('Reset pose')) return;
   state.testActionActive = false;  // Re-enable idle animation
   sendCommand('pose', { preset: 'neutral' });
-  animatePoseTransition(80, 0, 0, 0, 600);
-  animateLegsTo({ femur: 45, tibia: -90 }, 600);
-  logEvent('INFO', 'Reset to neutral pose');
+  logEvent('INFO', 'Reset to neutral commanded - backend will calculate IK');
 });
 
 // Helper function to animate all legs to target angles
+// NOTE: This is ONLY for local servo calibration testing visualization
+// Actual robot poses come from backend IK calculations via WebSocket
 function animateLegsTo(targetAngles, duration = 500) {
   const startAngles = state.legAngles.map(a => ({ ...a }));
   const startTime = Date.now();
@@ -1957,6 +2668,8 @@ function applySymmetry() {
   const table = document.getElementById('legAttachTable');
   if (!table) return;
 
+  const updates = {};
+
   pairs.forEach(([rightLeg, leftLeg]) => {
     const rightRow = table.querySelectorAll('tr')[rightLeg];
     const leftRow = table.querySelectorAll('tr')[leftLeg];
@@ -1967,20 +2680,33 @@ function applySymmetry() {
 
     // Mirror: X stays same, Y negates, Z stays same, angle mirrors
     if (rightInputs[0] && leftInputs[0]) {
-      leftInputs[0].value = rightInputs[0].value; // X same
+      const xVal = parseFloat(rightInputs[0].value);
+      leftInputs[0].value = xVal;
+      updates[`leg_${leftLeg}_attach_x`] = xVal;
     }
     if (rightInputs[1] && leftInputs[1]) {
-      leftInputs[1].value = -parseFloat(rightInputs[1].value); // Y negated
+      const yVal = -parseFloat(rightInputs[1].value);
+      leftInputs[1].value = yVal;
+      updates[`leg_${leftLeg}_attach_y`] = yVal;
     }
     if (rightInputs[2] && leftInputs[2]) {
-      leftInputs[2].value = rightInputs[2].value; // Z same
+      const zVal = parseFloat(rightInputs[2].value);
+      leftInputs[2].value = zVal;
+      updates[`leg_${leftLeg}_attach_z`] = zVal;
     }
     if (rightInputs[3] && leftInputs[3]) {
       // Angle mirrors: 360 - angle for left side
       const rightAngle = parseFloat(rightInputs[3].value);
-      leftInputs[3].value = 360 - rightAngle;
+      const leftAngle = 360 - rightAngle;
+      leftInputs[3].value = leftAngle;
+      updates[`leg_${leftLeg}_attach_angle`] = leftAngle;
     }
   });
+
+  // Save all updates to config
+  if (Object.keys(updates).length > 0) {
+    saveConfig(updates);
+  }
 
   // Update 3D preview
   updateLegPositions();
@@ -2271,6 +2997,905 @@ function updateGeometryPreview(configKey, value) {
     logEvent('DEBUG', `Leg positions updated: ${configKey} = ${value}`);
   }
 }
+
+// ========== Sensors & Cameras Section ==========
+
+// Camera state management
+const sensorState = {
+  cameras: [
+    { id: 'front_cam', interface: '/dev/video0', role: 'navigation', resolution: '1280x720', fps: 30, stream: '/api/stream/front', position: { x: 100, y: 0, z: 50 }, orientation: { roll: 0, pitch: -10, yaw: 0 } },
+    { id: 'rear_cam', interface: '/dev/video1', role: 'rear', resolution: '640x480', fps: 15, stream: '/api/stream/rear', position: { x: -100, y: 0, z: 50 }, orientation: { roll: 0, pitch: -10, yaw: 180 } }
+  ],
+  selectedCamera: 'front_cam',
+  imu: {
+    device: 'MPU6050',
+    filter: 'complementary',
+    offsets: { roll: 0, pitch: 0, yaw: 0 },
+    calibrated: false
+  },
+  footSensors: Array(6).fill(null).map((_, i) => ({
+    leg: i,
+    enabled: true,
+    type: 'current_spike',
+    threshold: 150
+  }))
+};
+
+const cameraRoles = {
+  'navigation': { label: 'Main Navigation', tagClass: 'tag-success' },
+  'rear': { label: 'Rear View', tagClass: 'tag-primary' },
+  'depth': { label: 'Depth Sensing', tagClass: 'tag-warning' },
+  'aux': { label: 'Auxiliary', tagClass: 'tag-secondary' }
+};
+
+const resolutionOptions = ['320x240', '640x480', '800x600', '1280x720', '1920x1080'];
+const fpsOptions = [10, 15, 24, 30, 60];
+const imuDevices = ['MPU6050 (I2C)', 'BNO055 (I2C)', 'ICM20948 (SPI)', 'LSM6DS3 (I2C)'];
+const imuFilters = ['Complementary Filter', 'Extended Kalman Filter', 'Madgwick Filter', 'Mahony Filter'];
+const sensorTypes = ['Current Spike', 'Force Sensor', 'Switch', 'Capacitive'];
+
+// Initialize cameras section
+function initCamerasSection() {
+  renderCameraTable();
+  updateCameraTransformEditor();
+  setupCameraEventListeners();
+}
+
+function renderCameraTable() {
+  const tbody = document.querySelector('#tab-sensor-cameras .data-table tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = sensorState.cameras.map(cam => `
+    <tr data-camera-id="${cam.id}" class="${cam.id === sensorState.selectedCamera ? 'selected' : ''}">
+      <td><strong>${cam.id}</strong></td>
+      <td>${cam.interface}</td>
+      <td><span class="tag ${cameraRoles[cam.role]?.tagClass || 'tag-secondary'}">${cameraRoles[cam.role]?.label || cam.role}</span></td>
+      <td>${cam.resolution}</td>
+      <td>${cam.fps}</td>
+      <td><code style="font-size: 11px;">${cam.stream}</code></td>
+      <td>
+        <button class="btn btn-secondary btn-sm camera-edit-btn" data-camera="${cam.id}">Edit</button>
+        <button class="btn btn-secondary btn-sm camera-preview-btn" data-camera="${cam.id}">Preview</button>
+        <button class="btn btn-danger btn-sm camera-delete-btn" data-camera="${cam.id}" ${sensorState.cameras.length <= 1 ? 'disabled' : ''}>✕</button>
+      </td>
+    </tr>
+  `).join('');
+
+  // Add click handlers for row selection
+  tbody.querySelectorAll('tr').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.tagName === 'BUTTON') return;
+      sensorState.selectedCamera = row.dataset.cameraId;
+      renderCameraTable();
+      updateCameraTransformEditor();
+    });
+  });
+
+  // Add button handlers
+  tbody.querySelectorAll('.camera-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => showCameraEditModal(btn.dataset.camera));
+  });
+
+  tbody.querySelectorAll('.camera-preview-btn').forEach(btn => {
+    btn.addEventListener('click', () => showCameraPreview(btn.dataset.camera));
+  });
+
+  tbody.querySelectorAll('.camera-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteCamera(btn.dataset.camera));
+  });
+}
+
+function updateCameraTransformEditor() {
+  const cam = sensorState.cameras.find(c => c.id === sensorState.selectedCamera);
+  if (!cam) return;
+
+  // Update title
+  const title = document.querySelector('#tab-sensor-cameras .card:last-child .card-title');
+  if (title) title.textContent = `Camera Transform: ${cam.id}`;
+
+  // Update position/orientation inputs
+  const transformEditor = document.querySelector('#tab-sensor-cameras .transform-editor');
+  if (!transformEditor) return;
+
+  const inputs = transformEditor.querySelectorAll('.transform-axis-input');
+  if (inputs.length >= 6) {
+    inputs[0].value = cam.position.x;
+    inputs[1].value = cam.position.y;
+    inputs[2].value = cam.position.z;
+    inputs[3].value = cam.orientation.roll;
+    inputs[4].value = cam.orientation.pitch;
+    inputs[5].value = cam.orientation.yaw;
+  }
+}
+
+function setupCameraEventListeners() {
+  // Add Camera button
+  const addCameraBtn = document.querySelector('#tab-sensor-cameras .card-header .btn-primary');
+  if (addCameraBtn) {
+    addCameraBtn.addEventListener('click', () => showCameraEditModal(null));
+  }
+
+  // Transform editor inputs
+  const transformEditor = document.querySelector('#tab-sensor-cameras .transform-editor');
+  if (transformEditor) {
+    const inputs = transformEditor.querySelectorAll('.transform-axis-input');
+    const fields = ['x', 'y', 'z', 'roll', 'pitch', 'yaw'];
+
+    inputs.forEach((input, i) => {
+      input.addEventListener('change', () => {
+        const cam = sensorState.cameras.find(c => c.id === sensorState.selectedCamera);
+        if (!cam) return;
+
+        const value = parseFloat(input.value) || 0;
+        if (i < 3) {
+          cam.position[fields[i]] = value;
+        } else {
+          cam.orientation[fields[i]] = value;
+        }
+
+        saveSensorConfig();
+        update3DCameraPositions();
+        logEvent('INFO', `Updated ${cam.id} ${fields[i]} to ${value}`);
+      });
+    });
+  }
+}
+
+function showCameraEditModal(cameraId) {
+  const isNew = !cameraId;
+  const cam = isNew ? {
+    id: `camera_${Date.now()}`,
+    interface: '/dev/video' + sensorState.cameras.length,
+    role: 'aux',
+    resolution: '640x480',
+    fps: 30,
+    stream: '/api/stream/new',
+    position: { x: 0, y: 0, z: 50 },
+    orientation: { roll: 0, pitch: 0, yaw: 0 }
+  } : sensorState.cameras.find(c => c.id === cameraId);
+
+  if (!cam) return;
+
+  // Create modal
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>${isNew ? 'Add Camera' : 'Edit Camera'}</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Camera Name</label>
+          <input type="text" class="form-input" id="modal-cam-id" value="${cam.id}" ${isNew ? '' : 'readonly'}>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Interface</label>
+            <input type="text" class="form-input" id="modal-cam-interface" value="${cam.interface}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Role</label>
+            <select class="form-select" id="modal-cam-role">
+              ${Object.entries(cameraRoles).map(([key, val]) =>
+                `<option value="${key}" ${cam.role === key ? 'selected' : ''}>${val.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Resolution</label>
+            <select class="form-select" id="modal-cam-resolution">
+              ${resolutionOptions.map(r =>
+                `<option value="${r}" ${cam.resolution === r ? 'selected' : ''}>${r}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">FPS</label>
+            <select class="form-select" id="modal-cam-fps">
+              ${fpsOptions.map(f =>
+                `<option value="${f}" ${cam.fps === f ? 'selected' : ''}>${f}</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stream Endpoint</label>
+          <input type="text" class="form-input" id="modal-cam-stream" value="${cam.stream}">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Cancel</button>
+        <button class="btn btn-primary modal-save">${isNew ? 'Add Camera' : 'Save Changes'}</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Event handlers
+  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
+  modal.querySelector('.modal-cancel').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  modal.querySelector('.modal-save').addEventListener('click', () => {
+    const updatedCam = {
+      id: document.getElementById('modal-cam-id').value.trim(),
+      interface: document.getElementById('modal-cam-interface').value.trim(),
+      role: document.getElementById('modal-cam-role').value,
+      resolution: document.getElementById('modal-cam-resolution').value,
+      fps: parseInt(document.getElementById('modal-cam-fps').value),
+      stream: document.getElementById('modal-cam-stream').value.trim(),
+      position: cam.position,
+      orientation: cam.orientation
+    };
+
+    if (!updatedCam.id) {
+      logEvent('ERROR', 'Camera name is required');
+      return;
+    }
+
+    if (isNew) {
+      sensorState.cameras.push(updatedCam);
+      sensorState.selectedCamera = updatedCam.id;
+      logEvent('INFO', `Added camera: ${updatedCam.id}`);
+    } else {
+      const index = sensorState.cameras.findIndex(c => c.id === cameraId);
+      if (index >= 0) {
+        sensorState.cameras[index] = updatedCam;
+        logEvent('INFO', `Updated camera: ${updatedCam.id}`);
+      }
+    }
+
+    saveSensorConfig();
+    renderCameraTable();
+    updateCameraTransformEditor();
+    update3DCameraPositions();
+    modal.remove();
+  });
+}
+
+function showCameraPreview(cameraId) {
+  const cam = sensorState.cameras.find(c => c.id === cameraId);
+  if (!cam) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3>Camera Preview: ${cam.id}</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <div style="background: #1a1a2e; border-radius: 8px; padding: 40px; margin-bottom: 16px;">
+          <div style="color: var(--text-muted); font-size: 14px; margin-bottom: 8px;">
+            ${cam.resolution} @ ${cam.fps}fps
+          </div>
+          <div style="width: 100%; aspect-ratio: 16/9; background: linear-gradient(45deg, #0a0a15 25%, transparent 25%), linear-gradient(-45deg, #0a0a15 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #0a0a15 75%), linear-gradient(-45deg, transparent 75%, #0a0a15 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+            <div style="text-align: center; color: var(--text-muted);">
+              <div style="font-size: 48px; margin-bottom: 8px;">📷</div>
+              <div>Stream: <code>${cam.stream}</code></div>
+              <div style="margin-top: 8px; font-size: 12px;">Connect to robot to view live feed</div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <button class="btn btn-secondary" id="preview-snapshot">📸 Snapshot</button>
+          <button class="btn btn-secondary" id="preview-fullscreen">⛶ Fullscreen</button>
+          <button class="btn btn-warning" id="preview-test-pattern">Test Pattern</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  modal.querySelector('#preview-snapshot').addEventListener('click', () => {
+    logEvent('INFO', `Snapshot requested for ${cam.id}`);
+  });
+
+  modal.querySelector('#preview-test-pattern').addEventListener('click', () => {
+    logEvent('INFO', `Test pattern requested for ${cam.id}`);
+  });
+}
+
+function deleteCamera(cameraId) {
+  if (sensorState.cameras.length <= 1) {
+    logEvent('WARN', 'Cannot delete the last camera');
+    return;
+  }
+
+  const index = sensorState.cameras.findIndex(c => c.id === cameraId);
+  if (index >= 0) {
+    sensorState.cameras.splice(index, 1);
+    if (sensorState.selectedCamera === cameraId) {
+      sensorState.selectedCamera = sensorState.cameras[0]?.id;
+    }
+    saveSensorConfig();
+    renderCameraTable();
+    updateCameraTransformEditor();
+    update3DCameraPositions();
+    logEvent('INFO', `Deleted camera: ${cameraId}`);
+  }
+}
+
+// IMU Section
+function initIMUSection() {
+  const imuTab = document.getElementById('tab-sensor-imu');
+  if (!imuTab) return;
+
+  // Device select
+  const deviceSelect = imuTab.querySelector('.form-select');
+  if (deviceSelect) {
+    deviceSelect.innerHTML = imuDevices.map(d =>
+      `<option ${d.startsWith(sensorState.imu.device) ? 'selected' : ''}>${d}</option>`
+    ).join('');
+    deviceSelect.addEventListener('change', (e) => {
+      sensorState.imu.device = e.target.value.split(' ')[0];
+      saveSensorConfig();
+      logEvent('INFO', `IMU device set to ${sensorState.imu.device}`);
+    });
+  }
+
+  // Filter select
+  const selects = imuTab.querySelectorAll('.form-select');
+  if (selects[1]) {
+    selects[1].innerHTML = imuFilters.map(f =>
+      `<option ${f.toLowerCase().includes(sensorState.imu.filter) ? 'selected' : ''}>${f}</option>`
+    ).join('');
+    selects[1].addEventListener('change', (e) => {
+      sensorState.imu.filter = e.target.value.split(' ')[0].toLowerCase();
+      saveSensorConfig();
+      logEvent('INFO', `IMU filter set to ${sensorState.imu.filter}`);
+    });
+  }
+
+  // Mounting orientation inputs
+  const orientationInputs = imuTab.querySelectorAll('.transform-axis-input');
+  const orientationFields = ['roll', 'pitch', 'yaw'];
+  orientationInputs.forEach((input, i) => {
+    input.value = sensorState.imu.offsets[orientationFields[i]] || 0;
+    input.addEventListener('change', () => {
+      sensorState.imu.offsets[orientationFields[i]] = parseFloat(input.value) || 0;
+      saveSensorConfig();
+      logEvent('INFO', `IMU ${orientationFields[i]} offset set to ${input.value}°`);
+    });
+  });
+
+  // Add calibration button after filter select
+  const filterGroup = selects[1]?.closest('.form-group');
+  if (filterGroup && !imuTab.querySelector('#imu-calibrate-btn')) {
+    const calibrateBtn = document.createElement('button');
+    calibrateBtn.id = 'imu-calibrate-btn';
+    calibrateBtn.className = 'btn btn-warning btn-sm';
+    calibrateBtn.style.marginLeft = '8px';
+    calibrateBtn.textContent = '🎯 Calibrate IMU';
+    calibrateBtn.addEventListener('click', showIMUCalibrationModal);
+    filterGroup.appendChild(calibrateBtn);
+  }
+
+  // Add live IMU display
+  addIMULiveDisplay(imuTab);
+}
+
+function addIMULiveDisplay(container) {
+  const existingDisplay = container.querySelector('.imu-live-display');
+  if (existingDisplay) return;
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.marginTop = '16px';
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="card-title">Live IMU Data</span>
+      <span class="tag ${sensorState.imu.calibrated ? 'tag-success' : 'tag-warning'}" id="imu-status-tag">
+        ${sensorState.imu.calibrated ? 'Calibrated' : 'Not Calibrated'}
+      </span>
+    </div>
+    <div class="imu-live-display" style="padding: 16px;">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: center;">
+        <div class="imu-axis">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Roll</div>
+          <div style="font-size: 24px; font-weight: bold; color: #ff6b6b;" id="imu-roll">0.0°</div>
+          <div class="imu-bar" style="height: 4px; background: var(--control-bg); border-radius: 2px; margin-top: 8px;">
+            <div id="imu-roll-bar" style="width: 50%; height: 100%; background: #ff6b6b; border-radius: 2px; transition: width 0.1s;"></div>
+          </div>
+        </div>
+        <div class="imu-axis">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Pitch</div>
+          <div style="font-size: 24px; font-weight: bold; color: #51cf66;" id="imu-pitch">0.0°</div>
+          <div class="imu-bar" style="height: 4px; background: var(--control-bg); border-radius: 2px; margin-top: 8px;">
+            <div id="imu-pitch-bar" style="width: 50%; height: 100%; background: #51cf66; border-radius: 2px; transition: width 0.1s;"></div>
+          </div>
+        </div>
+        <div class="imu-axis">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Yaw</div>
+          <div style="font-size: 24px; font-weight: bold; color: #339af0;" id="imu-yaw">0.0°</div>
+          <div class="imu-bar" style="height: 4px; background: var(--control-bg); border-radius: 2px; margin-top: 8px;">
+            <div id="imu-yaw-bar" style="width: 50%; height: 100%; background: #339af0; border-radius: 2px; transition: width 0.1s;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: center; font-size: 12px; color: var(--text-muted);">
+        <div>Accel: <span id="imu-accel">0.0, 0.0, 9.8</span> m/s²</div>
+        <div>Gyro: <span id="imu-gyro">0.0, 0.0, 0.0</span> °/s</div>
+        <div>Temp: <span id="imu-temp">25.0</span> °C</div>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(card);
+}
+
+function showIMUCalibrationModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>IMU Calibration</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="text-align: center; padding: 20px;">
+          <div style="font-size: 48px; margin-bottom: 16px;">🎯</div>
+          <p style="color: var(--text-muted); margin-bottom: 24px;">
+            Place the hexapod on a flat, level surface. The calibration will measure the current orientation and set it as the zero reference.
+          </p>
+          <div id="imu-cal-status" style="background: var(--control-bg); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <div style="font-size: 14px; margin-bottom: 8px;">Current Readings</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 12px;">
+              <div>Roll: <span id="cal-roll">0.0°</span></div>
+              <div>Pitch: <span id="cal-pitch">0.0°</span></div>
+              <div>Yaw: <span id="cal-yaw">0.0°</span></div>
+            </div>
+          </div>
+          <div id="imu-cal-progress" style="display: none;">
+            <div style="height: 4px; background: var(--control-bg); border-radius: 2px; margin-bottom: 8px;">
+              <div id="cal-progress-bar" style="width: 0%; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.1s;"></div>
+            </div>
+            <div id="cal-progress-text" style="font-size: 12px; color: var(--text-muted);">Calibrating...</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="start-imu-cal">Start Calibration</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
+  modal.querySelector('.modal-cancel').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+  modal.querySelector('#start-imu-cal').addEventListener('click', () => {
+    const progress = modal.querySelector('#imu-cal-progress');
+    const progressBar = modal.querySelector('#cal-progress-bar');
+    const progressText = modal.querySelector('#cal-progress-text');
+    const startBtn = modal.querySelector('#start-imu-cal');
+
+    progress.style.display = 'block';
+    startBtn.disabled = true;
+    startBtn.textContent = 'Calibrating...';
+
+    // Simulate calibration process
+    let percent = 0;
+    const interval = setInterval(() => {
+      percent += 5;
+      progressBar.style.width = `${percent}%`;
+      progressText.textContent = percent < 100 ? `Sampling... ${percent}%` : 'Calibration complete!';
+
+      if (percent >= 100) {
+        clearInterval(interval);
+        sensorState.imu.calibrated = true;
+        sensorState.imu.offsets = {
+          roll: parseFloat(state.telemetry.roll) || 0,
+          pitch: parseFloat(state.telemetry.pitch) || 0,
+          yaw: parseFloat(state.telemetry.yaw) || 0
+        };
+        saveSensorConfig();
+
+        // Update IMU offset inputs
+        const imuTab = document.getElementById('tab-sensor-imu');
+        const inputs = imuTab?.querySelectorAll('.transform-axis-input');
+        if (inputs) {
+          inputs[0].value = sensorState.imu.offsets.roll.toFixed(1);
+          inputs[1].value = sensorState.imu.offsets.pitch.toFixed(1);
+          inputs[2].value = sensorState.imu.offsets.yaw.toFixed(1);
+        }
+
+        // Update status tag
+        const statusTag = document.getElementById('imu-status-tag');
+        if (statusTag) {
+          statusTag.className = 'tag tag-success';
+          statusTag.textContent = 'Calibrated';
+        }
+
+        logEvent('INFO', 'IMU calibration complete');
+
+        setTimeout(() => modal.remove(), 1000);
+      }
+    }, 100);
+  });
+}
+
+// Foot Contact Sensors Section
+function initFootSensorsSection() {
+  const sensorTab = document.getElementById('tab-sensor-other');
+  if (!sensorTab) return;
+
+  const tbody = sensorTab.querySelector('.data-table tbody');
+  if (!tbody) return;
+
+  // Clear and rebuild table
+  const legNames = ['Leg 0 (FR)', 'Leg 1 (MR)', 'Leg 2 (RR)', 'Leg 3 (RL)', 'Leg 4 (ML)', 'Leg 5 (FL)'];
+
+  tbody.innerHTML = sensorState.footSensors.map((sensor, i) => `
+    <tr data-leg="${i}">
+      <td>${legNames[i]}</td>
+      <td><input type="checkbox" class="foot-sensor-enable" ${sensor.enabled ? 'checked' : ''}></td>
+      <td>
+        <select class="form-select foot-sensor-type" style="width: 150px;">
+          ${sensorTypes.map(t => `<option value="${t.toLowerCase().replace(' ', '_')}" ${sensor.type === t.toLowerCase().replace(' ', '_') ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <input type="number" class="form-input foot-sensor-threshold" value="${sensor.threshold}" style="width: 80px;">
+        <span class="threshold-unit">${getThresholdUnit(sensor.type)}</span>
+      </td>
+      <td>
+        <span class="foot-sensor-status tag ${state.footContacts[i] ? 'tag-success' : 'tag-secondary'}">
+          ${state.footContacts[i] ? 'Contact' : 'No Contact'}
+        </span>
+      </td>
+    </tr>
+  `).join('');
+
+  // Add event listeners
+  tbody.querySelectorAll('.foot-sensor-enable').forEach((checkbox, i) => {
+    checkbox.addEventListener('change', () => {
+      sensorState.footSensors[i].enabled = checkbox.checked;
+      saveSensorConfig();
+      logEvent('INFO', `Foot sensor ${i} ${checkbox.checked ? 'enabled' : 'disabled'}`);
+    });
+  });
+
+  tbody.querySelectorAll('.foot-sensor-type').forEach((select, i) => {
+    select.addEventListener('change', () => {
+      sensorState.footSensors[i].type = select.value;
+      const unitSpan = select.closest('tr').querySelector('.threshold-unit');
+      if (unitSpan) unitSpan.textContent = getThresholdUnit(select.value);
+      saveSensorConfig();
+      logEvent('INFO', `Foot sensor ${i} type set to ${select.value}`);
+    });
+  });
+
+  tbody.querySelectorAll('.foot-sensor-threshold').forEach((input, i) => {
+    input.addEventListener('change', () => {
+      sensorState.footSensors[i].threshold = parseInt(input.value) || 0;
+      saveSensorConfig();
+      logEvent('INFO', `Foot sensor ${i} threshold set to ${input.value}`);
+    });
+  });
+
+  // Add status column header if not exists
+  const thead = sensorTab.querySelector('.data-table thead tr');
+  if (thead && thead.children.length === 4) {
+    const th = document.createElement('th');
+    th.textContent = 'Status';
+    thead.appendChild(th);
+  }
+
+  // Add test buttons card
+  addFootSensorTestCard(sensorTab);
+}
+
+function getThresholdUnit(type) {
+  switch (type) {
+    case 'current_spike': return 'mA';
+    case 'force_sensor': return 'g';
+    case 'switch': return 'ms';
+    case 'capacitive': return 'pF';
+    default: return '';
+  }
+}
+
+function addFootSensorTestCard(container) {
+  if (container.querySelector('.foot-sensor-test-card')) return;
+
+  const card = document.createElement('div');
+  card.className = 'card foot-sensor-test-card';
+  card.style.marginTop = '16px';
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="card-title">Foot Sensor Testing</span>
+    </div>
+    <div style="padding: 16px;">
+      <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 16px;">
+        ${[0, 1, 2, 3, 4, 5].map(i => `
+          <div class="foot-sensor-indicator" data-leg="${i}" style="
+            background: var(--control-bg);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+          ">
+            <div style="font-size: 20px; margin-bottom: 4px;">🦶</div>
+            <div style="font-size: 11px; color: var(--text-muted);">Leg ${i}</div>
+            <div class="foot-contact-dot" style="
+              width: 8px; height: 8px;
+              border-radius: 50%;
+              background: ${state.footContacts[i] ? '#51cf66' : '#666'};
+              margin: 8px auto 0;
+            "></div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display: flex; gap: 8px; justify-content: center;">
+        <button class="btn btn-secondary" id="test-all-foot-sensors">Test All Sensors</button>
+        <button class="btn btn-secondary" id="reset-foot-thresholds">Reset Thresholds</button>
+        <button class="btn btn-warning" id="auto-calibrate-foot">Auto-Calibrate</button>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(card);
+
+  // Event handlers - test individual foot sensor with 3D visualization
+  card.querySelectorAll('.foot-sensor-indicator').forEach(indicator => {
+    indicator.addEventListener('click', async () => {
+      const leg = parseInt(indicator.dataset.leg);
+      logEvent('INFO', `Testing foot sensor ${leg}`);
+      indicator.style.borderColor = 'var(--accent)';
+
+      // Animate the leg in 3D - lift foot up then back down
+      state.testActionActive = true;
+      const originalAngles = { ...state.legAngles[leg] };
+
+      // Lift leg
+      state.legAngles[leg].femur = 70;
+      state.legAngles[leg].tibia = -60;
+      state.footContacts[leg] = false;
+      await new Promise(r => setTimeout(r, 400));
+
+      // Touch down
+      state.legAngles[leg].femur = 30;
+      state.legAngles[leg].tibia = -110;
+      state.footContacts[leg] = true;
+      await new Promise(r => setTimeout(r, 300));
+
+      // Back to original
+      state.legAngles[leg] = originalAngles;
+      state.testActionActive = false;
+      indicator.style.borderColor = 'transparent';
+    });
+  });
+
+  card.querySelector('#test-all-foot-sensors').addEventListener('click', async () => {
+    logEvent('INFO', 'Testing all foot sensors');
+    state.testActionActive = true;
+
+    // Save original angles
+    const originalAngles = state.legAngles.map(a => ({ ...a }));
+    const originalContacts = [...state.footContacts];
+
+    // Test each leg sequentially with visual animation
+    for (let i = 0; i < 6; i++) {
+      const ind = card.querySelectorAll('.foot-sensor-indicator')[i];
+      if (ind) ind.style.borderColor = 'var(--accent)';
+
+      // Lift leg
+      state.legAngles[i].femur = 70;
+      state.legAngles[i].tibia = -60;
+      state.footContacts[i] = false;
+      await new Promise(r => setTimeout(r, 200));
+
+      // Touch down
+      state.legAngles[i].femur = 30;
+      state.legAngles[i].tibia = -110;
+      state.footContacts[i] = true;
+      await new Promise(r => setTimeout(r, 150));
+
+      // Reset this leg
+      state.legAngles[i] = originalAngles[i];
+      state.footContacts[i] = originalContacts[i];
+      if (ind) ind.style.borderColor = 'transparent';
+    }
+
+    state.testActionActive = false;
+    logEvent('INFO', 'All foot sensors tested');
+  });
+
+  card.querySelector('#reset-foot-thresholds').addEventListener('click', () => {
+    sensorState.footSensors.forEach(s => { s.threshold = 150; });
+    initFootSensorsSection();
+    saveSensorConfig();
+    logEvent('INFO', 'Foot sensor thresholds reset to defaults');
+  });
+
+  card.querySelector('#auto-calibrate-foot').addEventListener('click', async () => {
+    logEvent('INFO', 'Auto-calibrating foot sensors - lift all legs');
+    state.testActionActive = true;
+
+    // Lift all legs to simulate no contact
+    const originalAngles = state.legAngles.map(a => ({ ...a }));
+    const originalContacts = [...state.footContacts];
+
+    // Lift all legs
+    for (let i = 0; i < 6; i++) {
+      state.legAngles[i].femur = 80;
+      state.legAngles[i].tibia = -40;
+      state.footContacts[i] = false;
+    }
+    logEvent('INFO', 'Measuring no-contact baseline...');
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Lower all legs to touch ground
+    for (let i = 0; i < 6; i++) {
+      state.legAngles[i].femur = 35;
+      state.legAngles[i].tibia = -100;
+      state.footContacts[i] = true;
+    }
+    logEvent('INFO', 'Measuring contact threshold...');
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Restore original positions
+    state.legAngles.forEach((_, i) => {
+      state.legAngles[i] = originalAngles[i];
+      state.footContacts[i] = originalContacts[i];
+    });
+
+    state.testActionActive = false;
+    logEvent('INFO', 'Auto-calibration complete - thresholds updated');
+  });
+}
+
+// Update foot sensor status display
+function updateFootSensorStatus() {
+  const indicators = document.querySelectorAll('.foot-sensor-indicator');
+  indicators.forEach((ind, i) => {
+    const dot = ind.querySelector('.foot-contact-dot');
+    if (dot) {
+      dot.style.background = state.footContacts[i] ? '#51cf66' : '#666';
+    }
+  });
+
+  const statusTags = document.querySelectorAll('.foot-sensor-status');
+  statusTags.forEach((tag, i) => {
+    tag.className = `foot-sensor-status tag ${state.footContacts[i] ? 'tag-success' : 'tag-secondary'}`;
+    tag.textContent = state.footContacts[i] ? 'Contact' : 'No Contact';
+  });
+}
+
+// Update IMU live display
+function updateIMUDisplay() {
+  const roll = state.telemetry.roll || 0;
+  const pitch = state.telemetry.pitch || 0;
+  const yaw = state.telemetry.yaw || 0;
+
+  const rollEl = document.getElementById('imu-roll');
+  const pitchEl = document.getElementById('imu-pitch');
+  const yawEl = document.getElementById('imu-yaw');
+
+  if (rollEl) rollEl.textContent = `${roll.toFixed(1)}°`;
+  if (pitchEl) pitchEl.textContent = `${pitch.toFixed(1)}°`;
+  if (yawEl) yawEl.textContent = `${yaw.toFixed(1)}°`;
+
+  // Update bars (map -45 to 45 degrees to 0-100%)
+  const rollBar = document.getElementById('imu-roll-bar');
+  const pitchBar = document.getElementById('imu-pitch-bar');
+  const yawBar = document.getElementById('imu-yaw-bar');
+
+  if (rollBar) rollBar.style.width = `${Math.min(100, Math.max(0, (roll + 45) / 90 * 100))}%`;
+  if (pitchBar) pitchBar.style.width = `${Math.min(100, Math.max(0, (pitch + 45) / 90 * 100))}%`;
+  if (yawBar) yawBar.style.width = `${Math.min(100, Math.max(0, (yaw + 180) / 360 * 100))}%`;
+}
+
+// Save sensor configuration
+function saveSensorConfig() {
+  const config = {
+    cameras: sensorState.cameras,
+    imu: sensorState.imu,
+    footSensors: sensorState.footSensors
+  };
+
+  try {
+    localStorage.setItem('hexapod_sensors', JSON.stringify(config));
+  } catch (e) {
+    console.error('Failed to save sensor config:', e);
+  }
+
+  // Also save to main config
+  saveConfig({
+    sensor_cameras: sensorState.cameras,
+    sensor_imu: sensorState.imu,
+    sensor_foot: sensorState.footSensors
+  });
+}
+
+// Load sensor configuration
+function loadSensorConfig() {
+  try {
+    const saved = localStorage.getItem('hexapod_sensors');
+    if (saved) {
+      const config = JSON.parse(saved);
+      if (config.cameras) sensorState.cameras = config.cameras;
+      if (config.imu) sensorState.imu = config.imu;
+      if (config.footSensors) sensorState.footSensors = config.footSensors;
+    }
+  } catch (e) {
+    console.error('Failed to load sensor config:', e);
+  }
+}
+
+// Add cameras to 3D preview
+let cameraHelpers = [];
+
+function update3DCameraPositions() {
+  if (!scene) return;
+
+  // Remove existing camera helpers
+  cameraHelpers.forEach(helper => scene.remove(helper));
+  cameraHelpers = [];
+
+  // Add camera frustum helpers for each camera
+  sensorState.cameras.forEach(cam => {
+    const geometry = new THREE.ConeGeometry(5, 15, 4);
+    const material = new THREE.MeshBasicMaterial({
+      color: cam.id === sensorState.selectedCamera ? 0x51cf66 : 0x666666,
+      wireframe: true
+    });
+    const cone = new THREE.Mesh(geometry, material);
+
+    // Position relative to body
+    const scale = GEOMETRY_SCALE || 1/3;
+    cone.position.set(
+      cam.position.x * scale,
+      cam.position.z * scale + 50, // Z becomes Y in 3D
+      cam.position.y * scale
+    );
+
+    // Apply orientation
+    cone.rotation.x = THREE.MathUtils.degToRad(90 + (cam.orientation.pitch || 0));
+    cone.rotation.y = THREE.MathUtils.degToRad(cam.orientation.yaw || 0);
+    cone.rotation.z = THREE.MathUtils.degToRad(cam.orientation.roll || 0);
+
+    scene.add(cone);
+    cameraHelpers.push(cone);
+  });
+}
+
+// Initialize sensors section
+function initSensorsSection() {
+  loadSensorConfig();
+  initCamerasSection();
+  initIMUSection();
+  initFootSensorsSection();
+  update3DCameraPositions();
+
+  // Update displays periodically
+  setInterval(() => {
+    updateIMUDisplay();
+    updateFootSensorStatus();
+  }, 100);
+
+  logEvent('INFO', 'Sensors section initialized');
+}
+
+// Call initialization after DOM ready
+setTimeout(initSensorsSection, 200);
 
 // ========== Initialize ==========
 connectWebSocket();
