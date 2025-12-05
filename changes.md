@@ -2,12 +2,57 @@
 
 ## 2025-12-05
 
+### Architecture Changes
+
+#### Removed Frontend IK Calculations - Backend-Only IK Architecture
+- **Issue**: Frontend was calculating its own inverse kinematics (IK) in `computeNeutralAngles()` which could drift from the actual hexapod servo positions calculated by the backend
+- **Symptom**: When adjusting body height slider, legs looked correct while dragging but became "malformed" when slider stopped (backend telemetry would override with different angles)
+- **Root Cause**: Two separate IK implementations existed - one in Python backend (`gait.py`) and one in JavaScript frontend (`app.js`). The telemetry handler also incorrectly applied a sign flip for left-side legs.
+- **Fix**:
+  - Removed `computeNeutralAngles()` function from frontend
+  - Replaced `applyNeutralPose()` with `applyDefaultVisualPose()` that uses fixed default angles (no IK calculation)
+  - Removed sign flip in telemetry handler for femur/tibia angles (Three.js leg group rotations already handle left/right mirroring)
+  - Added prominent architecture documentation comment at top of relevant section
+- **Architecture Rule**: ALL inverse kinematics calculations MUST be performed on the backend (Python). The frontend ONLY displays what the backend sends via WebSocket telemetry. This ensures the 3D visualization accurately mirrors actual servo positions and prevents drift between simulated display and real hardware.
+- **Files changed**: `web_static/app.js`
+
+#### Fixed: Legs Flying in Air (IK Stance Width Calculation)
+- **Issue**: Hexapod legs appeared to float in the air or IK failed with "out of reach" errors
+- **Root Cause**: Backend IK used hardcoded stance_width values that didn't account for actual leg geometry. With custom leg lengths, the target could exceed the leg's maximum reach.
+- **Fix**: Stance width is now calculated dynamically based on actual leg geometry from the IK solver:
+  - Gets actual coxa, femur, tibia lengths from `self.gait.ik.L1/L2/L3`
+  - Calculates maximum horizontal reach: `sqrt((0.85 * max_reach)² - vertical_drop²)`
+  - Ensures foot position is always within reachable range
+- **Files changed**: `src/hexapod/web.py`
+
+#### Fixed: Q/E Keys and Rotation Controls
+- **Issue**: Q/E keys did not work, rotation buttons didn't rotate the hexapod
+- **Fix**:
+  - **Q/E keys**: Walk-and-turn using differential steering (like a tank). Pressing Q walks forward while turning left, E walks forward while turning right. Different from A/D which strafe sideways without turning.
+  - **Implementation**: Backend gait engine now supports `turn_rate` parameter (-1 to +1) that applies differential swing angles to left vs right legs. Right legs step less when turning right (and vice versa), creating a natural turning motion.
+  - **Frontend**: Q/E set `currentTurnRate` and send it via the `turn` parameter in the move message.
+  - **Rotation buttons** (mouse only): Body rotation while standing. Gait loop integrates `rotation_speed` over time to update `heading`, applied to all coxa angles.
+  - **Duplicate handler removed**: Removed duplicate Q/E handlers from "Extended Keyboard Shortcuts" section.
+- **Files changed**: `web_static/app.js`, `src/hexapod/web.py`, `src/hexapod/gait.py`
+
 ### Bug Fixes
 
 #### Fixed: Hexapod not rendering and camera feature broken
 - **Issue**: The hexapod 3D model was not showing up and camera features were broken
 - **Cause**: JavaScript `ReferenceError` due to `webcamStream` variable being accessed before its declaration (temporal dead zone for `let` declarations)
 - **Fix**: Moved `webcamStream` and `webcamOverlay` variable declarations before the `renderCameraDock()` function call in `web_static/app.js`
+- **Files changed**: `web_static/app.js`
+
+#### Fixed: Reconnect button disabled when server disconnected
+- **Issue**: When the server connection was lost, clicking "Click to reconnect" didn't work because the entire control panel had pointer-events disabled
+- **Cause**: The `.disconnected` CSS class disabled pointer-events on all elements, including the connectionStatus span used for reconnection
+- **Fix**: Added CSS rule to keep `#connectionStatus` clickable even when disconnected (`pointer-events: auto`)
+- **Files changed**: `web_static/index.html`
+
+#### Fixed: Empty camera window showing on startup
+- **Issue**: A camera pane would appear on startup without any video feed, showing only a placeholder
+- **Cause**: Camera panes were rendered for all enabled camera views, even when the webcam wasn't started
+- **Fix**: Modified `renderCameraDock()` to skip local camera panes when webcamStream is not active, and skip URL cameras when no source URL is configured
 - **Files changed**: `web_static/app.js`
 
 ### UI Improvements
@@ -73,12 +118,29 @@
   - Reset function now resets all legs individually to defaults
 - **Files changed**: `src/hexapod/config.py`, `web_static/app.js`
 
+#### Unified Legs & Calibration UI
+- **Feature**: Merged Legs and Calibration tabs into a single unified interface
+- **Details**:
+  - Removed separate Calibration tab button; all leg configuration is now in the Legs tab
+  - Click a leg on the hexapod diagram to select it
+  - Selected leg shows both dimension sliders (Coxa/Femur/Tibia length) and servo offset calibration
+  - Dimension sliders update 3D visualization in real-time as you drag
+  - Visual servo gauges show current offset values
+  - Action buttons:
+    - **Test**: Toggle test mode to preview servo positions in 3D view
+    - **Copy to All**: Copy dimensions and offsets from selected leg to all other legs
+    - **Reset Leg**: Reset selected leg's dimensions and offsets to defaults
+  - Global actions:
+    - **Reset All Legs**: Reset all leg dimensions and servo offsets to defaults
+    - **Save All**: Persist all configuration to file
+- **Files changed**: `web_static/index.html`, `web_static/app.js`
+
 ### Summary of Changes
 
 | File | Changes |
 |------|---------|
-| `web_static/app.js` | Fixed webcamStream declaration order; Added disconnected state management; Added draggable floating camera panes; Per-leg configuration support |
-| `web_static/index.html` | Camera dock moved right with proper grid ordering; Settings z-index increased; Added disconnected state CSS; Added favicon link |
+| `web_static/app.js` | **Removed frontend IK** - all inverse kinematics now backend-only; **Added Q/E keyboard shortcuts** for rotation; Fixed webcamStream declaration order; Added disconnected state management; Added draggable floating camera panes; Per-leg configuration support; Merged Legs & Calibration UI with dimension sliders, servo offsets, test mode, copy-to-all, and reset functions; Fixed camera dock to hide empty local camera panes |
+| `web_static/index.html` | Camera dock moved right with proper grid ordering; Settings z-index increased; Added disconnected state CSS with reconnect clickable; Added favicon link; Combined Legs tab with dimension and calibration sliders |
 | `web_static/favicon.svg` | New hexapod favicon icon |
 | `src/hexapod/config.py` | Fixed config loading to merge with defaults; Added per-leg dimension storage |
-| `src/hexapod/web.py` | Added favicon.ico route |
+| `src/hexapod/web.py` | Added favicon.ico route; **Fixed IK stance width** - now calculated dynamically from actual leg geometry to ensure feet reach the ground |

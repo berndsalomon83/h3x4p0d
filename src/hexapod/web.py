@@ -114,11 +114,25 @@ class HexapodController:
         ground_level = -10.0  # mm
         vertical_drop = self.body_height - ground_level
 
-        # Stance width varies with body height for stability
-        stance_width_min = 30.0  # mm at max height
-        stance_width_max = 50.0  # mm at min height
-        height_range = 90.0 - 30.0
-        stance_width = stance_width_max - ((self.body_height - 30.0) / height_range) * (stance_width_max - stance_width_min)
+        # Calculate stance width dynamically based on actual leg geometry
+        # IK solver has the actual leg lengths: L1=coxa, L2=femur, L3=tibia
+        coxa_len = self.gait.ik.L1
+        femur_len = self.gait.ik.L2
+        tibia_len = self.gait.ik.L3
+        max_leg_reach = femur_len + tibia_len  # Maximum reach from femur pivot
+
+        # Calculate max horizontal reach at current body height
+        # reach² = horizontal² + vertical²  =>  horizontal = sqrt(reach² - vertical²)
+        # Use 85% of max reach to stay within comfortable range
+        usable_reach = max_leg_reach * 0.85
+        if vertical_drop >= usable_reach:
+            # Body too high, use minimum horizontal spread
+            horizontal_from_femur = max_leg_reach * 0.3
+        else:
+            horizontal_from_femur = math.sqrt(usable_reach**2 - vertical_drop**2)
+
+        # Stance width = distance from body center to foot = coxa + horizontal reach from femur
+        stance_width = coxa_len + horizontal_from_femur
 
         for leg_idx in range(6):
             # For standing pose, use IK in leg-local coordinates
@@ -157,30 +171,23 @@ class HexapodController:
         """Update servo positions based on current gait time or standing pose."""
         if self.running:
             # Walking: use gait generator
-            angles = self.gait.joint_angles_for_time(self.gait.time, mode=self.gait_mode)
-
-            # Only move servos when running
-            for leg_idx, (coxa, femur, tibia) in enumerate(angles):
-                try:
-                    # add heading rotation to coxa
-                    coxa_adjusted = coxa + self.heading
-                    self.servo.set_servo_angle(leg_idx, 0, coxa_adjusted)
-                    self.servo.set_servo_angle(leg_idx, 1, femur)
-                    self.servo.set_servo_angle(leg_idx, 2, tibia)
-                except Exception as e:
-                    print(f"Servo error leg {leg_idx}: {e}")
+            base_angles = self.gait.joint_angles_for_time(self.gait.time, mode=self.gait_mode)
         else:
             # Standing: use IK for body height
-            angles = self.calculate_standing_pose()
+            base_angles = self.calculate_standing_pose()
 
-            # Update servos to standing pose
-            for leg_idx, (coxa, femur, tibia) in enumerate(angles):
-                try:
-                    self.servo.set_servo_angle(leg_idx, 0, coxa)
-                    self.servo.set_servo_angle(leg_idx, 1, femur)
-                    self.servo.set_servo_angle(leg_idx, 2, tibia)
-                except Exception as e:
-                    print(f"Servo error leg {leg_idx}: {e}")
+        # Apply heading rotation to all coxa angles and update servos
+        angles = []
+        for leg_idx, (coxa, femur, tibia) in enumerate(base_angles):
+            # Add heading rotation to coxa
+            coxa_adjusted = coxa + self.heading
+            angles.append((coxa_adjusted, femur, tibia))
+            try:
+                self.servo.set_servo_angle(leg_idx, 0, coxa_adjusted)
+                self.servo.set_servo_angle(leg_idx, 1, femur)
+                self.servo.set_servo_angle(leg_idx, 2, tibia)
+            except Exception as e:
+                print(f"Servo error leg {leg_idx}: {e}")
 
         return angles
 
@@ -601,6 +608,9 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                     controller.running = bool(data.get("walking", False))
                     controller.speed = max(0, min(1.0, float(data.get("speed", 0.5))))
                     controller.heading = float(data.get("heading", 0.0))
+                    # Set turn_rate for differential steering (Q/E keys)
+                    turn = float(data.get("turn", 0.0))
+                    controller.gait.turn_rate = max(-1.0, min(1.0, turn))
                 elif typ == "body_height":
                     height = float(data.get("height", 60.0))
                     height = max(30.0, min(90.0, height))
@@ -618,6 +628,15 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             now = asyncio.get_event_loop().time()
             dt = now - last_time
             last_time = now
+
+            # Apply rotation speed to heading (degrees per second)
+            if controller.rotation_speed != 0:
+                controller.heading += controller.rotation_speed * dt
+                # Normalize heading to -180 to 180
+                while controller.heading > 180:
+                    controller.heading -= 360
+                while controller.heading < -180:
+                    controller.heading += 360
 
             # Only update gait time when running
             if controller.running and controller.speed > 0:

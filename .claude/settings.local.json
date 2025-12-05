@@ -23,7 +23,8 @@
       "Bash(./start.sh)",
       "Bash(.venv/bin/python3:*)",
       "Bash(node:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(./.venv/bin/python3:*)"
     ],
     "deny": [],
     "ask": []

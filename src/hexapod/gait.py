@@ -60,6 +60,7 @@ class GaitEngine:
         self.step_length = step_length
         self.cycle_time = cycle_time
         self.time = 0.0
+        self.turn_rate = 0.0  # -1.0 to 1.0: negative = left, positive = right
         self.ik = InverseKinematics(LEG_COXA_LEN, LEG_FEMUR_LEN, LEG_TIBIA_LEN)
 
     def update(self, dt: float):
@@ -78,8 +79,8 @@ class GaitEngine:
 
         # Convert step_length (10-80mm) to coxa swing angle (3-15 degrees)
         # Longer step = wider coxa swing front-to-back
-        swing_angle = 3.0 + (self.step_length - 10.0) / 70.0 * 12.0  # 3-15 degrees
-        swing_angle = max(3.0, min(15.0, swing_angle))
+        base_swing_angle = 3.0 + (self.step_length - 10.0) / 70.0 * 12.0  # 3-15 degrees
+        base_swing_angle = max(3.0, min(15.0, base_swing_angle))
 
         angles = []
         for leg in range(6):
@@ -90,6 +91,20 @@ class GaitEngine:
             # stance phase (0.5-1.0): push down and backward
             swing = local_t < 0.5
             cycle_pos = (local_t * 2.0) if swing else ((local_t - 0.5) * 2.0)
+
+            # Apply differential steering based on turn_rate
+            # Right legs: 0, 1, 2 | Left legs: 3, 4, 5
+            # turn_rate > 0 (right): right legs step less, left legs step more
+            # turn_rate < 0 (left): left legs step less, right legs step more
+            is_right_leg = leg in (0, 1, 2)
+            if is_right_leg:
+                # Right leg: reduce swing when turning right, increase when turning left
+                turn_modifier = 1.0 - self.turn_rate * 0.8  # 0.2 to 1.8
+            else:
+                # Left leg: increase swing when turning right, reduce when turning left
+                turn_modifier = 1.0 + self.turn_rate * 0.8  # 0.2 to 1.8
+            turn_modifier = max(0.1, min(2.0, turn_modifier))
+            swing_angle = base_swing_angle * turn_modifier
 
             # Coxa angle: swing forward during swing phase, backward during stance
             # This creates the forward stepping motion based on step_length

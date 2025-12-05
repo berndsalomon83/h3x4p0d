@@ -141,23 +141,24 @@
 
   let cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
 
-  const NEUTRAL_FOOT_CLEARANCE = 2; // Keep foot a hair above the visual ground
+  // ============================================================================
+  // ARCHITECTURE NOTE: All IK (Inverse Kinematics) calculations are performed
+  // on the backend (Python). The frontend ONLY displays what the backend sends
+  // via WebSocket telemetry. This ensures the 3D visualization accurately
+  // mirrors the actual hexapod servo positions and prevents drift between
+  // the simulated display and real hardware.
+  //
+  // DO NOT add IK calculations to the frontend. If leg angles need to change,
+  // send a message to the backend and let it calculate and send back telemetry.
+  // ============================================================================
 
-  function computeNeutralAngles(legConfig) {
-    const femurLength = legConfig?.femurLength ?? DEFAULT_LEG_CONFIG.femurLength;
-    const tibiaLength = legConfig?.tibiaLength ?? DEFAULT_LEG_CONFIG.tibiaLength;
-
-    const desiredFootY = GROUND_Y + NEUTRAL_FOOT_CLEARANCE;
-    const targetDrop = Math.max(10, defaultBodyY - desiredFootY);
-    const maxReach = Math.max(20, femurLength + tibiaLength - 1);
-    const clampedDrop = Math.min(targetDrop, maxReach);
-
-    const cosKnee = (femurLength*femurLength + tibiaLength*tibiaLength - clampedDrop*clampedDrop) / (2 * femurLength * tibiaLength);
-    const kneeAngle = Math.PI - Math.acos(Math.max(-1, Math.min(1, cosKnee)));
-    const femurAngle = -Math.atan2(tibiaLength * Math.sin(kneeAngle), femurLength + tibiaLength * Math.cos(kneeAngle));
-
-    return { femur: femurAngle, tibia: kneeAngle };
-  }
+  // Default visual pose for legs before backend telemetry arrives
+  // These are approximate values just for initial display - backend will override
+  const DEFAULT_VISUAL_POSE = {
+    coxa: 0,           // Neutral (pointing straight out)
+    femur: -0.5,       // Slight downward angle (radians)
+    tibia: 1.0         // Knee bent outward (radians)
+  };
 
   function normalizeCameraView(view, index = 0) {
     const fallback = DEFAULT_CAMERA_VIEWS[0];
@@ -306,7 +307,15 @@
     if (!dock) return;
 
     dock.innerHTML = '';
-    const enabledViews = cameraViews.filter(v => v.enabled);
+    // Filter enabled views - skip local cameras if webcam isn't active
+    const enabledViews = cameraViews.filter(v => {
+      if (!v.enabled) return false;
+      // Only show local camera panes when webcam stream is active
+      if (v.sourceType === 'local' && !webcamStream) return false;
+      // Only show URL cameras when they have a source URL
+      if (v.sourceType !== 'local' && !v.sourceUrl) return false;
+      return true;
+    });
     dock.style.display = enabledViews.length ? 'grid' : 'none';
 
     enabledViews.forEach((view) => {
@@ -506,7 +515,7 @@
       // Rebuild all legs with new dimensions
       if (typeof rebuildAllLegs === 'function') {
         rebuildAllLegs();
-        applyNeutralPose();
+        applyDefaultVisualPose();
       }
     } catch(e) {
       console.error('Failed to load config from backend:', e);
@@ -563,7 +572,6 @@
 
     // Use this leg's specific config
     const legConfig = legConfigs[i];
-    const neutralAngles = computeNeutralAngles(legConfig);
 
     // Coxa joint and segment (base rotation)
     const coxaJoint = new THREE.Group();
@@ -644,9 +652,10 @@
     footMesh.castShadow = true;
     tibiaJoint.add(footMesh);
 
-    // Set a neutral, ground-touching pose before telemetry arrives
-    femurJoint.rotation.x = neutralAngles.femur;
-    tibiaJoint.rotation.x = neutralAngles.tibia;
+    // Set a default visual pose before backend telemetry arrives
+    // Backend will immediately send correct IK-calculated angles
+    femurJoint.rotation.x = DEFAULT_VISUAL_POSE.femur;
+    tibiaJoint.rotation.x = DEFAULT_VISUAL_POSE.tibia;
 
     // Build hierarchy: tibia -> femur -> coxa -> leg group
     femurJoint.add(tibiaJoint);
@@ -677,13 +686,12 @@
       isRightSide: isRightSide
     });
 
-      // Initialize interpolation targets to a neutral, ground-touching position
-      // Backend telemetry will immediately provide correct IK values
-      // Smoothing will transition from this safe position to actual pose
+    // Initialize interpolation targets to default visual pose
+    // Backend telemetry will immediately provide correct IK-calculated angles
     legTargets.push({
-      coxa: 0,      // Neutral (pointing straight out)
-      femur: neutralAngles.femur,
-      tibia: neutralAngles.tibia
+      coxa: DEFAULT_VISUAL_POSE.coxa,
+      femur: DEFAULT_VISUAL_POSE.femur,
+      tibia: DEFAULT_VISUAL_POSE.tibia
     });
 
   }
@@ -698,7 +706,12 @@
   let walking = false;
   let currentSpeed = 0.5;    // 0-1
   let currentHeading = 0;    // 0-360 degrees
+  let currentTurnRate = 0;   // -1 to 1: differential steering for Q/E
   let keysPressed = {};
+
+  // Rotation state (for Q/E keys and rotation buttons)
+  let isRotatingLeft = false;
+  let isRotatingRight = false;
 
   function updateRunButtonTheme() {
     if (!runBtn) return;
@@ -900,14 +913,11 @@
               // Coxa: direct conversion for yaw rotation
               legTargets[i].coxa = (c - 90) * Math.PI / 180;
 
-              // Femur and tibia: LEFT and RIGHT legs need OPPOSITE rotations
-              // because legGroup.rotation.y flips the X axis for left vs right sides!
-              // Right side (positive Z): use angles as-is
-              // Left side (negative Z): negate femur/tibia angles
-              const isRightSide = legs[i].isRightSide;
-              const sign = isRightSide ? 1 : -1;
-              legTargets[i].femur = sign * (f - 90) * Math.PI / 180;
-              legTargets[i].tibia = sign * (t - 90) * Math.PI / 180;
+              // Femur and tibia: convert from servo convention (90° = neutral) to radians
+              // No sign flip needed - Three.js leg group rotations already handle
+              // left vs right mirroring via legGroup.rotation.y
+              legTargets[i].femur = (f - 90) * Math.PI / 180;
+              legTargets[i].tibia = (t - 90) * Math.PI / 180;
             }
           }
           // Update walking state for body animation
@@ -982,6 +992,7 @@
       type: 'move',
       speed: currentSpeed,
       heading: currentHeading,
+      turn: currentTurnRate,  // Differential steering: -1 left, +1 right
       walking: walking
     }));
   }
@@ -990,10 +1001,20 @@
   function updateHeading(){
     let dx = 0, dy = 0;
 
+    // WASD / Arrow keys for directional movement
     if(keysPressed['ArrowUp'] || keysPressed['w'] || keysPressed['W']) dy += 1;
     if(keysPressed['ArrowDown'] || keysPressed['s'] || keysPressed['S']) dy -= 1;
     if(keysPressed['ArrowLeft'] || keysPressed['a'] || keysPressed['A']) dx -= 1;
     if(keysPressed['ArrowRight'] || keysPressed['d'] || keysPressed['D']) dx += 1;
+
+    // Q/E for walking and turning (differential steering handled by backend)
+    const qPressed = keysPressed['q'] || keysPressed['Q'];
+    const ePressed = keysPressed['e'] || keysPressed['E'];
+    // Set turn rate: -1 = turn left, +1 = turn right, 0 = straight
+    currentTurnRate = qPressed ? -1.0 : (ePressed ? 1.0 : 0.0);
+    if(qPressed || ePressed) {
+      dy += 1;  // Walk forward while turning
+    }
 
     if(dx === 0 && dy === 0){
       currentSpeed = 0;
@@ -1067,15 +1088,35 @@
 
   // Keyboard support
   document.addEventListener('keydown', (e) => {
-    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D'].includes(e.key)){
+    // Movement keys (WASD, arrows, and Q/E for turning)
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D','q','Q','e','E'].includes(e.key)){
       keysPressed[e.key] = true;
+      // Highlight rotation buttons when Q/E pressed
+      if (e.key === 'q' || e.key === 'Q') {
+        const btn = document.getElementById('rotateLeft');
+        if (btn) btn.classList.add('active');
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        const btn = document.getElementById('rotateRight');
+        if (btn) btn.classList.add('active');
+      }
       updateHeading();
     }
   });
-  
+
   document.addEventListener('keyup', (e) => {
-    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D'].includes(e.key)){
+    // Movement keys (WASD, arrows, and Q/E for turning)
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D','q','Q','e','E'].includes(e.key)){
       keysPressed[e.key] = false;
+      // Remove highlight from rotation buttons when Q/E released
+      if (e.key === 'q' || e.key === 'Q') {
+        const btn = document.getElementById('rotateLeft');
+        if (btn) btn.classList.remove('active');
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        const btn = document.getElementById('rotateRight');
+        if (btn) btn.classList.remove('active');
+      }
       updateHeading();
     }
   });
@@ -1102,15 +1143,14 @@
     // Update body visual position
     body.position.y = height;
 
-    // Update all leg visual positions
+    // Update all leg visual positions (Y position only - leg angles come from backend)
     legs.forEach((leg, i) => {
       leg.group.position.y = height;
     });
 
-    applyNeutralPose();
-
     // Send body height to backend via WebSocket
-    // Backend will calculate IK and send angles back via telemetry
+    // Backend calculates IK and sends angles back via telemetry
+    // DO NOT calculate leg angles locally - all IK is done on backend
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'body_height',
@@ -1539,8 +1579,13 @@
   // Load saved theme once UI controls are available
   loadTheme();
 
-  // Initialize leg configuration UI
+  // Initialize leg configuration UI (legacy - now using unified Legs tab with SVG diagram)
   function initializeConfigUI() {
+    // Skip if container doesn't exist (using new unified UI instead)
+    if (!legConfigContainer) {
+      return;
+    }
+
     const legNames = ['Front Right', 'Mid Right', 'Rear Right', 'Rear Left', 'Mid Left', 'Front Left'];
 
     // Create a layout with body in center and legs in 2 columns
@@ -1682,20 +1727,22 @@
     }
   }
 
-  function applyNeutralPose() {
+  // Apply default visual pose to all legs (no IK calculation)
+  // This is ONLY for initial display - backend telemetry will override with real angles
+  // DO NOT add IK calculations here - all IK is done on backend
+  function applyDefaultVisualPose() {
     const now = performance.now();
 
     for (let i = 0; i < legs.length; i++) {
-      const neutralAngles = computeNeutralAngles(legConfigs[i]);
-      legTargets[i].coxa = 0;
-      legTargets[i].femur = neutralAngles.femur;
-      legTargets[i].tibia = neutralAngles.tibia;
+      legTargets[i].coxa = DEFAULT_VISUAL_POSE.coxa;
+      legTargets[i].femur = DEFAULT_VISUAL_POSE.femur;
+      legTargets[i].tibia = DEFAULT_VISUAL_POSE.tibia;
 
       const underManualControl = (now - manualControlTimestamps[i]) < MANUAL_CONTROL_TIMEOUT;
       if (!underManualControl) {
-        legs[i].coxaJoint.rotation.y = 0;
-        legs[i].femurJoint.rotation.x = neutralAngles.femur;
-        legs[i].tibiaJoint.rotation.x = neutralAngles.tibia;
+        legs[i].coxaJoint.rotation.y = DEFAULT_VISUAL_POSE.coxa;
+        legs[i].femurJoint.rotation.x = DEFAULT_VISUAL_POSE.femur;
+        legs[i].tibiaJoint.rotation.x = DEFAULT_VISUAL_POSE.tibia;
       }
     }
   }
@@ -1739,9 +1786,21 @@
 
     // Rebuild only the affected leg
     rebuildLeg(legIndex);
-    applyNeutralPose();
+    applyDefaultVisualPose();
 
     logMsg(`Updated leg ${legIndex} ${part} length to ${value}mm`);
+  }
+
+  // Save all dimensions for a leg to backend
+  function saveLegDimensions(legIndex) {
+    const config = legConfigs[legIndex];
+    saveConfigToBackend({
+      [`leg${legIndex}_coxa_length`]: config.coxaLength,
+      [`leg${legIndex}_femur_length`]: config.femurLength,
+      [`leg${legIndex}_tibia_length`]: config.tibiaLength
+    });
+    rebuildLeg(legIndex);
+    applyDefaultVisualPose();
   }
 
   // Rebuild a specific leg with new dimensions
@@ -1956,18 +2015,32 @@
       updates[`leg${i}_coxa_length`] = DEFAULT_LEG_CONFIG.coxaLength;
       updates[`leg${i}_femur_length`] = DEFAULT_LEG_CONFIG.femurLength;
       updates[`leg${i}_tibia_length`] = DEFAULT_LEG_CONFIG.tibiaLength;
+      // Also reset servo offsets
+      updates[`servo_offset_leg${i}_joint0`] = 0;
+      updates[`servo_offset_leg${i}_joint1`] = 0;
+      updates[`servo_offset_leg${i}_joint2`] = 0;
     }
     saveConfigToBackend(updates);
 
+    // Reset calibration state offsets
+    if (typeof calibrationState !== 'undefined') {
+      for (let i = 0; i < 6; i++) {
+        calibrationState.offsets[i] = {coxa: 0, femur: 0, tibia: 0};
+      }
+    }
+
     rebuildAllLegs();
-    applyNeutralPose();
-    logMsg('All legs reset to defaults');
+    applyDefaultVisualPose();
+    logMsg('All legs reset to defaults (dimensions and offsets)');
   }
 
   // Reset all legs
   document.getElementById('resetAllLegs').addEventListener('click', () => {
-    if (confirm('Reset all leg dimensions to default values?')) {
+    if (confirm('Reset all leg dimensions and servo offsets to default values?')) {
       resetAllLegsToDefaults();
+      // Update UI if calibration is active
+      if (typeof updateGauges === 'function') updateGauges();
+      if (typeof updateDiagramStatus === 'function') updateDiagramStatus();
     }
   });
 
@@ -2376,8 +2449,9 @@
     });
   }
 
-  // Select a leg for calibration
+  // Select a leg for calibration and dimensions
   function selectLeg(legIndex) {
+    try {
     calibrationState.selectedLeg = legIndex;
 
     // Update title
@@ -2386,11 +2460,44 @@
       titleEl.textContent = `Leg ${legIndex}: ${legNames[legIndex]}`;
     }
 
-    // Update mirror button text
-    const mirrorBtn = document.getElementById('mirrorBtn');
-    if (mirrorBtn) {
-      const mirrorLeg = calibrationState.mirrorPairs[legIndex];
-      mirrorBtn.textContent = `Mirror → ${mirrorLeg}`;
+    // Update mirror button text (copy to all in combined UI)
+    const copyToAllBtn = document.getElementById('copyToAllBtn');
+    if (copyToAllBtn) {
+      copyToAllBtn.textContent = 'Copy to All';
+    }
+
+    // Show the dimension, calibration and action sections
+    const dimensionSection = document.getElementById('legDimensionSection');
+    const divider = document.getElementById('sectionDivider');
+    const gaugeRow = document.getElementById('servoGaugeRow');
+    const calibrationSliders = document.getElementById('calibrationSliders');
+    const legActions = document.getElementById('legActions');
+
+    if (dimensionSection) dimensionSection.style.display = 'block';
+    if (divider) divider.style.display = 'block';
+    if (gaugeRow) gaugeRow.style.display = 'flex';
+    if (calibrationSliders) calibrationSliders.style.display = 'block';
+    if (legActions) legActions.style.display = 'grid';
+
+    // Update dimension sliders with current leg config
+    const legConfig = legConfigs[legIndex];
+    if (legConfig) {
+      const coxaLengthSlider = document.getElementById('coxaLengthSlider');
+      const femurLengthSlider = document.getElementById('femurLengthSlider');
+      const tibiaLengthSlider = document.getElementById('tibiaLengthSlider');
+
+      if (coxaLengthSlider) {
+        coxaLengthSlider.value = legConfig.coxaLength;
+        document.getElementById('coxaLengthValue').textContent = legConfig.coxaLength.toFixed(1) + ' mm';
+      }
+      if (femurLengthSlider) {
+        femurLengthSlider.value = legConfig.femurLength;
+        document.getElementById('femurLengthValue').textContent = legConfig.femurLength.toFixed(1) + ' mm';
+      }
+      if (tibiaLengthSlider) {
+        tibiaLengthSlider.value = legConfig.tibiaLength;
+        document.getElementById('tibiaLengthValue').textContent = legConfig.tibiaLength.toFixed(1) + ' mm';
+      }
     }
 
     // Highlight the leg in 3D view
@@ -2398,6 +2505,9 @@
 
     updateGauges();
     updateDiagramStatus();
+    } catch (err) {
+      console.error('Error in selectLeg:', err);
+    }
   }
 
   // Highlight selected leg in 3D scene
@@ -2460,7 +2570,8 @@
   function initializeCalibrationUI() {
     // Leg selection from SVG diagram
     document.querySelectorAll('.leg-btn').forEach(legEl => {
-      legEl.addEventListener('click', () => {
+      legEl.addEventListener('click', (e) => {
+        e.stopPropagation();
         const legIndex = parseInt(legEl.dataset.leg);
         selectLeg(legIndex);
       });
@@ -2491,6 +2602,39 @@
       }
     });
 
+    // Dimension slider handlers (for leg segment lengths)
+    ['coxa', 'femur', 'tibia'].forEach((joint) => {
+      const slider = document.getElementById(`${joint}LengthSlider`);
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          if (calibrationState.selectedLeg === null) return;
+
+          const length = parseFloat(e.target.value);
+          const legIndex = calibrationState.selectedLeg;
+          const configKey = `${joint}Length`;
+
+          // Update local config
+          legConfigs[legIndex][configKey] = length;
+
+          // Update display
+          const valueEl = document.getElementById(`${joint}LengthValue`);
+          if (valueEl) {
+            valueEl.textContent = length.toFixed(1) + ' mm';
+          }
+
+          // Update 3D visualization
+          rebuildLeg(legIndex);
+          applyDefaultVisualPose();
+        });
+
+        // Save on change (when slider is released)
+        slider.addEventListener('change', () => {
+          if (calibrationState.selectedLeg === null) return;
+          saveLegDimensions(calibrationState.selectedLeg);
+        });
+      }
+    });
+
     // Quick preset buttons
     document.querySelectorAll('.quick-preset-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -2516,87 +2660,121 @@
       });
     });
 
-    // Test mode toggle
-    document.getElementById('testModeBtn').addEventListener('click', () => {
-      calibrationState.testMode = !calibrationState.testMode;
+    // Test mode toggle (test servos for selected leg)
+    const testServoBtn = document.getElementById('testServoBtn');
+    if (testServoBtn) {
+      testServoBtn.addEventListener('click', () => {
+        calibrationState.testMode = !calibrationState.testMode;
 
-      const btn = document.getElementById('testModeBtn');
-      const indicator = document.getElementById('testModeIndicator');
+        testServoBtn.classList.toggle('active', calibrationState.testMode);
+        testServoBtn.textContent = calibrationState.testMode ? 'Stop Test' : 'Test';
 
-      btn.classList.toggle('active', calibrationState.testMode);
-      btn.textContent = calibrationState.testMode ? 'Exit Test' : 'Test Mode';
-      indicator.classList.toggle('active', calibrationState.testMode);
+        if (calibrationState.testMode && calibrationState.selectedLeg !== null) {
+          // Apply current offsets to 3D view
+          const legIndex = calibrationState.selectedLeg;
+          const offsets = calibrationState.offsets[legIndex];
+          applyTestOffset(legIndex, 0, offsets.coxa);
+          applyTestOffset(legIndex, 1, offsets.femur);
+          applyTestOffset(legIndex, 2, offsets.tibia);
+          logMsg(`Test mode active for leg ${legIndex}`);
+        } else {
+          logMsg('Test mode deactivated');
+        }
+      });
+    }
 
-      if (calibrationState.testMode && calibrationState.selectedLeg !== null) {
-        logMsg(`Test mode active for leg ${calibrationState.selectedLeg}`);
-      } else {
-        logMsg('Test mode deactivated');
-      }
-    });
+    // Copy to all legs button
+    const copyToAllBtn = document.getElementById('copyToAllBtn');
+    if (copyToAllBtn) {
+      copyToAllBtn.addEventListener('click', async () => {
+        if (calibrationState.selectedLeg === null) return;
 
-    // Mirror button
-    document.getElementById('mirrorBtn').addEventListener('click', async () => {
-      if (calibrationState.selectedLeg === null) return;
+        const sourceLeg = calibrationState.selectedLeg;
+        const sourceConfig = legConfigs[sourceLeg];
+        const sourceOffsets = calibrationState.offsets[sourceLeg];
 
-      const mirrorLeg = calibrationState.mirrorPairs[calibrationState.selectedLeg];
-      const sourceOffsets = calibrationState.offsets[calibrationState.selectedLeg];
+        // Copy dimensions and offsets to all other legs
+        for (let leg = 0; leg < 6; leg++) {
+          if (leg === sourceLeg) continue;
 
-      // Copy offsets to mirror leg (invert coxa for left/right)
-      calibrationState.offsets[mirrorLeg] = {
-        coxa: -sourceOffsets.coxa, // Invert coxa for mirror
-        femur: sourceOffsets.femur,
-        tibia: sourceOffsets.tibia
-      };
+          // Copy dimensions
+          legConfigs[leg] = {
+            coxaLength: sourceConfig.coxaLength,
+            femurLength: sourceConfig.femurLength,
+            tibiaLength: sourceConfig.tibiaLength
+          };
+          saveLegDimensions(leg);
 
-      // Save to backend
-      await saveOffset(mirrorLeg, 0, -sourceOffsets.coxa);
-      await saveOffset(mirrorLeg, 1, sourceOffsets.femur);
-      await saveOffset(mirrorLeg, 2, sourceOffsets.tibia);
+          // Copy offsets
+          calibrationState.offsets[leg] = {
+            coxa: sourceOffsets.coxa,
+            femur: sourceOffsets.femur,
+            tibia: sourceOffsets.tibia
+          };
+          await saveOffset(leg, 0, sourceOffsets.coxa);
+          await saveOffset(leg, 1, sourceOffsets.femur);
+          await saveOffset(leg, 2, sourceOffsets.tibia);
+        }
 
-      updateDiagramStatus();
-      logMsg(`Mirrored offsets from leg ${calibrationState.selectedLeg} to leg ${mirrorLeg}`);
-    });
+        updateDiagramStatus();
+        logMsg(`Copied dimensions and offsets from leg ${sourceLeg} to all legs`);
+      });
+    }
 
-    // Reset leg button
+    // Reset leg button (resets both dimensions and offsets)
     document.getElementById('resetLegBtn').addEventListener('click', async () => {
       if (calibrationState.selectedLeg === null) return;
 
-      calibrationState.offsets[calibrationState.selectedLeg] = {coxa: 0, femur: 0, tibia: 0};
+      const legIndex = calibrationState.selectedLeg;
 
-      await saveOffset(calibrationState.selectedLeg, 0, 0);
-      await saveOffset(calibrationState.selectedLeg, 1, 0);
-      await saveOffset(calibrationState.selectedLeg, 2, 0);
+      // Reset dimensions to defaults
+      legConfigs[legIndex] = {
+        coxaLength: 15.0,
+        femurLength: 50.0,
+        tibiaLength: 55.0
+      };
+      saveLegDimensions(legIndex);
+
+      // Update dimension sliders
+      const coxaLengthSlider = document.getElementById('coxaLengthSlider');
+      const femurLengthSlider = document.getElementById('femurLengthSlider');
+      const tibiaLengthSlider = document.getElementById('tibiaLengthSlider');
+      if (coxaLengthSlider) {
+        coxaLengthSlider.value = 15.0;
+        document.getElementById('coxaLengthValue').textContent = '15.0 mm';
+      }
+      if (femurLengthSlider) {
+        femurLengthSlider.value = 50.0;
+        document.getElementById('femurLengthValue').textContent = '50.0 mm';
+      }
+      if (tibiaLengthSlider) {
+        tibiaLengthSlider.value = 55.0;
+        document.getElementById('tibiaLengthValue').textContent = '55.0 mm';
+      }
+
+      // Reset offsets
+      calibrationState.offsets[legIndex] = {coxa: 0, femur: 0, tibia: 0};
+      await saveOffset(legIndex, 0, 0);
+      await saveOffset(legIndex, 1, 0);
+      await saveOffset(legIndex, 2, 0);
 
       updateGauges();
       updateDiagramStatus();
-      logMsg(`Reset offsets for leg ${calibrationState.selectedLeg}`);
+      logMsg(`Reset leg ${legIndex} to defaults`);
     });
 
-    // Save all button
-    document.getElementById('saveCalibration').addEventListener('click', async () => {
-      try {
-        await fetch('/api/config/save', { method: 'POST' });
-        logMsg('Calibration saved to file');
-      } catch (e) {
-        logMsg('Failed to save calibration');
-      }
-    });
-
-    // Reset all button
-    document.getElementById('resetAllCalibration').addEventListener('click', async () => {
-      if (!confirm('Reset all servo offsets to 0?')) return;
-
-      for (let leg = 0; leg < 6; leg++) {
-        calibrationState.offsets[leg] = {coxa: 0, femur: 0, tibia: 0};
-        await saveOffset(leg, 0, 0);
-        await saveOffset(leg, 1, 0);
-        await saveOffset(leg, 2, 0);
-      }
-
-      updateGauges();
-      updateDiagramStatus();
-      logMsg('All servo offsets reset to 0');
-    });
+    // Save all button (dimensions and calibration offsets)
+    const saveAllBtn = document.getElementById('saveCalibrationBtn');
+    if (saveAllBtn) {
+      saveAllBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/config/save', { method: 'POST' });
+          logMsg('Configuration saved to file');
+        } catch (e) {
+          logMsg('Failed to save configuration');
+        }
+      });
+    }
 
     // Select first leg by default
     selectLeg(0);
@@ -2744,9 +2922,7 @@
   keyboardOverlay.addEventListener('click', hideKeyboardHelp);
 
   // ========== Rotation Controls ==========
-
-  let isRotatingLeft = false;
-  let isRotatingRight = false;
+  // Note: isRotatingLeft and isRotatingRight are defined earlier with movement state
 
   async function updateRotation() {
     const speed = isRotatingLeft ? -90 : (isRotatingRight ? 90 : 0);
@@ -2865,20 +3041,8 @@
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     switch (e.key.toLowerCase()) {
-      case 'q':
-        if (!isRotatingLeft) {
-          isRotatingLeft = true;
-          rotateLeftBtn.classList.add('active');
-          updateRotation();
-        }
-        break;
-      case 'e':
-        if (!isRotatingRight) {
-          isRotatingRight = true;
-          rotateRightBtn.classList.add('active');
-          updateRotation();
-        }
-        break;
+      // NOTE: Q/E keys are handled by the movement system in updateHeading()
+      // They make the hexapod walk and turn, not just rotate body in place
       case 'escape':
         document.getElementById('emergencyStop').click();
         break;
@@ -2899,21 +3063,6 @@
     }
   });
 
-  document.addEventListener('keyup', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-    switch (e.key.toLowerCase()) {
-      case 'q':
-        isRotatingLeft = false;
-        rotateLeftBtn.classList.remove('active');
-        updateRotation();
-        break;
-      case 'e':
-        isRotatingRight = false;
-        rotateRightBtn.classList.remove('active');
-        updateRotation();
-        break;
-    }
-  });
+  // NOTE: Q/E keyup is handled by the movement system - no separate handler needed here
 
 })();
