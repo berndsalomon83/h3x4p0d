@@ -181,6 +181,66 @@ class TestKillServersOnPort:
             # Should only call lsof once
             assert mock_run.call_count == 1
 
+    def test_skips_current_process(self):
+        """Kill routine should not terminate the current process."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(stdout=str(os.getpid()), returncode=0)
+
+            from hexapod.main import kill_servers_on_port
+
+            kill_servers_on_port(8123)
+
+            # Only the discovery call should run; no kill attempts are made
+            assert mock_run.call_count == 1
+
+    def test_ignores_invalid_pid_entries(self):
+        """Ignore malformed PIDs while still handling valid ones."""
+        with patch('subprocess.run') as mock_run, patch('time.sleep'):
+            mock_run.side_effect = [
+                MagicMock(stdout="abc\n12345", returncode=0),  # lsof output with invalid + valid PID
+                MagicMock(returncode=0),  # kill -15 for valid PID
+                MagicMock(returncode=1),  # kill -0 indicates process already gone
+            ]
+
+            from hexapod.main import kill_servers_on_port
+
+            kill_servers_on_port(8456)
+
+            # Ensure lsof was scoped to the requested port and only valid PID led to kill attempts
+            calls = mock_run.call_args_list
+            assert any(":8456" in str(call) for call in calls)
+            assert len(calls) == 3
+
+
+class TestStartCalibrationServer:
+    """Tests for start_calibration_server() behavior."""
+
+    def test_start_calibration_server_uses_configured_host_and_port(self):
+        """Ensure calibration server bootstraps uvicorn with provided arguments."""
+        with (
+            patch('hexapod.main.create_calibration_app') as mock_create_app,
+            patch('hexapod.main.uvicorn.Config') as mock_config,
+            patch('hexapod.main.uvicorn.Server') as mock_server,
+        ):
+            mock_app = MagicMock()
+            mock_create_app.return_value = mock_app
+            server_instance = MagicMock()
+            mock_server.return_value = server_instance
+
+            from hexapod.main import start_calibration_server
+
+            start_calibration_server(host="127.0.0.1", port=9100, use_hardware=True)
+
+            mock_create_app.assert_called_once_with(use_hardware=True)
+            mock_config.assert_called_once_with(
+                mock_app,
+                host="127.0.0.1",
+                port=9100,
+                log_level="warning",
+            )
+            mock_server.assert_called_once_with(mock_config.return_value)
+            server_instance.run.assert_called_once_with()
+
 
 class TestMainModule:
     """Tests for main module structure."""
