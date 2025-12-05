@@ -1,5 +1,19 @@
 # Changelog
 
+## 2025-12-12
+
+### Body Pose Yaw Alignment
+
+- Fixed configuration preview coxa yaw math to rotate legs with the body's yaw using degree-based adjustments so the Geometry & Frames posture preview matches backend pose handling. (web_static/config.js)
+
+## 2025-02-07
+
+### Frontend Configuration Wiring
+
+- Added backend-aware data bindings for geometry and leg length sliders in the configuration UI so updates persist using the server's expected key names. (web_static/config.html, web_static/config.js)
+- Introduced a cycle time control and aligned gait parameter bindings with `step_length`/`step_height` keys to keep the summary cards and saves consistent with the configuration API. (web_static/config.html, web_static/config.js)
+- Synced geometry controls with the live 3D preview so loaded body dimensions and leg attach points rebuild the visualization without requiring manual interaction. (web_static/config.js)
+
 ## 2025-12-11
 
 ### Test Suite Quality Review
@@ -186,4 +200,10 @@
 - Added calibration coverage snapshots (mapped counts, unmapped joints, free channels) to the calibration API so the UI can guide setup with real-time status. (src/hexapod/calibrate_web.py)
 - Refreshed the calibration page with a color-themed configuration assistant that highlights unmapped joints, available channels, and provides an auto-assign action plus updated quick-test styling. (web_static/calibrate.html)
 - Expanded calibration tests to assert coverage metadata in status responses and mapping endpoints, ensuring the helper data remains available to the UI. (tests/test_calibrate_web.py)
+
+## 2025-12-11
+
+### Pose Preview Controls
+
+- Synced the right-panel pose buttons (stand, crouch, walk test, reset) with the 3D preview by animating body posture, leg angles, and contact indicators locally even when the backend is offline. (web_static/config.js)
 

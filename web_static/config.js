@@ -157,6 +157,7 @@ async function loadConfig() {
     state.config = savedConfig;
     applyConfigToUI();
     updatePreview();
+    applyGeometryConfigToPreview();
     updateSummaryCards();
     logEvent('INFO', `Loaded config for "${state.currentProfile}" from localStorage`);
     return;
@@ -169,6 +170,7 @@ async function loadConfig() {
       state.config = await response.json();
       applyConfigToUI();
       updatePreview();
+      applyGeometryConfigToPreview();
       updateSummaryCards();
       saveConfigToStorage(state.currentProfile, state.config); // Cache it
       logEvent('INFO', 'Configuration loaded from server');
@@ -178,15 +180,17 @@ async function loadConfig() {
     state.config = {
       body_length: 300,
       body_width: 200,
-      body_height: 120,
+      body_height_geo: 50,
       leg_coxa_length: 30,
       leg_femur_length: 50,
       leg_tibia_length: 80,
-      gait_step_length: 60,
-      gait_step_height: 30,
+      step_length: 60,
+      step_height: 30,
+      cycle_time: 1.2,
       servo_type: 'DS3218'
     };
     applyConfigToUI();
+    applyGeometryConfigToPreview();
     updateSummaryCards();
     saveConfigToStorage(state.currentProfile, state.config); // Save default config
     logEvent('WARN', 'Using demo config (offline mode)');
@@ -635,21 +639,29 @@ function applyConfigToUI() {
   const c = state.config;
 
   // Geometry sliders
-  setSliderValue('bodyHeight', c.body_height || 120);
-  setSliderValue('bodyWidth', c.body_width || 100);
-  setSliderValue('bodyLength', c.body_length || 150);
+  setSliderValue('body_height_geo', c.body_height_geo || 50);
+  setSliderValue('body_width', c.body_width || 100);
+  setSliderValue('body_length', c.body_length || 150);
+  populateLegAttachTable(c);
 
   // Leg geometry
-  setSliderValue('coxaLength', c.leg_coxa_length || 30);
-  setSliderValue('femurLength', c.leg_femur_length || 50);
-  setSliderValue('tibiaLength', c.leg_tibia_length || 80);
+  const coxa = c.leg_coxa_length || c.leg0_coxa_length || 30;
+  const femur = c.leg_femur_length || c.leg0_femur_length || 50;
+  const tibia = c.leg_tibia_length || c.leg0_tibia_length || 80;
+  setSliderValue('leg_coxa_length', coxa);
+  setSliderValue('leg_femur_length', femur);
+  setSliderValue('leg_tibia_length', tibia);
 
   // Gait parameters
-  setSliderValue('stepHeight', c.gait_step_height || 30);
-  setSliderValue('stepLength', c.gait_step_length || 60);
-  setSliderValue('cycleTime', (c.gait_cycle_time || 1.0) * 100);
+  const stepHeight = c.step_height ?? c.gait_step_height ?? 30;
+  const stepLength = c.step_length ?? c.gait_step_length ?? 60;
+  const cycleTime = c.cycle_time ?? c.gait_cycle_time ?? 1.2;
+  setSliderValue('step_height', stepHeight);
+  setSliderValue('step_length', stepLength);
+  setSliderValue('cycle_time', cycleTime);
 
   // Body pose
+  setSliderValue('body_height', c.body_height || state.telemetry.bodyHeight || 120);
   setSliderValue('bodyRoll', c.body_roll || 0);
   setSliderValue('bodyPitch', c.body_pitch || 0);
   setSliderValue('bodyYaw', c.body_yaw || 0);
@@ -1703,12 +1715,12 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     const spreadFactor = (legSpread || 100) / 100;
     const horizontalReach = LEG_TOTAL_REACH * 0.6 * spreadFactor; // 60% of max reach at default spread
 
-    // Coxa angle: base angle + counter-rotation for yaw + spread adjustment
-    // When body yaws right (+), legs should counter-rotate left (-) to keep feet in place
+    // Coxa angle: base angle + yaw + spread adjustment (mirror backend pose math)
+    // Convert yaw from radians to degrees so it matches the coxa base units
     const coxaBase = 90 + (baseAngle * 180 / Math.PI);
-    const coxaYawCompensation = -bodyYaw; // Counter-rotate for yaw
+    const coxaYawAdjust = bodyYaw * 180 / Math.PI; // Rotate with the body yaw
     const coxaSpreadAdjust = (spreadFactor - 1) * 15; // Spread legs outward
-    const coxa = coxaBase + coxaYawCompensation + coxaSpreadAdjust;
+    const coxa = coxaBase + coxaYawAdjust + coxaSpreadAdjust;
 
     // Calculate required vertical reach (from attachment point to ground)
     const verticalReach = attachHeight;
@@ -1970,32 +1982,118 @@ function requireBackendConnection(action) {
   return true;
 }
 
-document.getElementById('testStand')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Stand pose')) return;
+const POSE_PREVIEW_PRESETS = {
+  stand: {
+    telemetry: () => ({
+      bodyHeight: state.config.body_height || state.telemetry.bodyHeight || 120,
+      roll: 0,
+      pitch: 0
+    }),
+    legAngles: { coxa: 90, femur: 55, tibia: -115 },
+    footContacts: [true, true, true, true, true, true]
+  },
+  crouch: {
+    telemetry: () => ({
+      bodyHeight: Math.max((state.config.body_height || state.telemetry.bodyHeight || 120) * 0.65, 50),
+      roll: 0,
+      pitch: 0
+    }),
+    legAngles: { coxa: 90, femur: 35, tibia: -80 },
+    footContacts: [true, true, true, true, true, true]
+  },
+  walk: {
+    telemetry: () => ({
+      bodyHeight: (state.config.body_height || state.telemetry.bodyHeight || 120) * 0.9,
+      roll: 0,
+      pitch: 3
+    }),
+    legAngles: [
+      { coxa: 85, femur: 52, tibia: -110 },
+      { coxa: 100, femur: 42, tibia: -90 },
+      { coxa: 84, femur: 54, tibia: -115 },
+      { coxa: 98, femur: 40, tibia: -88 },
+      { coxa: 86, femur: 50, tibia: -108 },
+      { coxa: 96, femur: 44, tibia: -92 }
+    ],
+    footContacts: [true, false, true, false, true, false]
+  },
+  neutral: {
+    telemetry: () => ({
+      bodyHeight: state.config.body_height || state.telemetry.bodyHeight || 100,
+      roll: 0,
+      pitch: 0,
+      yaw: 0
+    }),
+    legAngles: { coxa: 90, femur: 45, tibia: -90 },
+    footContacts: [true, false, true, true, false, true]
+  }
+};
+
+function previewPosePreset(preset, duration = 700) {
+  const pose = POSE_PREVIEW_PRESETS[preset];
+  if (!pose) return;
+
+  const telemetry = typeof pose.telemetry === 'function' ? pose.telemetry() : pose.telemetry || {};
+  const targetHeight = telemetry.bodyHeight ?? state.telemetry.bodyHeight;
+  const targetRoll = telemetry.roll ?? state.telemetry.roll;
+  const targetPitch = telemetry.pitch ?? state.telemetry.pitch;
+  const targetYaw = telemetry.yaw ?? state.telemetry.yaw;
+
+  animatePoseTransition(targetHeight, targetRoll, targetPitch, targetYaw, duration);
+
+  if (pose.legAngles) {
+    animateLegsTo(pose.legAngles, duration);
+  }
+
+  if (pose.footContacts) {
+    state.footContacts = [...pose.footContacts];
+  }
+
   state.testActionActive = true;
-  sendCommand('pose', { preset: 'stand' });
-  logEvent('INFO', 'Stand pose commanded - backend will calculate IK');
+  updateLiveStatus();
+}
+
+document.getElementById('testStand')?.addEventListener('click', () => {
+  previewPosePreset('stand');
+  if (requireBackendConnection('Stand pose')) {
+    sendCommand('pose', { preset: 'stand' });
+    logEvent('INFO', 'Stand pose commanded - backend will calculate IK');
+  } else {
+    logEvent('INFO', 'Previewing stand pose locally (no backend connection)');
+  }
 });
 
 document.getElementById('testCrouch')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Crouch pose')) return;
-  state.testActionActive = true;
-  sendCommand('pose', { preset: 'crouch' });
-  logEvent('INFO', 'Crouch pose commanded - backend will calculate IK');
+  previewPosePreset('crouch');
+  if (requireBackendConnection('Crouch pose')) {
+    sendCommand('pose', { preset: 'crouch' });
+    logEvent('INFO', 'Crouch pose commanded - backend will calculate IK');
+  } else {
+    logEvent('INFO', 'Previewing crouch pose locally (no backend connection)');
+  }
 });
 
 document.getElementById('testWalk')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Walk test')) return;
-  state.testActionActive = true;
-  sendCommand('walk', { walking: true });
-  logEvent('INFO', 'Walk test commanded - backend will run gait');
+  previewPosePreset('walk', 900);
+  if (requireBackendConnection('Walk test')) {
+    sendCommand('walk', { walking: true });
+    logEvent('INFO', 'Walk test commanded - backend will run gait');
+  } else {
+    logEvent('INFO', 'Previewing walk test locally (no backend connection)');
+  }
 });
 
 document.getElementById('testReset')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Reset pose')) return;
-  state.testActionActive = false;  // Re-enable idle animation
-  sendCommand('pose', { preset: 'neutral' });
-  logEvent('INFO', 'Reset to neutral commanded - backend will calculate IK');
+  previewPosePreset('neutral');
+  setTimeout(() => {
+    state.testActionActive = false;  // Re-enable idle animation after preview completes
+  }, 800);
+  if (requireBackendConnection('Reset pose')) {
+    sendCommand('pose', { preset: 'neutral' });
+    logEvent('INFO', 'Reset to neutral commanded - backend will calculate IK');
+  } else {
+    logEvent('INFO', 'Previewing neutral pose locally (no backend connection)');
+  }
 });
 
 // Helper function to animate all legs to target angles
@@ -2003,6 +2101,9 @@ document.getElementById('testReset')?.addEventListener('click', () => {
 // Actual robot poses come from backend IK calculations via WebSocket
 function animateLegsTo(targetAngles, duration = 500) {
   const startAngles = state.legAngles.map(a => ({ ...a }));
+  const targetArray = Array.isArray(targetAngles)
+    ? targetAngles
+    : Array(6).fill(targetAngles);
   const startTime = Date.now();
 
   function step() {
@@ -2011,14 +2112,15 @@ function animateLegsTo(targetAngles, duration = 500) {
     const eased = 1 - Math.pow(1 - progress, 3);
 
     state.legAngles.forEach((angles, i) => {
-      if (targetAngles.coxa !== undefined) {
-        angles.coxa = startAngles[i].coxa + (targetAngles.coxa - startAngles[i].coxa) * eased;
+      const target = targetArray[i] || targetArray[targetArray.length - 1];
+      if (target?.coxa !== undefined) {
+        angles.coxa = startAngles[i].coxa + (target.coxa - startAngles[i].coxa) * eased;
       }
-      if (targetAngles.femur !== undefined) {
-        angles.femur = startAngles[i].femur + (targetAngles.femur - startAngles[i].femur) * eased;
+      if (target?.femur !== undefined) {
+        angles.femur = startAngles[i].femur + (target.femur - startAngles[i].femur) * eased;
       }
-      if (targetAngles.tibia !== undefined) {
-        angles.tibia = startAngles[i].tibia + (targetAngles.tibia - startAngles[i].tibia) * eased;
+      if (target?.tibia !== undefined) {
+        angles.tibia = startAngles[i].tibia + (target.tibia - startAngles[i].tibia) * eased;
       }
     });
 
@@ -2375,8 +2477,8 @@ function updateSummaryCards() {
   }
   const summaryGaitMeta = document.getElementById('summaryGaitMeta');
   if (summaryGaitMeta) {
-    const stepLen = c.gait_step_length || 60;
-    const stepHeight = c.gait_step_height || 30;
+    const stepLen = c.step_length ?? c.gait_step_length ?? 60;
+    const stepHeight = c.step_height ?? c.gait_step_height ?? 30;
     summaryGaitMeta.textContent = `Step: ${stepLen}mm, Height: ${stepHeight}mm`;
   }
 
@@ -2658,6 +2760,27 @@ function setupLegAttachTable() {
         logEvent('INFO', `Leg ${legIndex} ${field} set to ${value}`);
       });
     });
+  });
+}
+
+function populateLegAttachTable(config = state.config) {
+  const table = document.getElementById('legAttachTable');
+  if (!table) return;
+
+  const rows = table.querySelectorAll('tr');
+  rows.forEach((row, legIndex) => {
+    const attach = {
+      x: config[`leg_${legIndex}_attach_x`] ?? defaultGeometry.leg_attach_points[legIndex]?.x ?? 0,
+      y: config[`leg_${legIndex}_attach_y`] ?? defaultGeometry.leg_attach_points[legIndex]?.y ?? 0,
+      z: config[`leg_${legIndex}_attach_z`] ?? defaultGeometry.leg_attach_points[legIndex]?.z ?? 0,
+      angle: config[`leg_${legIndex}_attach_angle`] ?? defaultGeometry.leg_attach_points[legIndex]?.angle ?? 0
+    };
+
+    const inputs = row.querySelectorAll('input[type="number"]');
+    if (inputs[0]) inputs[0].value = attach.x;
+    if (inputs[1]) inputs[1].value = attach.y;
+    if (inputs[2]) inputs[2].value = attach.z;
+    if (inputs[3]) inputs[3].value = attach.angle;
   });
 }
 
@@ -2996,6 +3119,13 @@ function updateGeometryPreview(configKey, value) {
     updateLegPositions();
     logEvent('DEBUG', `Leg positions updated: ${configKey} = ${value}`);
   }
+}
+
+function applyGeometryConfigToPreview() {
+  if (!scene) return;
+  rebuildBodyMesh();
+  rebuildLegs();
+  updateLegPositions();
 }
 
 // ========== Sensors & Cameras Section ==========
