@@ -19,9 +19,9 @@ class TestHexapodConfig:
         """Test config initializes with default values."""
         config = HexapodConfig(config_file=Path("/tmp/nonexistent.json"))
 
-        assert config.get("leg_coxa_length") == 30.0
-        assert config.get("leg_femur_length") == 60.0
-        assert config.get("leg_tibia_length") == 80.0
+        assert config.get("leg_coxa_length") == 15.0
+        assert config.get("leg_femur_length") == 50.0
+        assert config.get("leg_tibia_length") == 55.0
         assert config.get("default_gait") == "tripod"
 
     def test_get_existing_key(self):
@@ -134,7 +134,7 @@ class TestHexapodConfig:
             # Load and verify defaults still present
             config2 = HexapodConfig(config_file=config_file)
             assert config2.get("step_height") == 99.0
-            assert config2.get("leg_coxa_length") == 30.0  # default preserved
+            assert config2.get("leg_coxa_length") == 15.0  # default preserved
 
     def test_save_creates_directory(self):
         """Test that save creates parent directory if it doesn't exist."""

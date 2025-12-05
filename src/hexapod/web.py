@@ -1,11 +1,38 @@
 """FastAPI web server with REST endpoints, WebSocket telemetry, and static UI.
 
-Integrates hardware control, gait generation, and sensor telemetry.
-The background gait loop continuously updates leg servo positions and broadcasts
-state to connected WebSocket clients for real-time 3D simulator visualization.
+This module provides the main web interface for controlling the hexapod robot:
+    - REST API endpoints for gait control, body pose, configuration
+    - WebSocket for real-time telemetry and command streaming
+    - Static file serving for the 3D web UI
+
+Key Components:
+    - HexapodController: Main coordinator for gait, servos, sensors, and pose
+    - ConnectionManager: WebSocket connection pool with broadcast support
+    - Background gait loop: Continuous servo updates and telemetry at ~100Hz
+
+Architecture Notes:
+    - ALL inverse kinematics calculations are performed on the backend
+    - Frontend only displays servo angles received via WebSocket telemetry
+    - This ensures 3D visualization matches actual hardware servo positions
+
+Movement Features:
+    - WASD/Arrow keys: Directional walking (heading-based)
+    - Q/E keys: Walk-and-turn using differential steering (tank-style)
+    - Rotation buttons: Body rotation while standing (via rotation_speed)
+    - Body pose: Pitch, roll, yaw adjustments
+
+WebSocket Message Types (client → server):
+    - set_gait: Change gait mode (tripod/wave/ripple)
+    - walk: Start/stop walking
+    - move: Set speed, heading, turn rate, and walking state
+    - body_height: Adjust body height
+
+Telemetry (server → client):
+    - angles: Servo angles for 6 legs (18 values)
+    - ground_contacts: Which legs are in stance phase
+    - running, speed, heading, body pose, sensor readings
 """
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi import staticfiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 import asyncio
@@ -27,7 +54,7 @@ from .controller_bluetooth import GenericController, MotionCommand
 try:
     from adafruit_pca9685 import PCA9685
     _HAS_I2C = True
-except:
+except Exception:
     _HAS_I2C = False
 
 
@@ -53,8 +80,36 @@ class ConnectionManager:
 
 
 class HexapodController:
-    """Main controller coordinating gait, servo, and sensor state."""
-        def __init__(self, servo: ServoController, sensor: SensorReader):
+    """Main controller coordinating gait, servo, sensor, and body pose state.
+
+    This class is the central coordinator for all hexapod operations:
+        - Gait generation via GaitEngine (tripod, wave, ripple modes)
+        - Servo control with heading rotation applied to coxa angles
+        - Body height and pose (pitch, roll, yaw) management
+        - Sensor telemetry (temperature, battery)
+        - Bluetooth/joystick input handling via GenericController
+
+    Movement Modes:
+        - Walking: Gait engine generates leg angles, heading applied to coxa
+        - Standing: IK calculates pose based on body_height
+        - Turning while walking: Uses differential steering (turn_rate)
+        - Rotation in place: rotation_speed integrated into heading
+
+    Attributes:
+        servo: ServoController instance for hardware/mock servo control
+        sensor: SensorReader for temperature and battery readings
+        gait: GaitEngine instance for walking pattern generation
+        running: Whether the hexapod is actively walking
+        gait_mode: Current gait ("tripod", "wave", or "ripple")
+        speed: Movement speed multiplier (0.0 to 1.0)
+        heading: Current heading/direction in degrees
+        body_height: Height of body above ground in mm (30-90mm)
+        body_pitch/roll/yaw: Body pose angles in degrees
+        rotation_speed: Rotation rate in degrees per second
+        ground_contacts: List of 6 booleans for leg stance state
+    """
+
+    def __init__(self, servo: ServoController, sensor: SensorReader):
         self.servo = servo
         self.sensor = sensor
         self.gait = GaitEngine(step_height=25.0, step_length=40.0, cycle_time=1.2)
@@ -508,6 +563,13 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         cfg.update(body)
         cfg.save()
         logger.info(f"Configuration updated: {list(body.keys())}")
+
+        # Refresh IK solver if leg dimensions were updated
+        leg_keys = [k for k in body.keys() if 'leg' in k and 'length' in k]
+        if leg_keys:
+            controller.gait.refresh_leg_geometry()
+            logger.info("Refreshed leg geometry for IK solver")
+
         return {"ok": True, "message": "Configuration updated"}
 
     @app.post("/api/config/servo_offset")
@@ -582,7 +644,9 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
     @app.post("/api/bluetooth/connect")
     async def bluetooth_connect(request: Request):
         """Connect to a Bluetooth controller."""
-        body = await request.json()
+        body, error = await parse_json_body(request)
+        if error:
+            return error
         address = body.get("address")
         if not address:
             return JSONResponse({"error": "Missing device address"}, status_code=400)

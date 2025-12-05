@@ -1,7 +1,24 @@
 """Gait generation and inverse kinematics for a 6-legged hexapod robot.
 
-Supports multiple gait modes (tripod, wave, ripple) and basic IK based on
-leg geometry. Uses centralized configuration system.
+This module provides:
+    - GaitEngine: Generates walking patterns with differential steering support
+    - InverseKinematics: Solves for servo angles given foot target positions
+
+Gait Modes:
+    - tripod: Fast, stable - alternating groups of 3 legs
+    - wave: Smooth, elegant - sequential leg movement
+    - ripple: Balanced - offset pattern between legs
+
+Features:
+    - Differential steering (turn_rate) for tank-style turning while walking
+    - Configurable step height, length, and cycle time
+    - Ground contact tracking for telemetry
+    - Centralized configuration via config.py
+
+Default leg geometry (from config):
+    - Coxa: 15mm (hip joint)
+    - Femur: 50mm (upper leg)
+    - Tibia: 55mm (lower leg)
 """
 from typing import List, Tuple
 import math
@@ -9,13 +26,13 @@ import math
 try:
     from .config import get_config
 except ImportError:
-    # Fallback for standalone usage
+    # Fallback for standalone usage (must match config.py defaults)
     class FallbackConfig:
         def get(self, key, default):
             defaults = {
-                "leg_coxa_length": 30.0,
-                "leg_femur_length": 60.0,
-                "leg_tibia_length": 80.0,
+                "leg_coxa_length": 15.0,
+                "leg_femur_length": 50.0,
+                "leg_tibia_length": 55.0,
                 "body_width": 100.0,
                 "body_length": 120.0,
             }
@@ -28,9 +45,9 @@ def get_leg_geometry() -> Tuple[float, float, float]:
     """Get leg dimensions from config."""
     cfg = get_config()
     return (
-        float(cfg.get("leg_coxa_length", 30.0)),
-        float(cfg.get("leg_femur_length", 60.0)),
-        float(cfg.get("leg_tibia_length", 80.0)),
+        float(cfg.get("leg_coxa_length", 15.0)),
+        float(cfg.get("leg_femur_length", 50.0)),
+        float(cfg.get("leg_tibia_length", 55.0)),
     )
 
 
@@ -55,24 +72,91 @@ LEG_COXA_LEN, LEG_FEMUR_LEN, LEG_TIBIA_LEN = get_leg_geometry()
 LEG_POSITIONS = get_leg_positions()
 
 class GaitEngine:
+    """Generates walking gait patterns for a 6-legged hexapod robot.
+
+    Supports tripod, wave, and ripple gaits with configurable step parameters.
+    Uses direct angle-based gait generation for reliable servo control.
+
+    Features:
+        - Differential steering via turn_rate for smooth turning while walking
+        - Configurable step height, length, and cycle time
+        - Ground contact tracking for telemetry
+
+    Attributes:
+        step_height: Vertical lift during swing phase (10-50mm, affects femur angle)
+        step_length: Forward/backward swing distance (10-80mm, affects coxa angle)
+        cycle_time: Duration of one complete gait cycle in seconds
+        time: Current position in the gait cycle
+        turn_rate: Differential steering rate (-1.0 to 1.0). Negative = turn left,
+                   positive = turn right. Applied by modifying swing angles differently
+                   for left vs right legs (tank-style steering).
+        ik: InverseKinematics solver instance for standing pose calculations
+        last_swing_states: List of 6 booleans tracking which legs are in swing phase
+    """
+
     def __init__(self, step_height=30.0, step_length=40.0, cycle_time=1.0):
+        """Initialize the gait engine.
+
+        Args:
+            step_height: Vertical lift during swing phase in mm (default: 30.0)
+            step_length: Forward/backward swing distance in mm (default: 40.0)
+            cycle_time: Duration of one gait cycle in seconds (default: 1.0)
+        """
         self.step_height = step_height
         self.step_length = step_length
         self.cycle_time = cycle_time
         self.time = 0.0
         self.turn_rate = 0.0  # -1.0 to 1.0: negative = left, positive = right
-        self.ik = InverseKinematics(LEG_COXA_LEN, LEG_FEMUR_LEN, LEG_TIBIA_LEN)
+        # Initialize IK solver with current config values (not stale module constants)
+        coxa, femur, tibia = get_leg_geometry()
+        self.ik = InverseKinematics(coxa, femur, tibia)
         # Track whether each leg is currently in swing phase for telemetry/ground contact
         self.last_swing_states = [False] * 6
 
+    def refresh_leg_geometry(self):
+        """Refresh the IK solver with current leg dimensions from config.
+
+        Call this method after leg dimensions are changed via the UI or config
+        to ensure IK calculations use the updated values.
+        """
+        coxa, femur, tibia = get_leg_geometry()
+        self.ik = InverseKinematics(coxa, femur, tibia)
+
     def update(self, dt: float):
+        """Advance the gait time by delta time.
+
+        Args:
+            dt: Time delta in seconds to advance the gait cycle
+        """
         self.time += dt
 
     def joint_angles_for_time(self, t: float, mode: str = "tripod") -> List[Tuple[float,float,float]]:
-        """Return list of (coxa, femur, tibia) angles in degrees for 6 legs.
+        """Calculate joint angles for all 6 legs at a given time in the gait cycle.
 
-        Uses direct angle-based gait for reliable visualization.
-        Servo convention: 90° = neutral/horizontal for coxa, femur pointing down for standing.
+        Uses direct angle-based gait for reliable visualization and servo control.
+        Applies differential steering based on turn_rate to create smooth turns.
+
+        Servo convention:
+            - Coxa: 90° = neutral/horizontal (legs pointing outward)
+            - Femur: ~67° for ground contact at normal standing height
+            - Tibia: 180° for standing (90° relative knee bend)
+
+        Gait phases:
+            - Swing phase (0-0.5): Leg lifts and moves forward
+            - Stance phase (0.5-1.0): Leg pushes backward on ground
+
+        Differential steering:
+            - turn_rate > 0 (right turn): Right legs step less, left legs step more
+            - turn_rate < 0 (left turn): Left legs step less, right legs step more
+            - Right legs: indices 0, 1, 2 | Left legs: indices 3, 4, 5
+
+        Args:
+            t: Time in the gait cycle (seconds)
+            mode: Gait mode - "tripod", "wave", or "ripple"
+
+        Returns:
+            List of 6 tuples, each containing (coxa, femur, tibia) angles in degrees.
+            Also updates self.last_swing_states with current swing/stance state per leg.
         """
         # Convert step_height (10-50mm) to femur lift angle (5-25 degrees)
         # Higher step_height = more lift during swing phase
@@ -146,6 +230,23 @@ class GaitEngine:
         return angles
 
     def _phase_for_leg(self, leg: int, mode: str) -> float:
+        """Get the phase offset for a leg in the specified gait mode.
+
+        Phase determines when each leg starts its swing/stance cycle relative
+        to other legs. A phase of 0.5 means the leg is 180° out of phase.
+
+        Gait modes:
+            - tripod: Two groups (0,2,4 and 1,3,5) alternate, phase = 0 or 0.5
+            - wave: Sequential front-to-back, phase = leg/6
+            - ripple: Offset pattern for smooth ripple effect
+
+        Args:
+            leg: Leg index (0-5)
+            mode: Gait mode string
+
+        Returns:
+            Phase offset (0.0 to 1.0)
+        """
         if mode == "tripod":
             # two groups 180 degrees apart
             return 0.0 if leg in (0, 2, 4) else 0.5

@@ -5,7 +5,6 @@ and a keyboard fallback for development. Emits high-level motion commands.
 """
 import asyncio
 from typing import Callable, Optional, List
-import math
 
 try:
     from bleak import BleakScanner

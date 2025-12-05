@@ -2696,11 +2696,16 @@
         for (let leg = 0; leg < 6; leg++) {
           if (leg === sourceLeg) continue;
 
-          // Copy dimensions
+          // Copy dimensions and visualization settings
           legConfigs[leg] = {
             coxaLength: sourceConfig.coxaLength,
             femurLength: sourceConfig.femurLength,
-            tibiaLength: sourceConfig.tibiaLength
+            tibiaLength: sourceConfig.tibiaLength,
+            coxaRadius: sourceConfig.coxaRadius ?? DEFAULT_LEG_CONFIG.coxaRadius,
+            femurRadius: sourceConfig.femurRadius ?? DEFAULT_LEG_CONFIG.femurRadius,
+            tibiaRadius: sourceConfig.tibiaRadius ?? DEFAULT_LEG_CONFIG.tibiaRadius,
+            jointRadius: sourceConfig.jointRadius ?? DEFAULT_LEG_CONFIG.jointRadius,
+            footRadius: sourceConfig.footRadius ?? DEFAULT_LEG_CONFIG.footRadius
           };
           saveLegDimensions(leg);
 
@@ -2726,11 +2731,16 @@
 
       const legIndex = calibrationState.selectedLeg;
 
-      // Reset dimensions to defaults
+      // Reset dimensions to defaults (include all visualization properties)
       legConfigs[legIndex] = {
-        coxaLength: 15.0,
-        femurLength: 50.0,
-        tibiaLength: 55.0
+        coxaLength: DEFAULT_LEG_CONFIG.coxaLength,
+        femurLength: DEFAULT_LEG_CONFIG.femurLength,
+        tibiaLength: DEFAULT_LEG_CONFIG.tibiaLength,
+        coxaRadius: DEFAULT_LEG_CONFIG.coxaRadius,
+        femurRadius: DEFAULT_LEG_CONFIG.femurRadius,
+        tibiaRadius: DEFAULT_LEG_CONFIG.tibiaRadius,
+        jointRadius: DEFAULT_LEG_CONFIG.jointRadius,
+        footRadius: DEFAULT_LEG_CONFIG.footRadius
       };
       saveLegDimensions(legIndex);
 
@@ -2739,16 +2749,16 @@
       const femurLengthSlider = document.getElementById('femurLengthSlider');
       const tibiaLengthSlider = document.getElementById('tibiaLengthSlider');
       if (coxaLengthSlider) {
-        coxaLengthSlider.value = 15.0;
-        document.getElementById('coxaLengthValue').textContent = '15.0 mm';
+        coxaLengthSlider.value = DEFAULT_LEG_CONFIG.coxaLength;
+        document.getElementById('coxaLengthValue').textContent = DEFAULT_LEG_CONFIG.coxaLength + ' mm';
       }
       if (femurLengthSlider) {
-        femurLengthSlider.value = 50.0;
-        document.getElementById('femurLengthValue').textContent = '50.0 mm';
+        femurLengthSlider.value = DEFAULT_LEG_CONFIG.femurLength;
+        document.getElementById('femurLengthValue').textContent = DEFAULT_LEG_CONFIG.femurLength + ' mm';
       }
       if (tibiaLengthSlider) {
-        tibiaLengthSlider.value = 55.0;
-        document.getElementById('tibiaLengthValue').textContent = '55.0 mm';
+        tibiaLengthSlider.value = DEFAULT_LEG_CONFIG.tibiaLength;
+        document.getElementById('tibiaLengthValue').textContent = DEFAULT_LEG_CONFIG.tibiaLength + ' mm';
       }
 
       // Reset offsets

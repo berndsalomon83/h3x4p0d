@@ -39,10 +39,10 @@ Navigate to: **http://localhost:8000**
 |-----|--------|
 | **W** or **Arrow Up** | Move forward |
 | **S** or **Arrow Down** | Move backward |
-| **A** or **Arrow Left** | Turn left |
-| **D** or **Arrow Right** | Turn right |
-| **Q** | Rotate in place (counter-clockwise) |
-| **E** | Rotate in place (clockwise) |
+| **A** or **Arrow Left** | Strafe left (sideways) |
+| **D** or **Arrow Right** | Strafe right (sideways) |
+| **Q** | Walk and turn left (differential steering) |
+| **E** | Walk and turn right (differential steering) |
 | **Space** | Toggle walking on/off |
 | **Tab** | Open/close settings panel |
 | **Escape** | Emergency stop |
@@ -51,7 +51,10 @@ Navigate to: **http://localhost:8000**
 **Combining keys:**
 - **W + A**: Forward-left diagonal
 - **W + D**: Forward-right diagonal
-- **Q/E**: Rotate without forward movement
+
+**Q/E vs A/D difference:**
+- **A/D**: Strafe sideways (body faces forward, moves left/right)
+- **Q/E**: Walk and turn (body rotates while walking forward, like a tank)
 
 ### Method 2: On-Screen Arrow Buttons 🎮
 
@@ -66,10 +69,12 @@ Click and hold buttons, or click multiple buttons simultaneously for diagonal mo
 ### Method 3: Rotation Controls
 
 Located below the directional arrows:
-- **Q button**: Rotate counter-clockwise (left)
-- **E button**: Rotate clockwise (right)
+- **Rotate Left button**: Rotate body counter-clockwise (while standing)
+- **Rotate Right button**: Rotate body clockwise (while standing)
 
-Click and hold for continuous rotation in place.
+Click and hold for continuous rotation in place (body rotation only, no walking).
+
+Note: For walk-and-turn motion (like a tank), use the **Q/E** keyboard keys instead.
 
 ### Method 4: Speed Slider
 
@@ -354,10 +359,10 @@ The web UI supports multiple live camera feeds displayed in a dock at the bottom
 |----------|--------|
 | **W / Arrow Up** | Move forward |
 | **S / Arrow Down** | Move backward |
-| **A / Arrow Left** | Turn left |
-| **D / Arrow Right** | Turn right |
-| **Q** | Rotate left (in place) |
-| **E** | Rotate right (in place) |
+| **A / Arrow Left** | Strafe left (sideways) |
+| **D / Arrow Right** | Strafe right (sideways) |
+| **Q** | Walk and turn left (differential steering) |
+| **E** | Walk and turn right (differential steering) |
 | **Space** | Toggle walking on/off |
 | **Tab** | Open/close settings panel |
 | **Escape** | Emergency stop |

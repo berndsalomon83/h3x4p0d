@@ -24,7 +24,10 @@
       "Bash(.venv/bin/python3:*)",
       "Bash(node:*)",
       "Bash(git push:*)",
-      "Bash(./.venv/bin/python3:*)"
+      "Bash(./.venv/bin/python3:*)",
+      "Bash(PYTHONPATH=src python3:*)",
+      "Bash(./.venv/bin/python:*)",
+      "Bash(timeout 5 ./.venv/bin/python:*)"
     ],
     "deny": [],
     "ask": []

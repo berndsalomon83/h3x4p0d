@@ -14,7 +14,7 @@ A complete Python-based hexapod (6-legged robot) controller with:
 Requirements
 ============
 
-- **Python**: 3.11+
+- **Python**: 3.9+
 - **Poetry**: https://python-poetry.org/
 - **Hardware** (optional):
   - Raspberry Pi (4B+ recommended)
@@ -93,15 +93,23 @@ This creates `~/.hexapod_calibration.json` with your servo mapping.
 
 ### 4. Adjust Leg Geometry
 
-Edit `src/hexapod/gait.py` and set your leg segment lengths:
+Leg dimensions are configured via the settings panel in the web UI, or by editing
+`~/.hexapod/config.json`. Default values (in mm):
 
-```python
-LEG_COXA_LEN = 30.0    # mm - horizontal coxa segment
-LEG_FEMUR_LEN = 60.0   # mm - upper leg segment
-LEG_TIBIA_LEN = 80.0   # mm - lower leg segment
+```json
+{
+  "leg_coxa_length": 15.0,
+  "leg_femur_length": 50.0,
+  "leg_tibia_length": 55.0
+}
 ```
 
-Also verify `LEG_POSITIONS` array matches your physical leg attachment points.
+Per-leg dimensions can also be set individually (leg0_coxa_length, etc.)
+for robots with asymmetric leg configurations.
+
+Body dimensions in `src/hexapod/config.py`:
+- `body_width`: 100.0mm (lateral distance between leg attachment points)
+- `body_length`: 120.0mm (longitudinal distance)
 
 ### 5. Run on Hardware
 
@@ -118,11 +126,14 @@ Controller Input
 
 When using the web interface:
 - **W/A/S/D** or **Arrow Keys**: Move forward/left/back/right
-- **Q/E**: Rotate left/right in place
+- **Q/E**: Walk and turn left/right (differential steering, like a tank)
 - **SPACE**: Toggle walking on/off
 - **TAB**: Open/close settings panel
 - **ESCAPE**: Emergency stop
 - **?**: Show keyboard shortcuts help
+
+Note: Q/E keys make the hexapod walk forward while turning (differential steering).
+A/D or Left/Right arrows strafe sideways without turning the body.
 
 ### CLI Keyboard (Development)
 
@@ -156,15 +167,18 @@ hexapod/
 ├── src/hexapod/
 │   ├── __init__.py
 │   ├── main.py                 # Entry point (runs web server)
+│   ├── config.py               # Centralized configuration manager
 │   ├── hardware.py             # Servo and sensor abstraction
 │   ├── gait.py                 # Gait engine and inverse kinematics
 │   ├── controller_bluetooth.py # Input controller (joystick/keyboard)
 │   ├── web.py                  # FastAPI server + WebSocket
 │   ├── calibrate.py            # Interactive servo calibration
 │   └── test_runner.py          # Unit tests
-└── web_static/
-    ├── index.html              # Web UI (HTML)
-    └── app.js                  # 3D simulator and controls (JavaScript)
+├── web_static/
+│   ├── index.html              # Web UI (HTML/CSS)
+│   ├── app.js                  # 3D simulator and controls (JavaScript)
+│   └── favicon.svg             # Hexapod icon
+└── tests/                      # pytest test suite
 ```
 
 Key Modules
@@ -180,8 +194,19 @@ Key Modules
 ### gait.py
 
 - **`GaitEngine`**: generates leg joint angles over time for a selected walking mode
+  - Supports differential steering via `turn_rate` for tank-style turning
+  - Tracks ground contact state for telemetry
 - **`InverseKinematics`**: solves for servo angles given target (x, y, z) foot positions
 - Supports **tripod**, **wave**, and **ripple** gaits with configurable speed/height
+
+### config.py
+
+- **`HexapodConfig`**: centralized configuration manager
+  - Leg geometry (per-leg customization supported)
+  - Servo calibration offsets
+  - Gait parameters and visualization settings
+  - Persists to `~/.hexapod/config.json`
+- **`get_config()`**: global configuration accessor
 
 ### controller_bluetooth.py
 

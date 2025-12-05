@@ -47,7 +47,8 @@ EOF
 
 **Source code**: `src/hexapod/`
 **Web files**: `web_static/`
-**Configuration**: `~/.hexapod_calibration.json`
+**Configuration**: `~/.hexapod/config.json`
+**Legacy calibration**: `~/.hexapod_calibration.json`
 **Logs**: stdout (no file logging by default)
 
 ## Key Classes
@@ -57,8 +58,12 @@ EOF
 - `PCA9685ServoController` - real I2C (Raspberry Pi)
 - `SensorReader` - temperature/battery (mock or real)
 
+### Configuration
+- `HexapodConfig` - centralized config manager
+- `get_config()` - global config accessor
+
 ### Gait
-- `GaitEngine` - tripod/wave/ripple gaits
+- `GaitEngine` - tripod/wave/ripple gaits with differential steering
 - `InverseKinematics` - 3-link leg solver
 
 ### Control
@@ -67,7 +72,7 @@ EOF
 - `BLEDeviceScanner` - Bluetooth discovery
 
 ### Web
-- `HexapodController` - main coordinator
+- `HexapodController` - main coordinator (gait, servos, sensors, pose)
 - `ConnectionManager` - WebSocket broadcast
 - FastAPI routes: /api/*, /ws
 
@@ -111,9 +116,13 @@ curl -X POST http://localhost:8000/api/rotation \
 
 ### Client → Server
 ```json
-{"type": "run", "run": true}
+{"type": "walk", "walking": true}
 {"type": "set_gait", "mode": "wave"}
+{"type": "move", "walking": true, "speed": 0.5, "heading": 0.0, "turn": 0.0}
+{"type": "body_height", "height": 60.0}
 ```
+
+The `turn` parameter (-1 to 1) enables differential steering for Q/E keys.
 
 ### Server → Client
 ```json
@@ -130,7 +139,8 @@ curl -X POST http://localhost:8000/api/rotation \
   "body_roll": 0.0,
   "body_yaw": 0.0,
   "rotation_speed": 0.0,
-  "angles": [[0.0, 45.0, 90.0], ...]  // 6 legs
+  "ground_contacts": [true, true, true, true, true, true],
+  "angles": [[90.0, 67.0, 180.0], ...]  // 6 legs × 3 joints
 }
 ```
 
@@ -139,15 +149,18 @@ curl -X POST http://localhost:8000/api/rotation \
 | Key | Action |
 |-----|--------|
 | W / Arrow Up | Forward |
-| A / Arrow Left | Left turn |
+| A / Arrow Left | Strafe left (sideways) |
 | S / Arrow Down | Backward |
-| D / Arrow Right | Right turn |
-| Q | Rotate left (in place) |
-| E | Rotate right (in place) |
+| D / Arrow Right | Strafe right (sideways) |
+| Q | Walk and turn left (tank steering) |
+| E | Walk and turn right (tank steering) |
 | Space | Toggle walking |
 | Tab | Open/close settings |
 | Escape | Emergency stop |
 | ? | Show keyboard help |
+
+**Q/E vs A/D**: Q/E walk forward while turning (differential steering).
+A/D strafe sideways without turning the body.
 
 ## Keyboard Controls (CLI/Development)
 
@@ -186,21 +199,18 @@ curl -X POST http://localhost:8000/api/rotation \
 }
 ```
 
-### src/hexapod/gait.py (edit for your robot)
-```python
-LEG_COXA_LEN = 30.0    # mm
-LEG_FEMUR_LEN = 60.0   # mm
-LEG_TIBIA_LEN = 80.0   # mm
-
-LEG_POSITIONS = [
-    (60, 50),    # leg 0 attachment
-    (0, 50),     # leg 1 attachment
-    (-60, 50),   # leg 2 attachment
-    (-60, -50),  # leg 3 attachment
-    (0, -50),    # leg 4 attachment
-    (60, -50),   # leg 5 attachment
-]
+### ~/.hexapod/config.json (configure via web UI or edit)
+```json
+{
+  "leg_coxa_length": 15.0,
+  "leg_femur_length": 50.0,
+  "leg_tibia_length": 55.0,
+  "body_width": 100.0,
+  "body_length": 120.0
+}
 ```
+
+Per-leg dimensions supported: `leg0_coxa_length`, `leg0_femur_length`, etc.
 
 ## Hardware Pins (Raspberry Pi)
 
