@@ -125,8 +125,21 @@
     footRadius: 4
   };
 
+  const DEFAULT_CAMERA_VIEWS = [
+    {
+      id: 'front',
+      label: 'Front',
+      enabled: true,
+      position: 'front',
+      sourceType: 'local',
+      sourceUrl: ''
+    }
+  ];
+
   // Array of configs, one per leg (all legs share same dimensions from backend)
   let legConfigs = Array(6).fill(null).map(() => ({...DEFAULT_LEG_CONFIG}));
+
+  let cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
 
   const NEUTRAL_FOOT_CLEARANCE = 2; // Keep foot a hair above the visual ground
 
@@ -144,6 +157,215 @@
     const femurAngle = -Math.atan2(tibiaLength * Math.sin(kneeAngle), femurLength + tibiaLength * Math.cos(kneeAngle));
 
     return { femur: femurAngle, tibia: kneeAngle };
+  }
+
+  function normalizeCameraView(view, index = 0) {
+    const fallback = DEFAULT_CAMERA_VIEWS[0];
+    return {
+      id: view?.id || `camera-${index}`,
+      label: view?.label || `Camera ${index + 1}`,
+      enabled: view?.enabled !== undefined ? !!view.enabled : fallback.enabled,
+      position: view?.position || fallback.position,
+      sourceType: view?.source_type || view?.sourceType || fallback.sourceType,
+      sourceUrl: view?.source_url || view?.sourceUrl || fallback.sourceUrl,
+    };
+  }
+
+  function renderCameraList() {
+    const list = document.getElementById('cameraList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!cameraViews.length) {
+      const emptyState = document.createElement('div');
+      emptyState.className = 'camera-note';
+      emptyState.textContent = 'No cameras configured yet. Add one to place a live pane.';
+      list.appendChild(emptyState);
+      return;
+    }
+
+    cameraViews.forEach((view, idx) => {
+      const row = document.createElement('div');
+      row.className = 'camera-config-row';
+      row.dataset.cameraId = view.id;
+
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.alignItems = 'center';
+
+      const title = document.createElement('div');
+      title.style.display = 'flex';
+      title.style.gap = '8px';
+      title.style.alignItems = 'center';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = view.label;
+      nameInput.className = 'config-input';
+      nameInput.style.width = '140px';
+      nameInput.addEventListener('input', (e) => {
+        updateCameraView(view.id, 'label', e.target.value);
+      });
+
+      const enabledToggle = document.createElement('label');
+      enabledToggle.style.display = 'flex';
+      enabledToggle.style.alignItems = 'center';
+      enabledToggle.style.gap = '6px';
+      enabledToggle.style.color = 'var(--text-muted)';
+      enabledToggle.style.fontSize = '11px';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = view.enabled;
+      checkbox.addEventListener('change', (e) => {
+        updateCameraView(view.id, 'enabled', e.target.checked);
+      });
+      enabledToggle.appendChild(checkbox);
+      const enabledLabel = document.createElement('span');
+      enabledLabel.textContent = 'Enabled';
+      enabledToggle.appendChild(enabledLabel);
+
+      title.appendChild(nameInput);
+      title.appendChild(enabledToggle);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'webcam-btn';
+      removeBtn.style.flex = 'none';
+      removeBtn.style.width = 'auto';
+      removeBtn.style.background = '#7a1f1f';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', () => {
+        cameraViews = cameraViews.filter(c => c.id !== view.id);
+        renderCameraList();
+        renderCameraDock();
+      });
+
+      header.appendChild(title);
+      header.appendChild(removeBtn);
+
+      const grid = document.createElement('div');
+      grid.className = 'camera-config-grid';
+
+      const sourceLabel = document.createElement('label');
+      sourceLabel.textContent = 'Source Type';
+      const sourceSelect = document.createElement('select');
+      sourceSelect.innerHTML = `
+        <option value="local">Local webcam</option>
+        <option value="url">Stream URL</option>
+      `;
+      sourceSelect.value = view.sourceType;
+      sourceSelect.addEventListener('change', (e) => {
+        updateCameraView(view.id, 'sourceType', e.target.value);
+      });
+      sourceLabel.appendChild(sourceSelect);
+
+      const urlLabel = document.createElement('label');
+      urlLabel.textContent = 'Stream / Device URL';
+      const urlInput = document.createElement('input');
+      urlInput.type = 'text';
+      urlInput.value = view.sourceUrl;
+      urlInput.placeholder = 'rtsp/http URL or leave blank for local';
+      urlInput.className = 'config-input';
+      urlInput.addEventListener('input', (e) => {
+        updateCameraView(view.id, 'sourceUrl', e.target.value);
+      });
+      urlLabel.appendChild(urlInput);
+
+      const positionLabel = document.createElement('label');
+      positionLabel.textContent = 'Pane Position';
+      const positionSelect = document.createElement('select');
+      positionSelect.innerHTML = `
+        <option value="front">Front</option>
+        <option value="left">Left</option>
+        <option value="right">Right</option>
+        <option value="rear">Rear</option>
+        <option value="floating">Floating</option>
+      `;
+      positionSelect.value = view.position;
+      positionSelect.addEventListener('change', (e) => {
+        updateCameraView(view.id, 'position', e.target.value);
+      });
+      positionLabel.appendChild(positionSelect);
+
+      grid.appendChild(sourceLabel);
+      grid.appendChild(urlLabel);
+      grid.appendChild(positionLabel);
+
+      row.appendChild(header);
+      row.appendChild(grid);
+      list.appendChild(row);
+    });
+  }
+
+  function renderCameraDock() {
+    const dock = document.getElementById('cameraDock');
+    if (!dock) return;
+
+    dock.innerHTML = '';
+    const enabledViews = cameraViews.filter(v => v.enabled);
+    dock.style.display = enabledViews.length ? 'grid' : 'none';
+
+    enabledViews.forEach((view) => {
+      const pane = document.createElement('div');
+      pane.className = `camera-pane position-${view.position || 'floating'}`;
+
+      const header = document.createElement('div');
+      header.className = 'camera-pane-header';
+      header.innerHTML = `<span>${view.label}</span><span style="font-size: 10px; color: #666;">${view.position}</span>`;
+      pane.appendChild(header);
+
+      let hasVideo = false;
+      if (view.sourceType === 'local') {
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.loop = true;
+        video.dataset.sourceType = 'local';
+        video.dataset.cameraId = view.id;
+        if (webcamStream) {
+          video.srcObject = webcamStream;
+          hasVideo = true;
+        }
+        pane.appendChild(video);
+      } else if (view.sourceUrl) {
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.loop = true;
+        video.src = view.sourceUrl;
+        video.dataset.sourceType = 'url';
+        video.dataset.cameraId = view.id;
+        pane.appendChild(video);
+        hasVideo = true;
+      }
+
+      if (!hasVideo) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'camera-placeholder';
+        placeholder.textContent = view.sourceType === 'local'
+          ? 'Start the webcam to view this feed.'
+          : 'Add a stream URL to preview this camera.';
+        pane.appendChild(placeholder);
+      }
+
+      dock.appendChild(pane);
+    });
+  }
+
+  function updateCameraView(id, field, value) {
+    cameraViews = cameraViews.map((view, idx) => {
+      if (view.id !== id) return view;
+      const updated = { ...view, [field]: value };
+      if (field === 'sourceType' && value === 'local' && !updated.label) {
+        updated.label = `Camera ${idx + 1}`;
+      }
+      return updated;
+    });
+    renderCameraList();
+    renderCameraDock();
   }
 
   // Load config from backend API
@@ -167,6 +389,15 @@
         jointRadius: config.viz_joint_radius || DEFAULT_LEG_CONFIG.jointRadius,
         footRadius: config.viz_foot_radius || DEFAULT_LEG_CONFIG.footRadius
       };
+
+      // Camera layout persistence
+      if (Array.isArray(config.camera_views)) {
+        cameraViews = config.camera_views.map((view, idx) => normalizeCameraView(view, idx));
+      } else {
+        cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
+      }
+      renderCameraList();
+      renderCameraDock();
 
       // Apply to all legs
       legConfigs = Array(6).fill(null).map(() => ({...backendConfig}));
@@ -1674,10 +1905,25 @@
     scene.fog.color.setStyle(e.target.value);
   });
 
+  // Initialize camera UI with defaults before backend config loads
+  renderCameraList();
+  renderCameraDock();
+
   // ========== Webcam Settings ==========
 
   let webcamStream = null;
   let webcamOverlay = null;
+
+  function refreshLocalCameraVideos() {
+    document.querySelectorAll('.camera-pane video[data-source-type="local"]').forEach((video) => {
+      if (webcamStream) {
+        video.srcObject = webcamStream;
+        video.play().catch(() => {});
+      } else {
+        video.srcObject = null;
+      }
+    });
+  }
 
   document.getElementById('startWebcam').addEventListener('click', async () => {
     try {
@@ -1731,6 +1977,9 @@
         webcamOverlay.visible = true;
       }
 
+      refreshLocalCameraVideos();
+      renderCameraDock();
+
       logMsg('Webcam started');
     } catch(err) {
       const errorMsg = err && err.message ? err.message : String(err);
@@ -1747,6 +1996,9 @@
       if (webcamOverlay) {
         webcamOverlay.visible = false;
       }
+      webcamStream = null;
+      refreshLocalCameraVideos();
+      renderCameraDock();
       logMsg('Webcam stopped');
     }
   });
@@ -1788,6 +2040,36 @@
     if (webcamOverlay && webcamOverlay.material) {
       webcamOverlay.material.opacity = opacity;
     }
+  });
+
+  document.getElementById('addCameraView').addEventListener('click', () => {
+    const nextIndex = cameraViews.length;
+    const newView = normalizeCameraView({
+      id: `camera-${Date.now()}`,
+      label: `Camera ${nextIndex + 1}`,
+      enabled: true,
+      position: 'floating',
+      sourceType: 'local',
+      sourceUrl: ''
+    }, nextIndex);
+    cameraViews.push(newView);
+    renderCameraList();
+    renderCameraDock();
+  });
+
+  document.getElementById('saveCameraViews').addEventListener('click', async () => {
+    const payload = {
+      camera_views: cameraViews.map(view => ({
+        id: view.id,
+        label: view.label,
+        enabled: view.enabled,
+        position: view.position,
+        source_type: view.sourceType,
+        source_url: view.sourceUrl,
+      }))
+    };
+    await saveConfigToBackend(payload);
+    logMsg('Camera layout saved');
   });
 
   // ========== Advanced Settings ==========

@@ -475,6 +475,103 @@
     .webcam-btn.active {
       background: #51cf66;
     }
+    .camera-dock {
+      position: fixed;
+      bottom: 14px;
+      left: 14px;
+      right: 14px;
+      display: grid;
+      grid-template-areas:
+        "left front right"
+        "left rear right";
+      grid-auto-rows: minmax(0, 1fr);
+      gap: 10px;
+      z-index: 500;
+      pointer-events: none;
+    }
+    .camera-pane {
+      background: rgba(15, 15, 15, 0.92);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 8px;
+      min-width: 220px;
+      min-height: 160px;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+      pointer-events: auto;
+    }
+    .camera-pane.position-left { grid-area: left; }
+    .camera-pane.position-right { grid-area: right; }
+    .camera-pane.position-front { grid-area: front; }
+    .camera-pane.position-rear { grid-area: rear; }
+    .camera-pane.position-floating { grid-column: span 3; }
+    .camera-pane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .camera-pane video {
+      width: 100%;
+      height: 140px;
+      border-radius: 6px;
+      background: #000;
+      object-fit: cover;
+      border: 1px solid #222;
+    }
+    .camera-pane .camera-placeholder {
+      width: 100%;
+      height: 140px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a1a;
+      color: #777;
+      font-size: 11px;
+      border: 1px dashed #333;
+    }
+    .camera-config-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .camera-config-row {
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(30, 30, 30, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .camera-config-row label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .camera-config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px;
+    }
+    .camera-config-grid input,
+    .camera-config-grid select {
+      width: 100%;
+      margin-top: 4px;
+    }
+    .camera-config-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .camera-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
     .theme-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -950,6 +1047,9 @@
     <button class="camera-preset-btn active" data-view="iso">Iso</button>
   </div>
 
+  <!-- Live camera dock -->
+  <div id="cameraDock" class="camera-dock"></div>
+
   <!-- Keyboard Help Modal -->
   <div class="keyboard-help-overlay" id="keyboardOverlay"></div>
   <div class="keyboard-help" id="keyboardHelp">
@@ -1370,6 +1470,16 @@
               <span class="setting-value" id="webcamOpacityValue">30%</span>
             </div>
           </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-title">Live Camera Layout</div>
+          <div id="cameraList" class="camera-config-list"></div>
+          <div class="camera-config-actions">
+            <button class="webcam-btn" id="addCameraView" style="flex: none; width: auto;">Add Camera</button>
+            <button class="webcam-btn" id="saveCameraViews" style="flex: none; width: auto;">Save Layout</button>
+          </div>
+          <p class="camera-note">Choose where each live pane appears (left, right, front, rear). Layout preferences are stored on the server.</p>
         </div>
       </div>
 

@@ -53,6 +53,18 @@ class HexapodConfig:
 
         # Camera view angle (degrees: 0=front, 90=right, 180=back, 270=left)
         "camera_view_angle": 0.0,
+
+        # Live camera layout for the dashboard
+        "camera_views": [
+            {
+                "id": "front",
+                "label": "Front",
+                "enabled": True,
+                "position": "front",
+                "source_type": "local",
+                "source_url": ""
+            }
+        ],
     }
 
     def __init__(self, config_file: Optional[Path] = None):
