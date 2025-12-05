@@ -137,6 +137,22 @@ All settings are stored in `~/.hexapod/config.json`:
 }
 ```
 
+### Live Camera Layout
+```json
+{
+  "camera_views": [
+    {
+      "id": "front",
+      "label": "Front",
+      "enabled": true,
+      "position": "front",
+      "source_type": "local",
+      "source_url": ""
+    }
+  ]
+}
+```
+
 ## Calibration Process
 
 ### Step 1: Visual Inspection
