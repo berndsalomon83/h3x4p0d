@@ -41,7 +41,6 @@ from typing import List, Optional, Dict, Tuple, Any
 from pathlib import Path
 import json
 import math
-import time
 import logging
 
 # Configure logging
@@ -56,7 +55,6 @@ from .gait import GaitEngine
 from .controller_bluetooth import GenericController, MotionCommand
 
 try:
-    from adafruit_pca9685 import PCA9685
     _HAS_I2C = True
 except Exception:
     _HAS_I2C = False

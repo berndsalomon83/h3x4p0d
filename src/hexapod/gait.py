@@ -261,7 +261,7 @@ class GaitEngine:
 
 class InverseKinematics:
     """Simple 2D inverse kinematics for a 3-link leg.
-    
+
     Solves for coxa (yaw), femur, tibia angles given target (x,y,z) position.
     """
     def __init__(self, coxa_len: float, femur_len: float, tibia_len: float):
@@ -271,7 +271,7 @@ class InverseKinematics:
 
     def solve(self, x: float, y: float, z: float) -> Tuple[float, float, float]:
         """Solve IK for foot target (x,y,z) relative to hip.
-        
+
         Returns: (coxa_deg, femur_deg, tibia_deg)
         Raises ValueError if target unreachable.
         """
@@ -280,18 +280,18 @@ class InverseKinematics:
         # atan2 returns -π to π, so we add 90° to center the range around neutral
         coxa_rad = math.atan2(y, x)
         coxa_deg = 90.0 + math.degrees(coxa_rad)
-        
+
         # project to 2D side view: (horizontal distance, vertical)
         r_horiz = math.sqrt(x**2 + y**2) - self.L1  # distance from coxa joint
         r_vert = z
         r = math.sqrt(r_horiz**2 + r_vert**2)
-        
+
         # check reachability
         reach_min = abs(self.L2 - self.L3)
         reach_max = self.L2 + self.L3
         if r < reach_min or r > reach_max:
             raise ValueError(f"Target {(x,y,z)} out of reach [reach={r}, min={reach_min}, max={reach_max}]")
-        
+
         # law of cosines for femur-tibia internal angle
         cos_tibia = (r**2 - self.L2**2 - self.L3**2) / (2.0 * self.L2 * self.L3)
         cos_tibia = max(-1.0, min(1.0, cos_tibia))  # clamp
@@ -324,7 +324,7 @@ class InverseKinematics:
         coxa_deg = float(max(0, min(180, coxa_deg)))
         femur_deg = float(max(0, min(180, femur_deg)))
         tibia_deg = float(max(0, min(180, tibia_deg)))
-        
+
         return (coxa_deg, femur_deg, tibia_deg)
 
 if __name__ == "__main__":
@@ -336,7 +336,7 @@ if __name__ == "__main__":
         print(f"IK solve (30,0,-80): coxa={c:.1f}, femur={f:.1f}, tibia={t:.1f}")
     except Exception as e:
         print(f"IK solve failed: {e}")
-    
+
     g = GaitEngine()
     for i in range(0, 11):
         t = i*0.1

@@ -46,7 +46,9 @@ def test_set_servo_offset_clamps_and_persists(offset: float, leg: int, joint: in
     leg=st.integers(min_value=0, max_value=5),
     joint=st.integers(min_value=0, max_value=2),
 )
-def test_apply_servo_calibration_bounds(angle: float, offset: float, leg: int, joint: int, hexapod_config: HexapodConfig):
+def test_apply_servo_calibration_bounds(
+    angle: float, offset: float, leg: int, joint: int, hexapod_config: HexapodConfig
+):
     """Calibrated servo angles honor both offset clamping and servo angle bounds."""
 
     hexapod_config.set_servo_offset(leg, joint, offset)
@@ -94,7 +96,9 @@ def test_mock_servo_controller_respects_calibration(
     step_length=st.floats(min_value=0.0, max_value=500.0, allow_nan=False, allow_infinity=False),
     cycle_time=st.floats(min_value=0.1, max_value=10.0, allow_nan=False, allow_infinity=False),
 )
-def test_to_json_round_trip_preserves_updates(step_height: float, step_length: float, cycle_time: float, hexapod_config: HexapodConfig):
+def test_to_json_round_trip_preserves_updates(
+    step_height: float, step_length: float, cycle_time: float, hexapod_config: HexapodConfig
+):
     """Exported JSON should round-trip back to the same configuration values."""
 
     hexapod_config.update(

@@ -5,13 +5,10 @@ Supports Raspberry Pi with hardware or stub mode for development.
 """
 
 from typing import Dict, Optional, Tuple
-import time
-import math
 import json
 import os
 
 try:
-    import pigpio
     _HAS_PIGPIO = True
 except Exception:
     _HAS_PIGPIO = False

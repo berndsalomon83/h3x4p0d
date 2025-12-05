@@ -1,6 +1,5 @@
 """Tests for calibrate.py servo calibration tool."""
 
-import pytest
 import json
 import tempfile
 from pathlib import Path

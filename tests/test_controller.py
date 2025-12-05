@@ -57,7 +57,7 @@ class TestGenericController:
         """Test controller initializes correctly."""
         controller = GenericController()
 
-        assert controller.running == False
+        assert controller.running is False
         assert controller.joy_x == 0.0
         assert controller.joy_y == 0.0
         assert controller.buttons == {}
@@ -153,7 +153,7 @@ class TestGenericController:
 
         controller.stop()
 
-        assert controller.running == False
+        assert controller.running is False
 
 
 @pytest.mark.unit
@@ -257,8 +257,8 @@ class TestMotionCommandValidation:
     def test_motion_command_boolean_values(self):
         """Test MotionCommand with boolean data."""
         cmd = MotionCommand("toggle", enabled=True, active=False)
-        assert cmd.data["enabled"] == True
-        assert cmd.data["active"] == False
+        assert cmd.data["enabled"] is True
+        assert cmd.data["active"] is False
 
     def test_motion_command_none_values(self):
         """Test MotionCommand with None values."""
@@ -285,10 +285,10 @@ class TestGenericControllerEdgeCases:
         controller.running = True
 
         controller.stop()
-        assert controller.running == False
+        assert controller.running is False
 
         controller.stop()
-        assert controller.running == False
+        assert controller.running is False
 
     def test_controller_callback_order(self):
         """Test that callbacks are called in registration order."""
@@ -532,4 +532,4 @@ class TestControllerIntegration:
         assert controller.joy_x == 0.5
         assert controller.joy_y == 0.8
         assert controller.buttons == {"A": True, "B": False}
-        assert controller.running == True
+        assert controller.running is True

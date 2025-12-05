@@ -1,12 +1,10 @@
 """Tests for config refresh propagation to IK solver."""
 
-import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
-from hexapod.gait import GaitEngine, InverseKinematics, get_leg_geometry
-from hexapod.config import HexapodConfig, get_config, set_config
+from hexapod.gait import GaitEngine, get_leg_geometry
+from hexapod.config import HexapodConfig, set_config
 
 
 class TestGaitEngineRefresh:
@@ -202,7 +200,7 @@ class TestIKWithConfigChanges:
             gait = GaitEngine()
 
             # Calculate with default geometry
-            angles1 = gait.joint_angles_for_time(0, mode="tripod")
+            gait.joint_angles_for_time(0, mode="tripod")
 
             # Change geometry
             config.set("leg_femur_length", 80.0)
@@ -210,7 +208,7 @@ class TestIKWithConfigChanges:
             gait.refresh_leg_geometry()
 
             # Recalculate
-            angles2 = gait.joint_angles_for_time(0, mode="tripod")
+            gait.joint_angles_for_time(0, mode="tripod")
 
             # Angles should be the same since joint_angles_for_time
             # uses direct angle calculation, not IK

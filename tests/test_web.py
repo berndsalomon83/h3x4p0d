@@ -57,7 +57,7 @@ class TestWebAPI:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["ok"] == True
+        assert data["ok"] is True
         assert data["mode"] == "tripod"
 
     def test_set_gait_wave(self, client):
@@ -67,7 +67,7 @@ class TestWebAPI:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["ok"] == True
+        assert data["ok"] is True
         assert data["mode"] == "wave"
 
     def test_set_gait_ripple(self, client):
@@ -77,7 +77,7 @@ class TestWebAPI:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["ok"] == True
+        assert data["ok"] is True
         assert data["mode"] == "ripple"
 
     def test_set_gait_invalid(self, client):
@@ -96,7 +96,7 @@ class TestWebAPI:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["running"] == True
+        assert data["running"] is True
 
     def test_run_stop(self, client):
         """Test stopping the robot."""
@@ -105,7 +105,7 @@ class TestWebAPI:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["running"] == False
+        assert data["running"] is False
 
     def test_stop_endpoint(self, client):
         """Test /api/stop endpoint."""
@@ -114,7 +114,7 @@ class TestWebAPI:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["stopped"] == True
+        assert data["stopped"] is True
 
     def test_status_reflects_gait_change(self, client):
         """Test that status endpoint reflects gait mode changes."""
@@ -136,7 +136,7 @@ class TestWebAPI:
         response = client.get("/api/status")
         data = response.json()
 
-        assert data["running"] == True
+        assert data["running"] is True
 
         # Stop robot
         client.post("/api/run", json={"run": False})
@@ -145,7 +145,7 @@ class TestWebAPI:
         response = client.get("/api/status")
         data = response.json()
 
-        assert data["running"] == False
+        assert data["running"] is False
 
     def test_multiple_gait_changes(self, client):
         """Test changing gait mode multiple times."""
@@ -209,7 +209,7 @@ class TestWebSocketAPI:
             # Verify running state changed via REST API
             response = client.get("/api/status")
             data = response.json()
-            assert data["running"] == True
+            assert data["running"] is True
 
     def test_websocket_move_command(self, client):
         """Test move command via WebSocket."""
@@ -224,13 +224,13 @@ class TestWebSocketAPI:
             # Verify state changed
             response = client.get("/api/status")
             data = response.json()
-            assert data["running"] == True
+            assert data["running"] is True
             assert data["speed"] == 0.8
             assert data["heading"] == 45.0
 
     def test_websocket_receives_telemetry(self, client):
         """Test receiving telemetry updates via WebSocket."""
-        with client.websocket_connect("/ws") as websocket:
+        with client.websocket_connect("/ws"):
             # Should receive telemetry broadcasts
             # Note: This test may need a timeout as it waits for broadcasts
             import time
@@ -255,7 +255,7 @@ class TestHexapodController:
 
         assert controller.servo is servo
         assert controller.sensor is sensor
-        assert controller.running == False
+        assert controller.running is False
         assert controller.gait_mode == "tripod"
 
     def test_controller_telemetry(self):
@@ -360,7 +360,7 @@ class TestConnectionManager:
         status = client.get("/api/status")
         data = status.json()
 
-        assert data["running"] == True
+        assert data["running"] is True
         assert data["gait_mode"] == "ripple"
 
     def test_stop_when_not_running(self, client):
@@ -368,7 +368,7 @@ class TestConnectionManager:
         # Stop when not running
         response = client.post("/api/stop")
         assert response.status_code == 200
-        assert response.json()["stopped"] == True
+        assert response.json()["stopped"] is True
 
     def test_websocket_invalid_message_type(self, client):
         """Test WebSocket with invalid message type."""
@@ -495,12 +495,12 @@ class TestConnectionManager:
         # Start
         cmd = MotionCommand("start")
         controller._handle_motion_cmd(cmd)
-        assert controller.running == True
+        assert controller.running is True
 
         # Stop
         cmd = MotionCommand("stop")
         controller._handle_motion_cmd(cmd)
-        assert controller.running == False
+        assert controller.running is False
 
     def test_controller_motion_command_quit(self):
         """Test controller handling quit motion command."""
@@ -517,7 +517,7 @@ class TestConnectionManager:
         cmd = MotionCommand("quit")
         controller._handle_motion_cmd(cmd)
 
-        assert controller.running == False
+        assert controller.running is False
 
     def test_controller_update_servos_when_stopped(self):
         """Test that servos still return angles when stopped."""

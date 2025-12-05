@@ -4,7 +4,6 @@ from hexapod.web import create_app
 from hexapod.calibrate_web import create_calibration_app
 import uvicorn
 import subprocess
-import sys
 import argparse
 import os
 import time

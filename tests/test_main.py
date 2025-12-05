@@ -1,9 +1,7 @@
 """Tests for main.py entry point and process management."""
 
 import pytest
-import subprocess
 import os
-import sys
 from unittest.mock import patch, MagicMock
 
 # Check if fastapi is available - main.py imports web.py which needs it
