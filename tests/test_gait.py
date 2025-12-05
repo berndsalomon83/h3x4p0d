@@ -1,7 +1,6 @@
 """Unit tests for gait generation and inverse kinematics."""
 import pytest
 import sys
-import math
 from pathlib import Path
 
 # Add src to path

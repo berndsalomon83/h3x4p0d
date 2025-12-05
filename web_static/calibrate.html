@@ -801,6 +801,12 @@
 
       coverageValue.textContent = `${coverage.mapped} mapped / ${coverage.total}`;
       coverageMeta.textContent = `${coverage.legs_configured} legs touched · ${coverage.unmapped.length} remaining`;
+      const mapped = Object.keys(calibration).length;
+      const totalJoints = 18; // 6 legs * 3 joints
+      const legsCovered = new Set(Object.keys(calibration).map(key => key.split(',')[0])).size;
+
+      mappingSummary.textContent = `${mapped} / ${totalJoints} joints mapped`;
+      mappingMeta.textContent = `${legsCovered} of 6 legs configured`;
     }
 
     // WebSocket connection

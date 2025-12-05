@@ -109,13 +109,19 @@ class CalibrationController:
     def set_servo_angle(self, channel: int, angle: float) -> dict:
         """Set a servo to a specific angle."""
         try:
+            if not 0 <= channel < 18:
+                return {"success": False, "error": f"Invalid channel: {channel} (must be 0-17)"}
+
             clamped = max(0, min(180, angle))
-            if hasattr(self.servo, 'servos') and 0 <= channel < len(self.servo.servos):
-                self.servo.servos[channel].angle = clamped
-                self.current_angles[channel] = clamped
-                return {"success": True, "channel": channel, "angle": clamped}
-            else:
-                return {"success": False, "error": f"Invalid channel: {channel}"}
+
+            # For hardware mode with PCA9685
+            if hasattr(self.servo, 'servos') and self.servo.servos:
+                if channel < len(self.servo.servos):
+                    self.servo.servos[channel].angle = clamped
+
+            # Always track the angle (for both mock and hardware)
+            self.current_angles[channel] = clamped
+            return {"success": True, "channel": channel, "angle": clamped}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

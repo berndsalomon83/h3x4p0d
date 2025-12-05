@@ -4,7 +4,7 @@ Supports BLE device discovery, generic joystick input (via `inputs` library),
 and a keyboard fallback for development. Emits high-level motion commands.
 """
 import asyncio
-from typing import Callable, Optional
+from typing import Callable
 
 try:
     from bleak import BleakScanner

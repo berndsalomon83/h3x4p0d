@@ -28,7 +28,14 @@
       "Bash(PYTHONPATH=src python3:*)",
       "Bash(./.venv/bin/python:*)",
       "Bash(timeout 5 ./.venv/bin/python:*)",
-      "Bash(PYTHONPATH=/Users/berndsalomon/Documents/hexapod/src python3:*)"
+      "Bash(PYTHONPATH=/Users/berndsalomon/Documents/hexapod/src python3:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(.venv/bin/ruff check src/ tests/)",
+      "Bash(.venv/bin/ruff check src/ tests/ --fix)",
+      "Bash(.venv/bin/ruff check src/ tests/ --fix --unsafe-fixes)",
+      "Bash(ls:*)",
+      "Bash(.venv/bin/ruff check src/hexapod/web.py)"
     ],
     "deny": [],
     "ask": []

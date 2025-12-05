@@ -42,6 +42,7 @@ def hexapod_config():
     from hexapod.config import HexapodConfig
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write('{}')  # Write valid empty JSON
         config_file = Path(f.name)
 
     config = HexapodConfig(config_file=config_file)
