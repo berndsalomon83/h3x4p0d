@@ -180,6 +180,44 @@ class TestWebAPI:
         for response in responses:
             assert response.status_code == 200
 
+    def test_servo_angle_endpoint(self, client):
+        """Test /api/servo/angle endpoint sets servo angle."""
+        response = client.post("/api/servo/angle", json={
+            "leg": 0,
+            "joint": 1,
+            "angle": 90.0
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["leg"] == 0
+        assert data["joint"] == 1
+        assert data["angle"] == 90.0
+
+    def test_servo_angle_clamping(self, client):
+        """Test /api/servo/angle endpoint clamps values."""
+        response = client.post("/api/servo/angle", json={
+            "leg": 0,
+            "joint": 0,
+            "angle": 200.0  # Above max
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["angle"] == 180.0  # Clamped
+
+    def test_servo_angle_invalid_leg(self, client):
+        """Test /api/servo/angle rejects invalid leg index."""
+        response = client.post("/api/servo/angle", json={
+            "leg": 10,  # Invalid
+            "joint": 0,
+            "angle": 90.0
+        })
+
+        assert response.status_code == 400
+
 
 @pytest.mark.integration
 class TestWebSocketAPI:

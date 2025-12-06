@@ -172,6 +172,72 @@ class HexapodConfig:
             }
         ],
 
+        # Safety limits
+        "safety_max_translation_speed": 0.3,  # m/s
+        "safety_max_rotation_speed": 60.0,    # deg/s
+        "safety_max_joint_speed": 300.0,      # deg/s
+        "safety_temperature_limit": 70.0,      # °C
+        "safety_max_body_tilt_stop": 30.0,     # degrees (auto-stop threshold)
+        "safety_max_body_tilt_correct": 15.0,  # degrees (auto-correct threshold)
+        "safety_max_step_height": 50.0,        # mm
+        "safety_min_ground_clearance": 30.0,   # mm
+        "safety_low_battery_threshold": 9.5,   # V
+
+        # E-Stop configuration
+        "estop_action": "disable_torque",  # disable_torque, hold_pose, safe_collapse, cut_power
+        "estop_on_comm_loss": True,
+        "estop_comm_loss_timeout": 500,    # ms
+        "estop_on_servo_error": True,
+        "estop_on_tilt_exceeded": True,
+        "estop_on_low_battery": True,
+
+        # Fault recovery
+        "fault_recovery_action": "stay_stopped",  # stay_stopped, return_safe, auto_resume
+
+        # System settings
+        "system_hostname": "hexapod-01",
+        "system_web_port": 8000,
+        "system_require_auth": False,
+        "system_api_token": "",
+        "system_timezone": "UTC",
+        "system_ntp_servers": "pool.ntp.org, time.google.com",
+
+        # Logging levels (ERROR, WARN, INFO, DEBUG)
+        "log_level_kinematics": "INFO",
+        "log_level_servo": "DEBUG",
+        "log_level_sensors": "INFO",
+        "log_level_gait": "INFO",
+        "log_level_network": "WARN",
+
+        # IMU configuration
+        "imu_device": "MPU6050",        # MPU6050, BNO055, ICM20948
+        "imu_filter_type": "complementary",  # complementary, ekf, madgwick
+        "imu_sample_rate": 100,         # Hz
+        "imu_roll_offset": 0.0,         # degrees
+        "imu_pitch_offset": 0.0,        # degrees
+        "imu_yaw_offset": 0.0,          # degrees
+
+        # Foot contact sensor settings
+        "foot_sensor_enabled": True,
+        "foot_sensor_type": "current",  # current, force, switch
+        "foot_sensor_threshold": 150,   # mA for current type
+
+        # Control mode settings
+        "control_mode": "keyboard",     # keyboard, gamepad, autonomous, scripted
+        "control_default_mode": "keyboard",
+
+        # Gamepad input settings
+        "gamepad_deadzone": 10,         # percent (0-30)
+        "gamepad_expo_curve": 1.5,      # exponential curve (1.0-3.0)
+        "gamepad_left_x_action": "strafe",    # strafe, yaw, disabled
+        "gamepad_left_y_action": "forward",   # forward, pitch, disabled
+        "gamepad_right_x_action": "yaw",      # strafe, yaw, disabled
+        "gamepad_right_y_action": "height",   # height, pitch, disabled
+        "gamepad_a_action": "toggle_gait",    # toggle_gait, start_stop, disabled
+        "gamepad_b_action": "crouch",         # crouch, estop, disabled
+        "gamepad_x_action": "camera",         # camera, toggle_gait, disabled
+        "gamepad_y_action": "pose",           # pose, record, disabled
+
         # Saved poses for quick recall
         # Each pose stores body posture parameters
         "poses": {

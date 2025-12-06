@@ -62,6 +62,19 @@ EOF
 - **Status**: Temperature (°C), Battery (V)
 - **Log**: Real-time command history
 
+## Configuration UI (config.html)
+| Tab | Purpose |
+|-----|---------|
+| Geometry | Body/leg dimensions, attachment points |
+| Servos | Channel mapping, offsets, limits |
+| Body Posture | Height, roll, pitch, yaw, leg spread |
+| Gaits | Templates, cycle time, step params |
+| Sensors & Cameras | IMU settings, foot contact sensors, cameras |
+| Control & Input | Control modes, gamepad mapping, keyboard bindings |
+| Safety & Limits | Speed limits, temp threshold, E-Stop |
+| System & Network | Hostname, port, auth, timezone |
+| Logging | Per-module log levels (DEBUG/INFO/WARN/ERROR) |
+
 ## File Locations
 
 **Source code**: `src/hexapod/`
@@ -80,6 +93,10 @@ EOF
 ### Configuration
 - `HexapodConfig` - centralized config manager
 - `get_config()` - global config accessor
+- Safety limits: `safety_max_translation_speed`, `safety_temperature_limit`, etc.
+- E-Stop: `estop_action`, `estop_on_comm_loss`, `estop_on_servo_error`
+- System: `system_hostname`, `system_web_port`, `system_require_auth`
+- Logging: `log_level_kinematics`, `log_level_servo`, `log_level_sensors`
 
 ### Gait
 - `GaitEngine` - tripod/wave/ripple gaits with differential steering
@@ -260,11 +277,65 @@ A/D strafe sideways without turning the body.
   "leg_femur_length": 50.0,
   "leg_tibia_length": 55.0,
   "body_width": 100.0,
-  "body_length": 120.0
+  "body_length": 120.0,
+  "safety_max_translation_speed": 0.3,
+  "safety_temperature_limit": 70.0,
+  "estop_action": "disable_torque",
+  "log_level_servo": "DEBUG"
 }
 ```
 
 Per-leg dimensions supported: `leg0_coxa_length`, `leg0_femur_length`, etc.
+
+### Safety Configuration Keys
+| Key | Default | Description |
+|-----|---------|-------------|
+| `safety_max_translation_speed` | 0.3 m/s | Max linear movement speed |
+| `safety_max_rotation_speed` | 60 deg/s | Max rotation speed |
+| `safety_temperature_limit` | 70°C | Auto-stop temperature |
+| `safety_max_body_tilt_stop` | 30° | Tilt threshold for stop |
+| `safety_max_body_tilt_correct` | 15° | Tilt threshold for correction |
+| `estop_action` | disable_torque | E-Stop behavior (disable_torque/hold_pose/safe_collapse) |
+| `estop_on_comm_loss` | true | Stop on communication loss |
+| `estop_comm_loss_timeout` | 500ms | Comm loss detection time |
+
+### Logging Levels
+| Key | Default | Options |
+|-----|---------|---------|
+| `log_level_kinematics` | INFO | ERROR, WARN, INFO, DEBUG |
+| `log_level_servo` | DEBUG | ERROR, WARN, INFO, DEBUG |
+| `log_level_sensors` | INFO | ERROR, WARN, INFO, DEBUG |
+| `log_level_gait` | INFO | ERROR, WARN, INFO, DEBUG |
+| `log_level_network` | WARN | ERROR, WARN, INFO, DEBUG |
+
+### IMU Configuration
+| Key | Default | Description |
+|-----|---------|-------------|
+| `imu_device` | MPU6050 | IMU chip (MPU6050/BNO055/ICM20948) |
+| `imu_filter_type` | complementary | Filter (complementary/ekf/madgwick) |
+| `imu_sample_rate` | 100 Hz | IMU sampling rate |
+| `imu_roll_offset` | 0.0° | Mounting roll offset |
+| `imu_pitch_offset` | 0.0° | Mounting pitch offset |
+| `imu_yaw_offset` | 0.0° | Mounting yaw offset |
+
+### Foot Contact Sensors
+| Key | Default | Description |
+|-----|---------|-------------|
+| `foot_sensor_enabled` | true | Enable foot contact sensing |
+| `foot_sensor_type` | current | Detection type (current/force/switch) |
+| `foot_sensor_threshold` | 150 mA | Detection threshold |
+
+### Control & Gamepad Settings
+| Key | Default | Description |
+|-----|---------|-------------|
+| `control_mode` | keyboard | Active mode (keyboard/gamepad/autonomous/scripted) |
+| `control_default_mode` | keyboard | Startup control mode |
+| `gamepad_deadzone` | 10% | Stick deadzone (0-30%) |
+| `gamepad_expo_curve` | 1.5 | Response curve (1.0-3.0) |
+| `gamepad_left_x_action` | strafe | Left stick X (strafe/yaw/disabled) |
+| `gamepad_left_y_action` | forward | Left stick Y (forward/pitch/disabled) |
+| `gamepad_right_x_action` | yaw | Right stick X (yaw/strafe/disabled) |
+| `gamepad_right_y_action` | height | Right stick Y (height/pitch/disabled) |
 
 ## Hardware Pins (Raspberry Pi)
 
@@ -329,7 +400,7 @@ Total lines of code: ~2,490
   Documentation: ~1,123 lines
   Config: 3 files (pyproject.toml, calibration, startup script)
 
-Test coverage: 6 unit tests, all passing
+Test coverage: 262 tests, all passing
 Components: 9 modules
   - hardware.py (servo & sensor abstraction)
   - gait.py (walking algorithms & IK)

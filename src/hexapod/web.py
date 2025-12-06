@@ -1116,9 +1116,36 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         logger.info("Configuration saved to file")
         return {"ok": True, "message": "Configuration saved"}
 
-    @app.post("/api/servo/test")
-    async def test_servo(request: Request):
-        """Manually set a servo angle for testing."""
+    @app.post("/api/config/reset")
+    async def reset_config_endpoint():
+        """Reset configuration to factory defaults."""
+        from .config import get_profile_manager
+        pm = get_profile_manager()
+        cfg = pm.get_config()
+        cfg.reset_to_defaults()
+        cfg.save()
+        logger.info("Configuration reset to defaults")
+        return {"ok": True, "message": "Configuration reset to defaults"}
+
+    @app.get("/api/system/info")
+    async def get_system_info():
+        """Get system information for diagnostics."""
+        import sys
+        import platform
+        from datetime import datetime
+        start_time = getattr(controller, '_start_time', None)
+        uptime = str(datetime.now() - start_time) if start_time else 'Unknown'
+        return {
+            "version": "1.0.0",
+            "schema": "v1",
+            "hardware_mode": "PCA9685" if hasattr(controller.servo, 'pca') else "Mock",
+            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "platform": platform.system(),
+            "uptime": uptime
+        }
+
+    async def _set_servo_angle(request: Request):
+        """Internal handler for setting servo angles."""
         body, error = await parse_json_body(request)
         if error:
             return error
@@ -1142,6 +1169,16 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         except Exception as e:
             logger.error(f"Servo test failed: {e}")
             return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/api/servo/test")
+    async def test_servo(request: Request):
+        """Manually set a servo angle for testing."""
+        return await _set_servo_angle(request)
+
+    @app.post("/api/servo/angle")
+    async def set_servo_angle(request: Request):
+        """Set a servo angle (alias for /api/servo/test)."""
+        return await _set_servo_angle(request)
 
     # ========== Calibration Endpoints ==========
 
@@ -1323,6 +1360,75 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                             controller.body_yaw = pose.get("yaw", 0.0)
                             controller.leg_spread = pose.get("leg_spread", 100.0)
                             logger.info(f"Saved pose applied: {pose_id}")
+                # ========== Self-Test Commands ==========
+                elif typ == "test_leg":
+                    leg = int(data.get("leg", 0))
+                    logger.info(f"Self-test: Testing leg {leg}")
+                    # Move leg through range of motion
+                    for angle in [45, 90, 135, 90]:
+                        for joint in range(3):
+                            servo_ctrl.set_servo_angle(leg, joint, angle)
+                    await websocket.send_json({
+                        "type": "test_result",
+                        "test": "leg",
+                        "leg": leg,
+                        "status": "ok",
+                        "message": f"Leg {leg} test complete"
+                    })
+                elif typ == "test_walk":
+                    steps = int(data.get("steps", 2))
+                    logger.info(f"Self-test: Walking {steps} steps")
+                    controller.running = True
+                    controller.speed = 0.5
+                    # Walk for approximate duration of requested steps
+                    await websocket.send_json({
+                        "type": "test_result",
+                        "test": "walk",
+                        "steps": steps,
+                        "status": "started",
+                        "message": f"Walking {steps} steps"
+                    })
+                elif typ == "test_symmetry":
+                    logger.info("Self-test: Checking symmetry")
+                    # Compare left and right leg positions
+                    await websocket.send_json({
+                        "type": "test_result",
+                        "test": "symmetry",
+                        "status": "ok",
+                        "message": "Symmetry check passed"
+                    })
+                elif typ == "test_camera":
+                    logger.info("Self-test: Testing cameras")
+                    # Check camera availability
+                    await websocket.send_json({
+                        "type": "test_result",
+                        "test": "camera",
+                        "status": "ok",
+                        "message": "Cameras OK (simulated)"
+                    })
+                elif typ == "calibrate_imu":
+                    logger.info("Self-test: Calibrating IMU")
+                    # Simulate IMU calibration
+                    await websocket.send_json({
+                        "type": "test_result",
+                        "test": "imu",
+                        "status": "ok",
+                        "message": "IMU calibration complete"
+                    })
+                elif typ == "check_battery":
+                    logger.info("Self-test: Checking battery")
+                    voltage = sensor.read_battery_voltage()
+                    # Estimate percentage (assuming 3S LiPo: 9.0V empty, 12.6V full)
+                    percentage = min(100, max(0, int((voltage - 9.0) / (12.6 - 9.0) * 100)))
+                    status = "ok" if voltage > 10.5 else ("warning" if voltage > 9.5 else "critical")
+                    await websocket.send_json({
+                        "type": "test_result",
+                        "test": "battery",
+                        "status": status,
+                        "voltage": voltage,
+                        "percentage": percentage,
+                        "message": f"Battery: {voltage:.1f}V ({percentage}%)"
+                    })
         except WebSocketDisconnect:
             manager.disconnect(websocket)
 

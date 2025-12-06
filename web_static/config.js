@@ -722,7 +722,13 @@ function renderGaitsTable() {
         <td>
           <span class="tag ${isEnabled ? 'tag-success' : 'tag-muted'}">${isEnabled ? 'Enabled' : 'Disabled'}</span>
         </td>
-        <td>
+        <td style="white-space: nowrap;">
+          <button class="btn btn-primary btn-sm gait-test-btn"
+                  data-gait="${gaitId}"
+                  ${!isEnabled ? 'disabled title="Enable gait first"' : ''}
+                  title="Test this gait for 3 seconds">
+            Test
+          </button>
           <button class="btn btn-secondary btn-sm gait-action-btn"
                   data-action="${isEnabled ? 'disable' : 'enable'}"
                   data-gait="${gaitId}"
@@ -739,6 +745,25 @@ function renderGaitsTable() {
     radio.addEventListener('change', async (e) => {
       const gaitId = e.target.dataset.gait;
       await setActiveGait(gaitId);
+    });
+  });
+
+  // Add event listeners for test buttons
+  tbody.querySelectorAll('.gait-test-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const button = e.currentTarget;
+      const gaitId = button.dataset.gait;
+      if (gaitId) {
+        button.disabled = true;
+        button.textContent = 'Testing...';
+        await testGait(gaitId, 3);
+        // Re-enable after test completes
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = 'Test';
+        }, 3500);
+      }
     });
   });
 
@@ -874,6 +899,57 @@ function applyConfigToUI() {
   setSliderValue('bodyTransX', c.body_trans_x || 0);
   setSliderValue('bodyTransY', c.body_trans_y || 0);
   setSliderValue('bodyTransZ', c.body_trans_z || 0);
+
+  // Apply all config-bound elements (sliders, selects, toggles, inputs)
+  applyConfigBoundElements(c);
+}
+
+// Apply configuration to elements with data-config-key attribute
+function applyConfigBoundElements(c) {
+  // Config sliders
+  document.querySelectorAll('.config-slider').forEach(slider => {
+    const key = slider.dataset.configKey;
+    if (key && c[key] !== undefined) {
+      slider.value = c[key];
+      const valueEl = document.getElementById(slider.id + '-value');
+      if (valueEl) {
+        const unit = slider.dataset.unit || '';
+        valueEl.innerHTML = c[key] + unit;
+      }
+    }
+  });
+
+  // Config selects
+  document.querySelectorAll('.config-select').forEach(select => {
+    const key = select.dataset.configKey;
+    if (key && c[key] !== undefined) {
+      select.value = c[key];
+    }
+  });
+
+  // Config toggles
+  document.querySelectorAll('.config-toggle').forEach(toggle => {
+    const key = toggle.dataset.configKey;
+    if (key && c[key] !== undefined) {
+      toggle.checked = !!c[key];
+    }
+  });
+
+  // Config inputs
+  document.querySelectorAll('.config-input').forEach(input => {
+    const key = input.dataset.configKey;
+    if (key && c[key] !== undefined) {
+      input.value = c[key];
+    }
+  });
+
+  // Control mode radio buttons
+  if (c.control_mode) {
+    const radio = document.querySelector(`input[name="controlMode"][value="${c.control_mode}"]`);
+    if (radio) {
+      radio.checked = true;
+    }
+  }
 }
 
 function setSliderValue(id, value) {
@@ -918,6 +994,238 @@ document.querySelectorAll('.slider-group').forEach(group => {
     });
   }
 });
+
+// ========== Config-Bound Element Event Handlers ==========
+// Generic handlers for elements with data-config-key attribute
+
+// Config sliders (with data-config-key)
+document.querySelectorAll('.config-slider').forEach(slider => {
+  const valueEl = document.getElementById(slider.id + '-value');
+  slider.addEventListener('input', () => {
+    const val = parseFloat(slider.value);
+    const unit = slider.dataset.unit || '';
+    if (valueEl) {
+      valueEl.innerHTML = val + unit;
+    }
+    // Debounced save
+    clearTimeout(slider._saveTimeout);
+    slider._saveTimeout = setTimeout(() => {
+      const key = slider.dataset.configKey;
+      if (key) {
+        const update = {};
+        update[key] = val;
+        saveConfig(update);
+      }
+    }, 300);
+  });
+});
+
+// Config selects (with data-config-key)
+document.querySelectorAll('.config-select').forEach(select => {
+  select.addEventListener('change', () => {
+    const key = select.dataset.configKey;
+    if (key) {
+      const update = {};
+      update[key] = select.value;
+      saveConfig(update);
+    }
+  });
+});
+
+// Config toggles (with data-config-key)
+document.querySelectorAll('.config-toggle').forEach(toggle => {
+  toggle.addEventListener('change', () => {
+    const key = toggle.dataset.configKey;
+    if (key) {
+      const update = {};
+      update[key] = toggle.checked;
+      saveConfig(update);
+    }
+  });
+});
+
+// Config inputs (with data-config-key) - debounced
+document.querySelectorAll('.config-input').forEach(input => {
+  input.addEventListener('input', () => {
+    clearTimeout(input._saveTimeout);
+    input._saveTimeout = setTimeout(() => {
+      const key = input.dataset.configKey;
+      if (key) {
+        const update = {};
+        // Try to parse as number if it looks like one
+        const val = input.value;
+        update[key] = isNaN(val) || val === '' ? val : parseFloat(val);
+        saveConfig(update);
+      }
+    }, 500);
+  });
+});
+
+// Control mode radio buttons
+document.querySelectorAll('input[name="controlMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (radio.checked) {
+      saveConfig({ control_mode: radio.value });
+    }
+  });
+});
+
+// ========== System Section Handlers ==========
+// Update current time display
+function updateSystemTime() {
+  const timeEl = document.getElementById('sys-current-time');
+  if (timeEl) {
+    const now = new Date();
+    timeEl.value = now.toISOString().replace('T', ' ').substring(0, 19);
+  }
+}
+setInterval(updateSystemTime, 1000);
+updateSystemTime();
+
+// Detect IP address from window location
+const ipEl = document.getElementById('sys-ip-address');
+if (ipEl) {
+  const host = window.location.hostname;
+  ipEl.value = host === 'localhost' || host === '127.0.0.1' ? 'localhost' : host;
+}
+
+// Show/hide API token
+document.getElementById('sys-show-token')?.addEventListener('click', function() {
+  const tokenInput = document.getElementById('sys-api-token');
+  if (tokenInput) {
+    if (tokenInput.type === 'password') {
+      tokenInput.type = 'text';
+      this.textContent = 'Hide';
+    } else {
+      tokenInput.type = 'password';
+      this.textContent = 'Show';
+    }
+  }
+});
+
+// Regenerate token
+document.getElementById('sys-regenerate-token')?.addEventListener('click', async function() {
+  const token = 'hex_' + Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  const tokenInput = document.getElementById('sys-api-token');
+  if (tokenInput) {
+    tokenInput.value = token;
+    tokenInput.type = 'text';
+    document.getElementById('sys-show-token').textContent = 'Hide';
+    await saveConfig({ system_api_token: token });
+  }
+});
+
+// Export configuration
+document.getElementById('sys-export-config')?.addEventListener('click', () => {
+  const config = state.config;
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hexapod-config-${state.currentProfile || 'default'}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// Import configuration
+document.getElementById('sys-import-config')?.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      try {
+        const text = await file.text();
+        const imported = JSON.parse(text);
+        if (confirm('This will replace the current configuration. Continue?')) {
+          await saveConfig(imported);
+          await loadConfig();
+          alert('Configuration imported successfully.');
+        }
+      } catch (err) {
+        alert('Error importing configuration: ' + err.message);
+      }
+    }
+  };
+  input.click();
+});
+
+// Reset to defaults
+document.getElementById('sys-reset-defaults')?.addEventListener('click', async () => {
+  if (confirm('This will reset ALL configuration to factory defaults. This cannot be undone. Continue?')) {
+    try {
+      const response = await fetch('/api/config/reset', { method: 'POST' });
+      if (response.ok) {
+        await loadConfig();
+        alert('Configuration reset to defaults.');
+      } else {
+        alert('Error resetting configuration.');
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+});
+
+// Load system info
+async function loadSystemInfo() {
+  try {
+    const response = await fetch('/api/system/info');
+    if (response.ok) {
+      const info = await response.json();
+      const setEl = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      setEl('sys-version', info.version || '1.0.0');
+      setEl('sys-schema', info.schema || 'v1');
+      setEl('sys-hw-mode', info.hardware_mode || 'Mock');
+      setEl('sys-python', info.python_version || 'Unknown');
+      setEl('sys-uptime', info.uptime || '-');
+    }
+  } catch (err) {
+    console.warn('Failed to load system info:', err);
+  }
+}
+loadSystemInfo();
+// Refresh system info periodically
+setInterval(loadSystemInfo, 30000);
+
+// ========== Gait Test Button ==========
+async function testGait(gaitMode, duration = 3) {
+  // Start walking with the specified gait for a short duration
+  try {
+    // Set the gait mode
+    await fetch('/api/gait', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: gaitMode })
+    });
+
+    // Start walking
+    await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ run: true })
+    });
+
+    // Stop after duration seconds
+    setTimeout(async () => {
+      await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ run: false })
+      });
+    }, duration * 1000);
+
+    return true;
+  } catch (err) {
+    console.error('Error testing gait:', err);
+    return false;
+  }
+}
 
 // ========== Servo Mapping Table ==========
 const servoMappingTable = document.getElementById('servoMappingTable');
@@ -3175,6 +3483,31 @@ function connectWebSocket() {
           if (data.leg_spread !== undefined) setSliderValue('leg_spread', data.leg_spread);
 
           updateLiveStatus();
+        } else if (data.type === 'test_result') {
+          // Handle self-test results
+          const levelMap = {
+            'ok': 'INFO',
+            'started': 'INFO',
+            'warning': 'WARN',
+            'critical': 'ERROR',
+            'error': 'ERROR'
+          };
+          const level = levelMap[data.status] || 'INFO';
+          logEvent(level, data.message || `Test ${data.test}: ${data.status}`);
+
+          // Add to test results panel
+          const testResultsPanel = document.querySelector('#tab-log-selftest .log-panel');
+          if (testResultsPanel) {
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+              <span class="log-time">${time}</span>
+              <span class="log-level ${level.toLowerCase()}">${level}</span>
+              <span class="log-message">${data.message}</span>
+            `;
+            testResultsPanel.insertBefore(entry, testResultsPanel.firstChild);
+          }
         }
       } catch (e) {
         console.error('Message parse error:', e);

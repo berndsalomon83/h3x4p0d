@@ -1061,19 +1061,23 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">IMU Device</label>
-              <select class="form-select">
-                <option>MPU6050 (I2C)</option>
-                <option>BNO055 (I2C)</option>
-                <option>ICM20948 (SPI)</option>
+              <select class="form-select config-select" id="imu-device" data-config-key="imu_device">
+                <option value="MPU6050">MPU6050 (I2C)</option>
+                <option value="BNO055">BNO055 (I2C)</option>
+                <option value="ICM20948">ICM20948 (SPI)</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Filter Type</label>
-              <select class="form-select">
-                <option>Complementary Filter</option>
-                <option>Extended Kalman Filter</option>
-                <option>Madgwick Filter</option>
+              <select class="form-select config-select" id="imu-filter" data-config-key="imu_filter_type">
+                <option value="complementary">Complementary Filter</option>
+                <option value="ekf">Extended Kalman Filter</option>
+                <option value="madgwick">Madgwick Filter</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Sample Rate (Hz)</label>
+              <input type="number" class="form-input config-input" id="imu-sample-rate" data-config-key="imu_sample_rate" min="10" max="500" value="100" style="width: 100px;">
             </div>
           </div>
           <div class="card-header" style="margin-top: 16px;">
@@ -1082,15 +1086,15 @@
           <div class="transform-editor">
             <div class="transform-axis">
               <div class="transform-axis-label">Roll Offset</div>
-              <input type="number" class="transform-axis-input" value="0">
+              <input type="number" class="transform-axis-input config-input" id="imu-roll-offset" data-config-key="imu_roll_offset" value="0" step="0.1">
             </div>
             <div class="transform-axis">
               <div class="transform-axis-label">Pitch Offset</div>
-              <input type="number" class="transform-axis-input" value="0">
+              <input type="number" class="transform-axis-input config-input" id="imu-pitch-offset" data-config-key="imu_pitch_offset" value="0" step="0.1">
             </div>
             <div class="transform-axis">
               <div class="transform-axis-label">Yaw Offset</div>
-              <input type="number" class="transform-axis-input" value="0">
+              <input type="number" class="transform-axis-input config-input" id="imu-yaw-offset" data-config-key="imu_yaw_offset" value="0" step="0.1">
             </div>
           </div>
         </div>
@@ -1102,52 +1106,49 @@
           <div class="card-header">
             <span class="card-title">Foot Contact Sensors</span>
           </div>
+          <div class="toggle-group" style="margin-bottom: 16px;">
+            <div>
+              <div class="toggle-label">Enable Foot Contact Sensing</div>
+              <div class="toggle-desc">Detect ground contact using servo current monitoring</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" class="config-toggle" id="foot-sensor-enabled" data-config-key="foot_sensor_enabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Sensor Type</label>
+              <select class="form-select config-select" id="foot-sensor-type" data-config-key="foot_sensor_type">
+                <option value="current">Current Spike Detection</option>
+                <option value="force">Force Sensor (FSR)</option>
+                <option value="switch">Mechanical Switch</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Detection Threshold</label>
+              <input type="number" class="form-input config-input" id="foot-sensor-threshold" data-config-key="foot_sensor_threshold" value="150" min="50" max="500" style="width: 100px;">
+              <span class="form-hint" style="margin-left: 8px;">mA (for current type)</span>
+            </div>
+          </div>
+          <div class="card-header" style="margin-top: 16px;">
+            <span class="card-title">Leg Status</span>
+          </div>
           <table class="data-table">
             <thead>
               <tr>
                 <th>Leg</th>
-                <th>Enabled</th>
-                <th>Type</th>
-                <th>Threshold</th>
+                <th>Contact Status</th>
+                <th>Current (mA)</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td>Leg 0 (FR)</td>
-                <td><input type="checkbox" checked></td>
-                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option><option>Force Sensor</option><option>Switch</option></select></td>
-                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
-              </tr>
-              <tr>
-                <td>Leg 1 (MR)</td>
-                <td><input type="checkbox" checked></td>
-                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
-                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
-              </tr>
-              <tr>
-                <td>Leg 2 (RR)</td>
-                <td><input type="checkbox" checked></td>
-                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
-                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
-              </tr>
-              <tr>
-                <td>Leg 3 (RL)</td>
-                <td><input type="checkbox" checked></td>
-                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
-                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
-              </tr>
-              <tr>
-                <td>Leg 4 (ML)</td>
-                <td><input type="checkbox" checked></td>
-                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
-                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
-              </tr>
-              <tr>
-                <td>Leg 5 (FL)</td>
-                <td><input type="checkbox" checked></td>
-                <td><select class="form-select" style="width: 150px;"><option>Current Spike</option></select></td>
-                <td><input type="number" class="form-input" value="150" style="width: 80px;"> mA</td>
-              </tr>
+            <tbody id="foot-sensor-status">
+              <tr><td>Leg 0 (FR)</td><td><span class="tag tag-success" id="foot-0-status">Contact</span></td><td id="foot-0-current">142</td></tr>
+              <tr><td>Leg 1 (MR)</td><td><span class="tag tag-success" id="foot-1-status">Contact</span></td><td id="foot-1-current">138</td></tr>
+              <tr><td>Leg 2 (RR)</td><td><span class="tag tag-success" id="foot-2-status">Contact</span></td><td id="foot-2-current">145</td></tr>
+              <tr><td>Leg 3 (RL)</td><td><span class="tag tag-success" id="foot-3-status">Contact</span></td><td id="foot-3-current">140</td></tr>
+              <tr><td>Leg 4 (ML)</td><td><span class="tag tag-success" id="foot-4-status">Contact</span></td><td id="foot-4-current">137</td></tr>
+              <tr><td>Leg 5 (FL)</td><td><span class="tag tag-success" id="foot-5-status">Contact</span></td><td id="foot-5-current">144</td></tr>
             </tbody>
           </table>
         </div>
@@ -1182,27 +1183,27 @@
                 <th>Priority</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="control-mode-table">
               <tr>
-                <td><input type="radio" name="controlMode" checked></td>
+                <td><input type="radio" name="controlMode" value="gamepad" id="control-mode-gamepad"></td>
                 <td><strong>Manual Joystick</strong></td>
                 <td>Direct control via gamepad or virtual joystick</td>
                 <td><span class="tag tag-danger">High</span></td>
               </tr>
               <tr>
-                <td><input type="radio" name="controlMode"></td>
+                <td><input type="radio" name="controlMode" value="keyboard" id="control-mode-keyboard" checked></td>
                 <td><strong>Keyboard</strong></td>
                 <td>WASD + arrow key control</td>
                 <td><span class="tag tag-danger">High</span></td>
               </tr>
               <tr>
-                <td><input type="radio" name="controlMode"></td>
+                <td><input type="radio" name="controlMode" value="autonomous" id="control-mode-autonomous"></td>
                 <td><strong>Autonomous Navigation</strong></td>
                 <td>AI-driven movement with obstacle avoidance</td>
                 <td><span class="tag tag-warning">Medium</span></td>
               </tr>
               <tr>
-                <td><input type="radio" name="controlMode"></td>
+                <td><input type="radio" name="controlMode" value="scripted" id="control-mode-scripted"></td>
                 <td><strong>Scripted Motion</strong></td>
                 <td>Pre-programmed movement sequences</td>
                 <td><span class="tag tag-primary">Low</span></td>
@@ -1211,11 +1212,11 @@
           </table>
           <div class="form-group" style="margin-top: 16px;">
             <label class="form-label">Default Mode at Startup</label>
-            <select class="form-select" style="max-width: 300px;">
-              <option>Manual Joystick</option>
-              <option>Keyboard</option>
-              <option>Autonomous Navigation</option>
-              <option>Scripted Motion</option>
+            <select class="form-select config-select" id="control-default-mode" data-config-key="control_default_mode" style="max-width: 300px;">
+              <option value="gamepad">Manual Joystick</option>
+              <option value="keyboard">Keyboard</option>
+              <option value="autonomous">Autonomous Navigation</option>
+              <option value="scripted">Scripted Motion</option>
             </select>
           </div>
         </div>
@@ -1230,11 +1231,12 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Connected Controller</label>
-              <select class="form-select">
-                <option>Xbox Controller (Detected)</option>
-                <option>PlayStation Controller</option>
-                <option>Generic Gamepad</option>
+              <select class="form-select" id="gamepad-controller">
+                <option value="xbox">Xbox Controller</option>
+                <option value="playstation">PlayStation Controller</option>
+                <option value="generic">Generic Gamepad</option>
               </select>
+              <span class="form-hint" id="gamepad-status" style="margin-left: 8px; color: var(--text-muted);">Not connected</span>
             </div>
           </div>
 
@@ -1242,19 +1244,35 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Left Stick X</label>
-              <select class="form-select"><option>Strafe (left/right)</option><option>Yaw</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-left-x" data-config-key="gamepad_left_x_action">
+                <option value="strafe">Strafe (left/right)</option>
+                <option value="yaw">Yaw (rotate)</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">Left Stick Y</label>
-              <select class="form-select"><option>Forward/Back</option><option>Body Pitch</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-left-y" data-config-key="gamepad_left_y_action">
+                <option value="forward">Forward/Back</option>
+                <option value="pitch">Body Pitch</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">Right Stick X</label>
-              <select class="form-select"><option>Yaw</option><option>Strafe</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-right-x" data-config-key="gamepad_right_x_action">
+                <option value="yaw">Yaw (rotate)</option>
+                <option value="strafe">Strafe (left/right)</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">Right Stick Y</label>
-              <select class="form-select"><option>Body Height</option><option>Body Pitch</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-right-y" data-config-key="gamepad_right_y_action">
+                <option value="height">Body Height</option>
+                <option value="pitch">Body Pitch</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
           </div>
 
@@ -1262,19 +1280,35 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">A Button</label>
-              <select class="form-select"><option>Toggle Gait</option><option>Start/Stop</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-a" data-config-key="gamepad_a_action">
+                <option value="toggle_gait">Toggle Gait</option>
+                <option value="start_stop">Start/Stop</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">B Button</label>
-              <select class="form-select"><option>Crouch/Stand</option><option>E-Stop</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-b" data-config-key="gamepad_b_action">
+                <option value="crouch">Crouch/Stand</option>
+                <option value="estop">E-Stop</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">X Button</label>
-              <select class="form-select"><option>Camera Switch</option><option>Toggle Gait</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-x" data-config-key="gamepad_x_action">
+                <option value="camera">Camera Switch</option>
+                <option value="toggle_gait">Toggle Gait</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
             <div class="form-group">
               <label class="form-label">Y Button</label>
-              <select class="form-select"><option>Predefined Pose</option><option>Record Pose</option><option>Disabled</option></select>
+              <select class="form-select config-select" id="gamepad-y" data-config-key="gamepad_y_action">
+                <option value="pose">Predefined Pose</option>
+                <option value="record">Record Pose</option>
+                <option value="disabled">Disabled</option>
+              </select>
             </div>
           </div>
 
@@ -1283,16 +1317,16 @@
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Deadzone</span>
-                <span class="slider-value">10%</span>
+                <span class="slider-value" id="gamepad-deadzone-value">10%</span>
               </div>
-              <input type="range" class="slider" min="0" max="30" value="10">
+              <input type="range" class="slider config-slider" id="gamepad-deadzone" data-config-key="gamepad_deadzone" data-unit="%" min="0" max="30" value="10">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Exponential Curve</span>
-                <span class="slider-value">1.5</span>
+                <span class="slider-value" id="gamepad-expo-value">1.5</span>
               </div>
-              <input type="range" class="slider" min="1" max="3" step="0.1" value="1.5">
+              <input type="range" class="slider config-slider" id="gamepad-expo" data-config-key="gamepad_expo_curve" data-unit="" min="1" max="3" step="0.1" value="1.5">
             </div>
           </div>
         </div>
@@ -1379,32 +1413,32 @@
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Body Translation Speed</span>
-                <span class="slider-value">0.3 m/s</span>
+                <span class="slider-value" id="safety-translation-speed-value">0.3 m/s</span>
               </div>
-              <input type="range" class="slider" min="0.1" max="1" step="0.05" value="0.3">
+              <input type="range" class="slider config-slider" id="safety-translation-speed" data-config-key="safety_max_translation_speed" data-unit=" m/s" min="0.1" max="1" step="0.05" value="0.3">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Rotation Speed</span>
-                <span class="slider-value">60 &deg;/s</span>
+                <span class="slider-value" id="safety-rotation-speed-value">60 &deg;/s</span>
               </div>
-              <input type="range" class="slider" min="20" max="120" value="60">
+              <input type="range" class="slider config-slider" id="safety-rotation-speed" data-config-key="safety_max_rotation_speed" data-unit="&deg;/s" min="20" max="120" value="60">
             </div>
           </div>
           <div class="form-row">
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Joint Speed</span>
-                <span class="slider-value">300 &deg;/s</span>
+                <span class="slider-value" id="safety-joint-speed-value">300 &deg;/s</span>
               </div>
-              <input type="range" class="slider" min="60" max="600" value="300">
+              <input type="range" class="slider config-slider" id="safety-joint-speed" data-config-key="safety_max_joint_speed" data-unit="&deg;/s" min="60" max="600" value="300">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Temperature Limit</span>
-                <span class="slider-value">70 &deg;C</span>
+                <span class="slider-value" id="safety-temp-limit-value">70 &deg;C</span>
               </div>
-              <input type="range" class="slider" min="40" max="85" value="70">
+              <input type="range" class="slider config-slider" id="safety-temp-limit" data-config-key="safety_temperature_limit" data-unit="&deg;C" min="40" max="85" value="70">
             </div>
           </div>
         </div>
@@ -1420,32 +1454,32 @@
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Body Tilt (Auto-Stop)</span>
-                <span class="slider-value">30&deg;</span>
+                <span class="slider-value" id="safety-tilt-stop-value">30&deg;</span>
               </div>
-              <input type="range" class="slider" min="10" max="45" value="30">
+              <input type="range" class="slider config-slider" id="safety-tilt-stop" data-config-key="safety_max_body_tilt_stop" data-unit="&deg;" min="10" max="45" value="30">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Body Tilt (Auto-Correct)</span>
-                <span class="slider-value">15&deg;</span>
+                <span class="slider-value" id="safety-tilt-correct-value">15&deg;</span>
               </div>
-              <input type="range" class="slider" min="5" max="25" value="15">
+              <input type="range" class="slider config-slider" id="safety-tilt-correct" data-config-key="safety_max_body_tilt_correct" data-unit="&deg;" min="5" max="25" value="15">
             </div>
           </div>
           <div class="form-row">
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Step Height</span>
-                <span class="slider-value">50 mm</span>
+                <span class="slider-value" id="safety-step-height-value">50 mm</span>
               </div>
-              <input type="range" class="slider" min="20" max="100" value="50">
+              <input type="range" class="slider config-slider" id="safety-step-height" data-config-key="safety_max_step_height" data-unit=" mm" min="20" max="100" value="50">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Min Ground Clearance</span>
-                <span class="slider-value">30 mm</span>
+                <span class="slider-value" id="safety-ground-clearance-value">30 mm</span>
               </div>
-              <input type="range" class="slider" min="10" max="80" value="30">
+              <input type="range" class="slider config-slider" id="safety-ground-clearance" data-config-key="safety_min_ground_clearance" data-unit=" mm" min="10" max="80" value="30">
             </div>
           </div>
         </div>
@@ -1459,7 +1493,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">E-Stop Action</label>
-            <select class="form-select" style="max-width: 400px;">
+            <select class="form-select config-select" id="estop-action" data-config-key="estop_action" style="max-width: 400px;">
               <option value="disable_torque">Disable All Torque (servos go limp)</option>
               <option value="hold_pose">Hold Current Pose</option>
               <option value="safe_collapse">Gently Collapse to Rest Pose</option>
@@ -1478,7 +1512,7 @@
               <div class="toggle-desc">Trigger E-Stop if connection lost for &gt;500ms</div>
             </div>
             <label class="toggle">
-              <input type="checkbox" checked>
+              <input type="checkbox" class="config-toggle" id="estop-comm-loss" data-config-key="estop_on_comm_loss" checked>
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -1488,7 +1522,7 @@
               <div class="toggle-desc">Trigger E-Stop on servo fault or temperature &gt;limit</div>
             </div>
             <label class="toggle">
-              <input type="checkbox" checked>
+              <input type="checkbox" class="config-toggle" id="estop-servo-error" data-config-key="estop_on_servo_error" checked>
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -1498,19 +1532,33 @@
               <div class="toggle-desc">Trigger E-Stop if body tilt exceeds max limit</div>
             </div>
             <label class="toggle">
-              <input type="checkbox" checked>
+              <input type="checkbox" class="config-toggle" id="estop-tilt" data-config-key="estop_on_tilt_exceeded" checked>
               <span class="toggle-slider"></span>
             </label>
           </div>
           <div class="toggle-group">
             <div>
               <div class="toggle-label">Low Battery Voltage</div>
-              <div class="toggle-desc">Trigger E-Stop if voltage drops below 9.5V</div>
+              <div class="toggle-desc" id="estop-battery-desc">Trigger E-Stop if voltage drops below threshold</div>
             </div>
             <label class="toggle">
-              <input type="checkbox" checked>
+              <input type="checkbox" class="config-toggle" id="estop-battery" data-config-key="estop_on_low_battery" checked>
               <span class="toggle-slider"></span>
             </label>
+          </div>
+          <div class="slider-group" style="margin-top: 12px; margin-left: 24px;">
+            <div class="slider-header">
+              <span class="slider-label">Low Battery Threshold</span>
+              <span class="slider-value" id="safety-battery-threshold-value">9.5 V</span>
+            </div>
+            <input type="range" class="slider config-slider" id="safety-battery-threshold" data-config-key="safety_low_battery_threshold" data-unit=" V" min="8.0" max="11.0" step="0.1" value="9.5">
+          </div>
+          <div class="slider-group" style="margin-top: 12px; margin-left: 24px;">
+            <div class="slider-header">
+              <span class="slider-label">Communication Loss Timeout</span>
+              <span class="slider-value" id="estop-comm-timeout-value">500 ms</span>
+            </div>
+            <input type="range" class="slider config-slider" id="estop-comm-timeout" data-config-key="estop_comm_loss_timeout" data-unit=" ms" min="100" max="2000" step="50" value="500">
           </div>
         </div>
 
@@ -1520,7 +1568,7 @@
           </div>
           <div class="form-group">
             <label class="form-label">After Fault Clear</label>
-            <select class="form-select" style="max-width: 400px;">
+            <select class="form-select config-select" id="fault-recovery" data-config-key="fault_recovery_action" style="max-width: 400px;">
               <option value="stay_stopped">Stay Stopped Until Manual Reset</option>
               <option value="return_safe">Attempt Return to Safe Pose</option>
               <option value="auto_resume">Auto Resume Previous State</option>
@@ -1552,24 +1600,25 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Hostname</label>
-              <input type="text" class="form-input" value="hexapod-01">
+              <input type="text" class="form-input config-input" id="sys-hostname" data-config-key="system_hostname" value="hexapod-01">
             </div>
             <div class="form-group">
               <label class="form-label">IP Address</label>
-              <input type="text" class="form-input" value="192.168.1.100" disabled>
+              <input type="text" class="form-input" id="sys-ip-address" value="(detecting...)" disabled>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">IP Mode</label>
-              <select class="form-select">
+              <select class="form-select" id="sys-ip-mode" disabled>
                 <option>DHCP</option>
                 <option>Static</option>
               </select>
+              <small style="color: var(--text-muted);">Network mode is read-only</small>
             </div>
             <div class="form-group">
               <label class="form-label">Web UI Port</label>
-              <input type="number" class="form-input" value="8000">
+              <input type="number" class="form-input config-input" id="sys-web-port" data-config-key="system_web_port" value="8000">
             </div>
           </div>
         </div>
@@ -1584,17 +1633,18 @@
               <div class="toggle-desc">Password protect web interface and API</div>
             </div>
             <label class="toggle">
-              <input type="checkbox">
+              <input type="checkbox" class="config-toggle" id="sys-require-auth" data-config-key="system_require_auth">
               <span class="toggle-slider"></span>
             </label>
           </div>
           <div class="form-row" style="margin-top: 16px;">
             <div class="form-group">
               <label class="form-label">API Token</label>
-              <input type="text" class="form-input" value="••••••••••••••••" style="font-family: monospace;">
+              <input type="password" class="form-input" id="sys-api-token" value="" placeholder="(not set)" style="font-family: monospace;">
             </div>
-            <div style="display: flex; align-items: flex-end;">
-              <button class="btn btn-secondary btn-sm">Regenerate Token</button>
+            <div style="display: flex; align-items: flex-end; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" id="sys-show-token">Show</button>
+              <button class="btn btn-secondary btn-sm" id="sys-regenerate-token">Regenerate</button>
             </div>
           </div>
         </div>
@@ -1609,23 +1659,23 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Timezone</label>
-              <select class="form-select">
-                <option>UTC</option>
-                <option>America/Los_Angeles</option>
-                <option>America/New_York</option>
-                <option>Europe/London</option>
-                <option>Europe/Berlin</option>
-                <option>Asia/Tokyo</option>
+              <select class="form-select config-select" id="sys-timezone" data-config-key="system_timezone">
+                <option value="UTC">UTC</option>
+                <option value="America/Los_Angeles">America/Los_Angeles</option>
+                <option value="America/New_York">America/New_York</option>
+                <option value="Europe/London">Europe/London</option>
+                <option value="Europe/Berlin">Europe/Berlin</option>
+                <option value="Asia/Tokyo">Asia/Tokyo</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Current Time</label>
-              <input type="text" class="form-input" value="2025-12-05 10:30:45" disabled>
+              <input type="text" class="form-input" id="sys-current-time" value="(loading...)" disabled>
             </div>
           </div>
           <div class="form-group">
             <label class="form-label">NTP Servers</label>
-            <input type="text" class="form-input" value="pool.ntp.org, time.google.com">
+            <input type="text" class="form-input config-input" id="sys-ntp-servers" data-config-key="system_ntp_servers" value="pool.ntp.org, time.google.com">
           </div>
         </div>
       </div>
@@ -1636,22 +1686,25 @@
           <div class="card-header">
             <span class="card-title">Version Information</span>
           </div>
-          <table class="data-table">
+          <table class="data-table" id="sys-version-table">
             <tbody>
-              <tr><td><strong>Firmware Version</strong></td><td>1.2.0</td></tr>
-              <tr><td><strong>Config Schema</strong></td><td>v3</td></tr>
-              <tr><td><strong>Servo Driver</strong></td><td>PCA9685 (v2.1)</td></tr>
-              <tr><td><strong>Python Runtime</strong></td><td>3.11.5</td></tr>
-              <tr><td><strong>Build Date</strong></td><td>2025-12-01</td></tr>
+              <tr><td><strong>Software Version</strong></td><td id="sys-version">1.0.0</td></tr>
+              <tr><td><strong>Config Schema</strong></td><td id="sys-schema">v1</td></tr>
+              <tr><td><strong>Hardware Mode</strong></td><td id="sys-hw-mode">Mock</td></tr>
+              <tr><td><strong>Python Runtime</strong></td><td id="sys-python">3.x</td></tr>
+              <tr><td><strong>Uptime</strong></td><td id="sys-uptime">-</td></tr>
             </tbody>
           </table>
         </div>
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Updates</span>
+            <span class="card-title">System Actions</span>
           </div>
-          <p style="color: var(--text-muted); margin-bottom: 16px;">Check for firmware and configuration updates.</p>
-          <button class="btn btn-primary">Check for Updates</button>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="sys-export-config">Export Configuration</button>
+            <button class="btn btn-secondary" id="sys-import-config">Import Configuration</button>
+            <button class="btn btn-danger" id="sys-reset-defaults">Reset to Defaults</button>
+          </div>
         </div>
       </div>
     </section>
@@ -1686,27 +1739,27 @@
             <tbody>
               <tr>
                 <td>Kinematics & IK</td>
-                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option selected>INFO</option><option>DEBUG</option></select></td>
+                <td><select class="form-select config-select" id="log-level-kinematics" data-config-key="log_level_kinematics" style="width: 100px;"><option value="ERROR">ERROR</option><option value="WARN">WARN</option><option value="INFO">INFO</option><option value="DEBUG">DEBUG</option></select></td>
                 <td>Inverse kinematics calculations and leg positioning</td>
               </tr>
               <tr>
                 <td>Servo Commands</td>
-                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option>INFO</option><option selected>DEBUG</option></select></td>
+                <td><select class="form-select config-select" id="log-level-servo" data-config-key="log_level_servo" style="width: 100px;"><option value="ERROR">ERROR</option><option value="WARN">WARN</option><option value="INFO">INFO</option><option value="DEBUG">DEBUG</option></select></td>
                 <td>Servo angle commands and feedback</td>
               </tr>
               <tr>
                 <td>Sensors (IMU, Cameras)</td>
-                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option selected>INFO</option><option>DEBUG</option></select></td>
+                <td><select class="form-select config-select" id="log-level-sensors" data-config-key="log_level_sensors" style="width: 100px;"><option value="ERROR">ERROR</option><option value="WARN">WARN</option><option value="INFO">INFO</option><option value="DEBUG">DEBUG</option></select></td>
                 <td>Sensor readings and processing</td>
               </tr>
               <tr>
                 <td>Gait Planner</td>
-                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option>WARN</option><option selected>INFO</option><option>DEBUG</option></select></td>
+                <td><select class="form-select config-select" id="log-level-gait" data-config-key="log_level_gait" style="width: 100px;"><option value="ERROR">ERROR</option><option value="WARN">WARN</option><option value="INFO">INFO</option><option value="DEBUG">DEBUG</option></select></td>
                 <td>Gait state machine and foot placement</td>
               </tr>
               <tr>
                 <td>Network/API</td>
-                <td><select class="form-select" style="width: 100px;"><option>ERROR</option><option selected>WARN</option><option>INFO</option><option>DEBUG</option></select></td>
+                <td><select class="form-select config-select" id="log-level-network" data-config-key="log_level_network" style="width: 100px;"><option value="ERROR">ERROR</option><option value="WARN">WARN</option><option value="INFO">INFO</option><option value="DEBUG">DEBUG</option></select></td>
                 <td>WebSocket, REST API, and network events</td>
               </tr>
             </tbody>

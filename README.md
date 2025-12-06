@@ -90,10 +90,25 @@ Connect PCA9685 via I2C to Raspberry Pi:
 
 The configuration workspace lives at **http://localhost:8000/config.html** and opens alongside the controller UI. Use it to:
 - Select a profile (Default, Outdoor Rough, Indoor Demo, Calibration) and target (Simulation/Real/Both)
-- Walk through tabs for Geometry, Servos & Calibration, Body Posture, Gaits, Power & Safety, and Networks & Telemetry
+- Walk through tabs for Geometry, Servos & Calibration, Body Posture, Gaits, Safety & Limits, System & Network, and Logging
 - Map servo channels to leg joints, set offsets/limits, and test angles with sliders
 - Adjust body/leg dimensions, stance width/height, gait cycle time, and step length/height
+- Configure safety limits, E-Stop behavior, and logging levels
 - Save changes directly to `~/.hexapod/config.json` so they persist across restarts
+
+**Configuration Tabs:**
+
+| Tab | Description |
+|-----|-------------|
+| Geometry | Body dimensions, leg lengths, attachment points |
+| Servos & Calibration | Channel mapping, angle offsets, limits |
+| Body Posture | Height, roll, pitch, yaw, leg spread |
+| Gaits | Templates (tripod, wave, ripple), cycle time, step parameters |
+| Sensors & Cameras | IMU device/filter settings, foot contact sensors, camera configuration |
+| Control & Input | Control modes (keyboard/gamepad/autonomous), gamepad mapping, input tuning |
+| Safety & Limits | Speed limits, temperature threshold, tilt correction, E-Stop |
+| System & Network | Hostname, port, authentication, timezone |
+| Logging | Per-module log levels (kinematics, servo, sensors, gait, network) |
 
 The controller UI remains available at `http://localhost:8000` for live driving once configuration is saved.
 
@@ -273,8 +288,22 @@ Key Modules
   - Leg geometry (per-leg customization supported)
   - Servo calibration offsets
   - Gait parameters and visualization settings
+  - Safety limits and E-Stop configuration
+  - System settings and logging levels
   - Persists to `~/.hexapod/config.json`
 - **`get_config()`**: global configuration accessor
+
+**Key Configuration Categories:**
+
+| Category | Keys | Description |
+|----------|------|-------------|
+| Safety | `safety_max_translation_speed`, `safety_max_rotation_speed`, `safety_temperature_limit`, `safety_max_body_tilt_*` | Motion and thermal limits |
+| E-Stop | `estop_action`, `estop_on_comm_loss`, `estop_on_servo_error`, `estop_on_tilt_exceeded` | Emergency stop triggers |
+| System | `system_hostname`, `system_web_port`, `system_require_auth`, `system_api_token` | Network and authentication |
+| Logging | `log_level_kinematics`, `log_level_servo`, `log_level_sensors`, `log_level_gait`, `log_level_network` | Per-module log verbosity |
+| IMU | `imu_device`, `imu_filter_type`, `imu_sample_rate`, `imu_roll_offset`, `imu_pitch_offset`, `imu_yaw_offset` | IMU sensor configuration |
+| Sensors | `foot_sensor_enabled`, `foot_sensor_type`, `foot_sensor_threshold` | Foot contact detection |
+| Control | `control_mode`, `control_default_mode`, `gamepad_deadzone`, `gamepad_expo_curve` | Input mode and tuning |
 
 ### controller_bluetooth.py
 
@@ -309,11 +338,12 @@ Testing & Validation
 ====================
 
 - **Unit + integration tests**: `poetry run pytest tests -v`
-  - Covers hardware mocks, sensors, gait generation, IK reachability/solutions, Bluetooth controller events, FastAPI REST/WebSocket endpoints, and long-running gait loops.
+  - Covers hardware mocks, sensors, gait generation, IK reachability/solutions, Bluetooth controller events, FastAPI REST/WebSocket endpoints, poses, profiles, and configuration management.
+  - **262 tests** covering all major functionality
 - **Coverage/HTML report**: `./run_tests.sh`
 - **Linting**: `ruff check .` (configuration in `pyproject.toml`)
 
-The `tests/README.md` file documents the current test suite (170+ checks), markers, and coverage breakdown if you need more detail.
+The `tests/README.md` file documents the current test suite, markers, and coverage breakdown if you need more detail.
 
 Troubleshooting
 ===============
