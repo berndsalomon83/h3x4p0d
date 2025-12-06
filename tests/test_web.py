@@ -239,6 +239,40 @@ class TestWebSocketAPI:
             # The background task should broadcast telemetry
             # This test verifies the connection stays open
 
+    def test_websocket_pose_preset_stand(self, client):
+        """Test pose preset command via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({"type": "pose", "preset": "stand"})
+
+            # Verify body_height changed
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 80.0
+            assert data["running"] is False
+
+    def test_websocket_pose_preset_crouch(self, client):
+        """Test crouch pose preset via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({"type": "pose", "preset": "crouch"})
+
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 40.0
+            assert data["leg_spread"] == 120.0
+
+    def test_websocket_pose_preset_neutral(self, client):
+        """Test neutral pose preset via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            # First set to stand
+            websocket.send_json({"type": "pose", "preset": "stand"})
+            # Then reset to neutral
+            websocket.send_json({"type": "pose", "preset": "neutral"})
+
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 60.0
+            assert data["leg_spread"] == 100.0
+
 
 @pytest.mark.integration
 class TestHexapodController:
@@ -560,7 +594,10 @@ class TestConnectionManager:
 
         telemetry = controller.get_telemetry()
 
-        required_fields = ["running", "gait_mode", "time", "speed", "heading", "temperature_c", "battery_v"]
+        required_fields = [
+            "running", "gait_mode", "time", "speed", "heading",
+            "temperature_c", "battery_v", "leg_spread"
+        ]
         for field in required_fields:
             assert field in telemetry
 

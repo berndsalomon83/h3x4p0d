@@ -623,12 +623,27 @@ document.getElementById('btnCalibrationWizard')?.addEventListener('click', () =>
 });
 
 document.getElementById('btnTestWalk')?.addEventListener('click', () => {
-  sendCommand('walk', { walking: true });
-  logEvent('INFO', 'Walk test started');
-  setTimeout(() => {
-    sendCommand('walk', { walking: false });
-    logEvent('INFO', 'Walk test stopped');
-  }, 3000);
+  state.testActionActive = true;
+
+  if (state.connected) {
+    // Send to backend for real walk
+    sendCommand('walk', { walking: true });
+    logEvent('INFO', 'Walk test started (backend)');
+    setTimeout(() => {
+      sendCommand('walk', { walking: false });
+      logEvent('INFO', 'Walk test stopped');
+    }, 3000);
+  } else {
+    // Start local walking simulation for 3D preview
+    startWalkSimulation();
+    logEvent('INFO', 'Walk test started (offline simulation)');
+    // Stop after 3 seconds
+    setTimeout(() => {
+      stopWalkSimulation();
+      state.testActionActive = false;
+      logEvent('INFO', 'Walk test stopped');
+    }, 3000);
+  }
 });
 
 // ========== Apply Config to UI ==========
@@ -863,7 +878,6 @@ if (servoMappingTable) {
         <td><input type="number" class="form-input offset-input" value="1500" min="500" max="2500" step="10" style="width:70px"></td>
         <td>
           <button class="btn btn-secondary btn-sm test-servo-btn" title="Sweep servo">Test</button>
-          <button class="btn btn-primary btn-sm save-servo-btn" title="Save mapping" style="margin-left:4px;">Save</button>
         </td>
       `;
       servoMappingTable.appendChild(row);
@@ -877,16 +891,15 @@ if (servoMappingTable) {
         testServo(leg, joint, parseInt(channelInput.value));
       });
 
-      // Save button - save mapping
-      row.querySelector('.save-servo-btn').addEventListener('click', () => {
+      // Auto-save helper
+      const autoSaveMapping = () => {
         saveServoMapping(leg, joint, parseInt(channelInput.value), parseInt(directionSelect.value), parseInt(offsetInput.value));
-      });
+      };
 
-      // Real-time angle adjustment on channel change
-      channelInput.addEventListener('change', () => {
-        const newChannel = parseInt(channelInput.value);
-        servoCalibration.mapping[`${leg},${joint}`] = newChannel;
-      });
+      // Auto-save on any change (consistent with other sections)
+      channelInput.addEventListener('change', autoSaveMapping);
+      directionSelect.addEventListener('change', autoSaveMapping);
+      offsetInput.addEventListener('change', autoSaveMapping);
     }
   }
 
@@ -956,10 +969,28 @@ async function saveCalibrationToDisk() {
 
 async function testServo(leg, joint, channel) {
   const jointNames = ['coxa', 'femur', 'tibia'];
-  logEvent('INFO', `Testing servo: leg ${leg} ${jointNames[joint]} (channel ${channel})`);
+  const jointName = jointNames[joint];
+  logEvent('INFO', `Testing servo: leg ${leg} ${jointName} (channel ${channel})`);
 
   // Disable idle animation during test
   state.testActionActive = true;
+
+  // Initialize highlight overrides if not present
+  if (!state.highlightOverrides) {
+    state.highlightOverrides = [{}, {}, {}, {}, {}, {}];
+  }
+
+  // Get mesh for color highlighting
+  const legObj = legs[leg];
+  let mesh = null;
+  if (legObj) {
+    if (jointName === 'coxa') mesh = legObj.coxaMesh;
+    else if (jointName === 'femur') mesh = legObj.femurMesh;
+    else if (jointName === 'tibia') mesh = legObj.tibiaMesh;
+  }
+  if (mesh && highlightMaterial) {
+    mesh.material = highlightMaterial;
+  }
 
   // Sweep from neutral to min to max and back
   const servoAngles = [90, 45, 135, 90];
@@ -973,14 +1004,13 @@ async function testServo(leg, joint, channel) {
         body: JSON.stringify({ channel, angle: servoAngle })
       });
 
-      // Update 3D visualization
-      const jointName = jointNames[joint];
+      // Update 3D visualization using highlight overrides
       if (jointName === 'coxa') {
-        state.legAngles[leg].coxa = servoAngle;
+        state.highlightOverrides[leg].coxa = servoAngle;
       } else if (jointName === 'femur') {
-        state.legAngles[leg].femur = servoAngle - 45; // Femur neutral is ~45
+        state.highlightOverrides[leg].femur = servoAngle - 45; // Femur neutral is ~45
       } else if (jointName === 'tibia') {
-        state.legAngles[leg].tibia = servoAngle - 180; // Tibia neutral is ~-90
+        state.highlightOverrides[leg].tibia = servoAngle - 180; // Tibia neutral is ~-90
       }
 
       await new Promise(r => setTimeout(r, 500));
@@ -989,8 +1019,13 @@ async function testServo(leg, joint, channel) {
     }
   }
 
-  // Restore neutral position in 3D
-  state.legAngles[leg] = { coxa: 90, femur: 45, tibia: -90 };
+  // Restore original material
+  if (mesh && legMaterial) {
+    mesh.material = legMaterial;
+  }
+
+  // Clear highlight overrides
+  state.highlightOverrides = null;
   state.testActionActive = false;
   logEvent('INFO', 'Servo test complete');
 }
@@ -1047,24 +1082,40 @@ async function highlightAllServos() {
 
   // Disable idle animation during test
   state.testActionActive = true;
-  const originalAngles = state.legAngles.map(a => ({ ...a }));
+
+  // Initialize highlight overrides array (6 legs)
+  state.highlightOverrides = [{}, {}, {}, {}, {}, {}];
 
   for (const row of rows) {
     const channel = parseInt(row.querySelector('.channel-input').value);
     const leg = parseInt(row.dataset.leg);
     const joint = parseInt(row.dataset.joint);
     const jointNames = ['coxa', 'femur', 'tibia'];
+    const jointName = jointNames[joint];
 
     row.style.background = 'var(--accent)';
     row.style.transition = 'background 0.3s';
 
-    // Update 3D visualization
-    if (jointNames[joint] === 'coxa') {
-      state.legAngles[leg].coxa = 100;
-    } else if (jointNames[joint] === 'femur') {
-      state.legAngles[leg].femur = 55;
-    } else if (jointNames[joint] === 'tibia') {
-      state.legAngles[leg].tibia = -80;
+    // Get the mesh for this joint and highlight it
+    const legObj = legs[leg];
+    let mesh = null;
+    if (legObj) {
+      if (jointName === 'coxa') mesh = legObj.coxaMesh;
+      else if (jointName === 'femur') mesh = legObj.femurMesh;
+      else if (jointName === 'tibia') mesh = legObj.tibiaMesh;
+    }
+    if (mesh && highlightMaterial) {
+      mesh.material = highlightMaterial;
+    }
+
+    // Set highlight override for 3D visualization
+    // Use angles that create visible movement from neutral position
+    if (jointName === 'coxa') {
+      state.highlightOverrides[leg].coxa = 120;  // Rotate coxa outward
+    } else if (jointName === 'femur') {
+      state.highlightOverrides[leg].femur = 25;  // Lift femur (more horizontal)
+    } else if (jointName === 'tibia') {
+      state.highlightOverrides[leg].tibia = -60;  // Bend tibia more
     }
 
     try {
@@ -1083,8 +1134,13 @@ async function highlightAllServos() {
       // Continue with next servo
     }
 
-    // Reset this joint in 3D
-    state.legAngles[leg] = { ...originalAngles[leg] };
+    // Clear this joint's highlight override
+    delete state.highlightOverrides[leg][jointName];
+
+    // Restore original material
+    if (mesh && legMaterial) {
+      mesh.material = legMaterial;
+    }
 
     setTimeout(() => {
       row.style.background = '';
@@ -1093,10 +1149,8 @@ async function highlightAllServos() {
     await new Promise(r => setTimeout(r, 100));
   }
 
-  // Restore all original positions
-  state.legAngles.forEach((_, i) => {
-    state.legAngles[i] = originalAngles[i];
-  });
+  // Clear all highlight overrides
+  state.highlightOverrides = null;
   state.testActionActive = false;
   logEvent('INFO', 'Highlight complete');
 }
@@ -1211,15 +1265,20 @@ async function runTestSweep() {
   // Disable idle animation during test
   state.testActionActive = true;
 
+  // Initialize highlight overrides for 3D visualization
+  if (!state.highlightOverrides) {
+    state.highlightOverrides = [{}, {}, {}, {}, {}, {}];
+  }
+
   // Helper to update 3D and optionally send to hardware
   async function setJointAngle(joint, jointIndex, angle) {
-    // Update 3D visualization
+    // Update 3D visualization using highlight overrides
     if (joint === 'coxa') {
-      state.legAngles[legIndex].coxa = angle;
+      state.highlightOverrides[legIndex].coxa = angle;
     } else if (joint === 'femur') {
-      state.legAngles[legIndex].femur = angle - 45; // Adjust for default offset
+      state.highlightOverrides[legIndex].femur = angle - 45; // Adjust for default offset
     } else if (joint === 'tibia') {
-      state.legAngles[legIndex].tibia = angle - 180;
+      state.highlightOverrides[legIndex].tibia = angle - 180;
     }
 
     // Send to hardware
@@ -1240,11 +1299,24 @@ async function runTestSweep() {
 
   // Sweep each joint through its range
   const joints = ['coxa', 'femur', 'tibia'];
+  const legObj = legs[legIndex];
+
   for (let jointIndex = 0; jointIndex < joints.length; jointIndex++) {
     const joint = joints[jointIndex];
     const min = state.config[`leg${legIndex}_${joint}_min`] ?? servoLimitsDefaults[joint].min;
     const max = state.config[`leg${legIndex}_${joint}_max`] ?? servoLimitsDefaults[joint].max;
     const neutral = state.config[`leg${legIndex}_${joint}_neutral`] ?? servoLimitsDefaults[joint].neutral;
+
+    // Get mesh for color highlighting
+    let mesh = null;
+    if (legObj) {
+      if (joint === 'coxa') mesh = legObj.coxaMesh;
+      else if (joint === 'femur') mesh = legObj.femurMesh;
+      else if (joint === 'tibia') mesh = legObj.tibiaMesh;
+    }
+    if (mesh && highlightMaterial) {
+      mesh.material = highlightMaterial;
+    }
 
     // Convert to servo angles (neutral at 90)
     const servoNeutral = 90 + neutral;
@@ -1259,10 +1331,15 @@ async function runTestSweep() {
     await new Promise(r => setTimeout(r, 500));
     await setJointAngle(joint, jointIndex, servoNeutral);
     await new Promise(r => setTimeout(r, 300));
+
+    // Restore original material after this joint's sweep
+    if (mesh && legMaterial) {
+      mesh.material = legMaterial;
+    }
   }
 
-  // Restore neutral position
-  state.legAngles[legIndex] = { coxa: 90, femur: 45, tibia: -90 };
+  // Clear highlight overrides - legs will return to calculated positions
+  state.highlightOverrides = null;
   state.testActionActive = false;
   logEvent('INFO', 'Sweep complete');
 }
@@ -1576,6 +1653,10 @@ let cameraRadius = 400;
 let cameraTheta = Math.PI / 4;
 let cameraPhi = Math.PI / 4;
 
+// Walking simulation state (used in animate loop)
+let walkSimulation = null;
+let walkPhase = 0;
+
 // Global camera position update function
 function updateCameraPosition() {
   if (!camera) return;
@@ -1632,7 +1713,7 @@ function animateCameraTo(targetTheta, targetPhi, duration = 1500) {
 const GEOMETRY_SCALE = 1 / 3;
 
 // Materials (shared across rebuilds)
-let bodyMaterial, legMaterial, jointMaterial, footMaterial;
+let bodyMaterial, legMaterial, jointMaterial, footMaterial, highlightMaterial;
 
 // Get geometry value from config or default
 function getGeometryValue(key) {
@@ -1731,9 +1812,15 @@ function createLeg(legIndex) {
   const posZ = attachPoint.x * GEOMETRY_SCALE;
   const posY = (state.telemetry.bodyHeight || 80) + (attachPoint.z * GEOMETRY_SCALE);
   legGroup.position.set(posX, posY, posZ);
-  legGroup.rotation.y = (attachPoint.angle * Math.PI) / 180;
+  // Leg mesh points along +X; subtract 90° so angle=0° points forward (+Z)
+  legGroup.rotation.y = ((attachPoint.angle - 90) * Math.PI) / 180;
 
-  return { group: legGroup, coxaJoint, femurJoint, tibiaJoint, foot };
+  return {
+    group: legGroup,
+    coxaJoint, femurJoint, tibiaJoint, foot,
+    // Store mesh references for highlighting
+    coxaMesh: coxa, femurMesh: femur, tibiaMesh: tibia
+  };
 }
 
 // Rebuild all legs with current geometry
@@ -1766,13 +1853,16 @@ function updateLegPositions() {
     const posZ = attachPoint.x * GEOMETRY_SCALE;
     const posY = (state.telemetry.bodyHeight || 80) + (attachPoint.z * GEOMETRY_SCALE);
     leg.group.position.set(posX, posY, posZ);
-    leg.group.rotation.y = (attachPoint.angle * Math.PI) / 180;
+    // Subtract 90° because leg mesh points along +X, and angle=0° should point forward (+Z)
+    leg.group.rotation.y = ((attachPoint.angle - 90) * Math.PI) / 180;
   });
 }
 
 const previewCanvas = document.getElementById('previewCanvas');
+console.log('3D Preview: previewCanvas found:', !!previewCanvas, 'THREE loaded:', typeof THREE !== 'undefined');
 
 if (previewCanvas && typeof THREE !== 'undefined') {
+  console.log('3D Preview: Initializing...');
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0f18);
 
@@ -1799,6 +1889,7 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   legMaterial = new THREE.MeshLambertMaterial({ color: 0x44dd88 });
   jointMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
   footMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+  highlightMaterial = new THREE.MeshLambertMaterial({ color: 0xffaa00, emissive: 0xff6600, emissiveIntensity: 0.5 });
 
   // Build hexapod from geometry config
   rebuildBodyMesh();
@@ -1837,43 +1928,41 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   // Animation loop
   let animationTime = 0;
 
-  // Leg geometry for IK approximation (in mm, same as defaultGeometry)
-  const LEG_FEMUR = getGeometryValue('leg_femur') || 50;
-  const LEG_TIBIA = getGeometryValue('leg_tibia') || 80;
-  const LEG_TOTAL_REACH = (LEG_FEMUR + LEG_TIBIA) * GEOMETRY_SCALE;
-
-  // Calculate approximate leg angles to reach from attachment point to ground
-  // This is simplified IK for visualization only
+  // Calculate leg angles for natural spider-like poses
+  // Uses direct mapping based on body height for predictable visual results
   function calculateLegAngles(attachHeight, legIndex, bodyYaw, legSpread) {
     const attachPoint = getLegAttachPoint(legIndex);
     const baseAngle = attachPoint.angle * Math.PI / 180;
-
-    // Target foot position: on ground (y=0), at horizontal offset based on leg spread
     const spreadFactor = (legSpread || 100) / 100;
-    const horizontalReach = LEG_TOTAL_REACH * 0.6 * spreadFactor; // 60% of max reach at default spread
 
     // Coxa angle: base angle + counter-rotation for yaw + spread adjustment
-    // When body yaws right (+), legs should counter-rotate left (-) to keep feet in place
     const coxaBase = 90 + (baseAngle * 180 / Math.PI);
-    const coxaYawCompensation = -bodyYaw; // Counter-rotate for yaw
-    const coxaSpreadAdjust = (spreadFactor - 1) * 15; // Spread legs outward
+    const coxaYawCompensation = -bodyYaw;
+    const coxaSpreadAdjust = (spreadFactor - 1) * 15;
     const coxa = coxaBase + coxaYawCompensation + coxaSpreadAdjust;
 
-    // Calculate required vertical reach (from attachment point to ground)
-    const verticalReach = attachHeight;
+    // Map body height to leg angles for natural spider pose
+    const standHeight = 80 * GEOMETRY_SCALE;   // Standing body height (~26.7 units)
+    const crouchHeight = 40 * GEOMETRY_SCALE;  // Crouching body height (~13.3 units)
 
-    // Calculate leg extension based on required reach
-    // When attachment is higher, leg needs to extend more
-    // When attachment is lower, leg needs to contract more
-    const totalReach = Math.sqrt(horizontalReach * horizontalReach + verticalReach * verticalReach);
-    const reachRatio = Math.min(1, totalReach / LEG_TOTAL_REACH);
+    // Calculate normalized height (1 = standing, 0 = crouching)
+    const heightRatio = Math.max(0, Math.min(1,
+      (attachHeight - crouchHeight) / (standHeight - crouchHeight)
+    ));
 
-    // Map reach ratio to femur/tibia angles
-    // reachRatio ~0.5 = default standing (femur=45, tibia=-90)
-    // reachRatio ~1.0 = fully extended (femur=70, tibia=-140)
-    // reachRatio ~0.3 = contracted (femur=20, tibia=-60)
-    const femur = 20 + reachRatio * 60; // Range: 20° to 80°
-    const tibia = -50 - reachRatio * 100; // Range: -50° to -150°
+    // Femur angle (degrees below horizontal, 0=horizontal, 90=vertical down)
+    // Stand: ~55° below horizontal (legs point mostly down with slight outward angle)
+    // Crouch: ~35° below horizontal (legs spread more horizontally)
+    const femurStand = 55 - (spreadFactor - 1) * 10;
+    const femurCrouch = 35 - (spreadFactor - 1) * 5;
+    const femur = femurCrouch + (femurStand - femurCrouch) * heightRatio;
+
+    // Tibia angle (knee bend, 0=straight, negative=bent backward)
+    // Stand: very mild bend (~-15°) - tibia points mostly vertical toward ground
+    // Crouch: moderate bend (~-55°) - knee bends but tibia still points downward
+    const tibiaStand = -15;
+    const tibiaCrouch = -55;
+    const tibia = tibiaCrouch + (tibiaStand - tibiaCrouch) * heightRatio;
 
     return { coxa, femur, tibia };
   }
@@ -1938,28 +2027,40 @@ if (previewCanvas && typeof THREE !== 'undefined') {
       // Calculate the effective height of this attachment point above ground
       const attachHeightAboveGround = leg.group.position.y;
 
-      // Calculate leg angles for visualization (approximate IK)
-      // When connected or in test mode, use angles from backend (state.legAngles)
-      // Otherwise, calculate angles to make leg reach ground
-      let angles;
-      if (state.connected || state.testActionActive) {
-        // Use angles from backend
-        angles = state.legAngles[i];
-      } else {
-        // Calculate approximate angles for visualization
-        angles = calculateLegAngles(
-          attachHeightAboveGround,
-          i,
-          bodyYawDeg,
-          legSpread
-        );
-        // Add idle breathing animation
+      // Calculate leg angles for visualization using local IK
+      // Always calculate locally - this gives accurate preview of what pose SHOULD look like
+      // (Backend angles are raw servo positions, not ideal for visualization)
+      let angles = calculateLegAngles(
+        attachHeightAboveGround,
+        i,
+        bodyYawDeg,
+        legSpread
+      );
+
+      // Override with highlight angles if set (used by Highlight All feature)
+      if (state.highlightOverrides && state.highlightOverrides[i]) {
+        const override = state.highlightOverrides[i];
+        if (override.coxa !== undefined) angles.coxa = override.coxa;
+        if (override.femur !== undefined) angles.femur = override.femur;
+        if (override.tibia !== undefined) angles.tibia = override.tibia;
+      }
+
+      // Add idle breathing animation only when not in test mode
+      if (!state.connected && !state.testActionActive) {
         angles.femur += idleBreath;
         angles.tibia -= idleBreath * 0.5;
       }
 
+      // Lift leg during swing phase (walking simulation)
+      if (walkSimulation && !state.footContacts[i]) {
+        // Leg in swing - lift and tuck to clear ground
+        angles.femur -= 15;  // Raise femur slightly (more horizontal)
+        angles.tibia -= 20;  // Bend knee more to tuck foot
+      }
+
       // Leg group rotation to match attachment angle (points leg outward)
-      const legAngle = attachPoint.angle * Math.PI / 180;
+      // Subtract 90° because leg mesh points along +X, and angle=0° should point forward (+Z)
+      const legAngle = (attachPoint.angle - 90) * Math.PI / 180;
       leg.group.rotation.y = legAngle + bodyYaw;
 
       // Update joint rotations
@@ -1968,10 +2069,14 @@ if (previewCanvas && typeof THREE !== 'undefined') {
       leg.coxaJoint.rotation.y = coxaOffset * Math.PI / 180;
 
       // Femur: rotation around Z axis (up/down movement)
-      leg.femurJoint.rotation.z = (angles.femur - 90) * Math.PI / 180;
+      // Positive rotation tilts femur outward, negative tilts inward
+      const femurRotation = (90 - angles.femur) * Math.PI / 180;
+      leg.femurJoint.rotation.z = femurRotation;
 
       // Tibia: rotation around Z axis relative to femur
-      leg.tibiaJoint.rotation.z = (angles.tibia + 90) * Math.PI / 180;
+      // Negative tibia angle = knee bent backward → positive rotation
+      const tibiaRotation = -angles.tibia * Math.PI / 180;
+      leg.tibiaJoint.rotation.z = tibiaRotation;
 
       // Update foot color based on contact
       if (leg.foot.material) {
@@ -2003,11 +2108,11 @@ document.querySelectorAll('.preview-btn').forEach(btn => {
 
     switch (view) {
       case 'front':
-        targetTheta = 0;
-        targetPhi = Math.PI / 3;  // Slightly lower angle to see full hexapod
+        targetTheta = Math.PI / 2;  // Camera on +Z axis, looking at front of hexapod
+        targetPhi = Math.PI / 3;
         break;
       case 'side':
-        targetTheta = Math.PI / 2;
+        targetTheta = 0;  // Camera on +X axis, looking at side of hexapod
         targetPhi = Math.PI / 3;
         break;
       case 'top':
@@ -2119,32 +2224,120 @@ function requireBackendConnection(action) {
   return true;
 }
 
+// Apply pose preset locally (for offline preview) and via backend (when connected)
+function applyPosePreset(preset) {
+  const presets = {
+    stand: { bodyHeight: 80, roll: 0, pitch: 0, yaw: 0, legSpread: 100 },
+    crouch: { bodyHeight: 40, roll: 0, pitch: 0, yaw: 0, legSpread: 120 },
+    neutral: { bodyHeight: 60, roll: 0, pitch: 0, yaw: 0, legSpread: 100 }
+  };
+  const pose = presets[preset];
+  if (!pose) return;
+
+  // Stop any walking simulation
+  stopWalkSimulation();
+
+  // Update local state for immediate visual feedback
+  state.telemetry.bodyHeight = pose.bodyHeight;
+  state.telemetry.roll = pose.roll;
+  state.telemetry.pitch = pose.pitch;
+  state.telemetry.yaw = pose.yaw;
+  state.telemetry.legSpread = pose.legSpread;
+
+  // Update sliders
+  setSliderValue('body_height', pose.bodyHeight);
+  setSliderValue('body_roll', pose.roll);
+  setSliderValue('body_pitch', pose.pitch);
+  setSliderValue('body_yaw', pose.yaw);
+  setSliderValue('leg_spread', pose.legSpread);
+
+  // Send to backend if connected
+  if (state.connected) {
+    sendCommand('pose', { preset });
+  }
+}
+
+// Stop walking simulation
+function stopWalkSimulation() {
+  if (walkSimulation) {
+    clearInterval(walkSimulation);
+    walkSimulation = null;
+  }
+  // Reset foot contacts
+  state.footContacts = [true, true, true, true, true, true];
+}
+
+// Start walking simulation (offline tripod gait)
+function startWalkSimulation() {
+  if (walkSimulation) return; // Already running
+
+  walkPhase = 0;
+  walkSimulation = setInterval(() => {
+    walkPhase += 0.1;
+
+    // Tripod gait: legs 0,2,4 vs 1,3,5 alternate
+    const phase1 = Math.sin(walkPhase);
+    const phase2 = Math.sin(walkPhase + Math.PI);
+
+    // Update foot contacts (tripod pattern)
+    state.footContacts = [
+      phase1 > 0,  // leg 0
+      phase2 > 0,  // leg 1
+      phase1 > 0,  // leg 2
+      phase2 > 0,  // leg 3
+      phase1 > 0,  // leg 4
+      phase2 > 0   // leg 5
+    ];
+
+    // Subtle body sway during walking
+    state.telemetry.roll = Math.sin(walkPhase * 2) * 3;
+    state.telemetry.pitch = Math.sin(walkPhase) * 2;
+  }, 50);
+}
+
 document.getElementById('testStand')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Stand pose')) return;
+  console.log('Stand button clicked');
   state.testActionActive = true;
-  sendCommand('pose', { preset: 'stand' });
-  logEvent('INFO', 'Stand pose commanded - backend will calculate IK');
+  applyPosePreset('stand');
+  logEvent('INFO', 'Stand pose applied');
 });
 
 document.getElementById('testCrouch')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Crouch pose')) return;
+  console.log('Crouch button clicked');
   state.testActionActive = true;
-  sendCommand('pose', { preset: 'crouch' });
-  logEvent('INFO', 'Crouch pose commanded - backend will calculate IK');
+  applyPosePreset('crouch');
+  logEvent('INFO', 'Crouch pose applied');
 });
 
 document.getElementById('testWalk')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Walk test')) return;
+  console.log('Walk button clicked');
   state.testActionActive = true;
-  sendCommand('walk', { walking: true });
-  logEvent('INFO', 'Walk test commanded - backend will run gait');
+
+  if (state.connected) {
+    // Send to backend for real gait
+    sendCommand('walk', { walking: true });
+    logEvent('INFO', 'Walk test started (backend gait)');
+  } else {
+    // Run local simulation
+    startWalkSimulation();
+    logEvent('INFO', 'Walk test started (offline simulation)');
+  }
+  console.log('Walk started, connected:', state.connected);
 });
 
 document.getElementById('testReset')?.addEventListener('click', () => {
-  if (!requireBackendConnection('Reset pose')) return;
+  console.log('Reset button clicked');
   state.testActionActive = false;  // Re-enable idle animation
-  sendCommand('pose', { preset: 'neutral' });
-  logEvent('INFO', 'Reset to neutral commanded - backend will calculate IK');
+
+  // Stop walking (both local and backend)
+  stopWalkSimulation();
+  if (state.connected) {
+    sendCommand('walk', { walking: false });
+  }
+
+  applyPosePreset('neutral');
+  logEvent('INFO', 'Reset to neutral pose');
+  console.log('Reset applied, bodyHeight:', state.telemetry.bodyHeight);
 });
 
 // Helper function to animate all legs to target angles
@@ -2440,10 +2633,11 @@ function connectWebSocket() {
           // Update telemetry
           if (data.battery_v !== undefined) state.telemetry.battery = data.battery_v;
           if (data.temperature_c !== undefined) state.telemetry.temperature = data.temperature_c;
-          if (data.roll !== undefined) state.telemetry.roll = data.roll;
-          if (data.pitch !== undefined) state.telemetry.pitch = data.pitch;
-          if (data.yaw !== undefined) state.telemetry.yaw = data.yaw;
+          if (data.body_roll !== undefined) state.telemetry.roll = data.body_roll;
+          if (data.body_pitch !== undefined) state.telemetry.pitch = data.body_pitch;
+          if (data.body_yaw !== undefined) state.telemetry.yaw = data.body_yaw;
           if (data.body_height !== undefined) state.telemetry.bodyHeight = data.body_height;
+          if (data.leg_spread !== undefined) state.telemetry.legSpread = data.leg_spread;
           if (data.speed !== undefined) state.telemetry.speed = data.speed;
 
           // Update leg angles
@@ -2466,6 +2660,13 @@ function connectWebSocket() {
           if (data.ground_contacts) {
             state.footContacts = data.ground_contacts;
           }
+
+          // Sync Body Posture sliders with telemetry (for pose presets)
+          if (data.body_height !== undefined) setSliderValue('body_height', data.body_height);
+          if (data.body_roll !== undefined) setSliderValue('body_roll', data.body_roll);
+          if (data.body_pitch !== undefined) setSliderValue('body_pitch', data.body_pitch);
+          if (data.body_yaw !== undefined) setSliderValue('body_yaw', data.body_yaw);
+          if (data.leg_spread !== undefined) setSliderValue('leg_spread', data.leg_spread);
 
           updateLiveStatus();
         }
@@ -2789,8 +2990,11 @@ function setupLegAttachTable() {
         input.value = state.config[configKey];
       }
 
-      input.addEventListener('change', () => {
+      // Handle both 'change' (on blur) and 'input' (real-time) events
+      const handleInputChange = () => {
         const value = parseFloat(input.value);
+        if (isNaN(value)) return;
+
         const update = {};
         update[configKey] = value;
         saveConfig(update);
@@ -2803,9 +3007,10 @@ function setupLegAttachTable() {
         if (symmetryCheckbox && symmetryCheckbox.checked) {
           applySymmetryForLeg(legIndex, field, value);
         }
+      };
 
-        logEvent('INFO', `Leg ${legIndex} ${field} set to ${value}`);
-      });
+      input.addEventListener('change', handleInputChange);
+      input.addEventListener('input', handleInputChange);
     });
   });
 }

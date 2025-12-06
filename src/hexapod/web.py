@@ -26,11 +26,14 @@ WebSocket Message Types (client → server):
     - walk: Start/stop walking
     - move: Set speed, heading, turn rate, and walking state
     - body_height: Adjust body height
+    - body_pose: Set pitch, roll, yaw angles
+    - leg_spread: Adjust leg spread percentage (50-150%)
+    - pose: Apply pose preset (stand, crouch, neutral)
 
 Telemetry (server → client):
     - angles: Servo angles for 6 legs (18 values)
     - ground_contacts: Which legs are in stance phase
-    - running, speed, heading, body pose, sensor readings
+    - running, speed, heading, body pose, leg_spread, sensor readings
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -108,6 +111,7 @@ class HexapodController:
         heading: Current heading/direction in degrees
         body_height: Height of body above ground in mm (30-90mm)
         body_pitch/roll/yaw: Body pose angles in degrees
+        leg_spread: Leg spread percentage (50-150%, 100 = default stance width)
         rotation_speed: Rotation rate in degrees per second
         ground_contacts: List of 6 booleans for leg stance state
     """
@@ -126,6 +130,9 @@ class HexapodController:
         self.body_pitch = 0.0  # forward/backward tilt (-30 to +30)
         self.body_roll = 0.0   # side-to-side tilt (-30 to +30)
         self.body_yaw = 0.0    # rotation around vertical axis (-45 to +45)
+
+        # Leg spread percentage (50-150%, 100 = default stance width)
+        self.leg_spread = 100.0
 
         # Rotation in place (degrees per second, 0 = no rotation)
         self.rotation_speed = 0.0  # positive = clockwise, negative = counter-clockwise
@@ -223,7 +230,9 @@ class HexapodController:
             else:
                 leg_horizontal = math.sqrt(usable_reach**2 - vertical_drop**2)
 
-            leg_stance_width = coxa_len + leg_horizontal
+            # Apply leg spread factor (percentage, 100 = default)
+            spread_factor = self.leg_spread / 100.0
+            leg_stance_width = coxa_len + (leg_horizontal * spread_factor)
 
             # Apply yaw to the coxa angle (all legs rotate together)
             coxa_yaw_offset = self.body_yaw
@@ -321,6 +330,7 @@ class HexapodController:
             "body_pitch": self.body_pitch,
             "body_roll": self.body_roll,
             "body_yaw": self.body_yaw,
+            "leg_spread": self.leg_spread,
             "rotation_speed": self.rotation_speed,
             "temperature_c": self.sensor.read_temperature_c(),
             "battery_v": self.sensor.read_battery_voltage(),
@@ -640,6 +650,22 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             "yaw": controller.body_yaw
         }
 
+    @app.post("/api/leg_spread")
+    async def set_leg_spread(request: Request):
+        """Set leg spread percentage (50-150%, 100 = default)."""
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+        try:
+            spread = float(body.get("spread", 100.0))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "Invalid spread value"}, status_code=400)
+        # Clamp to safe range
+        spread = max(50.0, min(150.0, spread))
+        controller.leg_spread = spread
+        logger.info(f"Leg spread set to: {spread}%")
+        return {"ok": True, "leg_spread": spread}
+
     @app.post("/api/rotation")
     async def set_rotation(request: Request):
         """Set rotation speed for spinning in place (degrees per second)."""
@@ -822,6 +848,39 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                     height = float(data.get("height", 60.0))
                     height = max(30.0, min(90.0, height))
                     controller.body_height = height
+                elif typ == "leg_spread":
+                    spread = float(data.get("spread", 100.0))
+                    spread = max(50.0, min(150.0, spread))
+                    controller.leg_spread = spread
+                elif typ == "body_pose":
+                    if "pitch" in data:
+                        controller.body_pitch = max(-30.0, min(30.0, float(data["pitch"])))
+                    if "roll" in data:
+                        controller.body_roll = max(-30.0, min(30.0, float(data["roll"])))
+                    if "yaw" in data:
+                        controller.body_yaw = max(-45.0, min(45.0, float(data["yaw"])))
+                elif typ == "pose":
+                    preset = data.get("preset", "neutral")
+                    controller.running = False  # Stop walking for pose changes
+                    if preset == "stand":
+                        controller.body_height = 80.0
+                        controller.body_pitch = 0.0
+                        controller.body_roll = 0.0
+                        controller.body_yaw = 0.0
+                        controller.leg_spread = 100.0
+                    elif preset == "crouch":
+                        controller.body_height = 40.0
+                        controller.body_pitch = 0.0
+                        controller.body_roll = 0.0
+                        controller.body_yaw = 0.0
+                        controller.leg_spread = 120.0  # Wider stance when crouched
+                    elif preset == "neutral":
+                        controller.body_height = 60.0
+                        controller.body_pitch = 0.0
+                        controller.body_roll = 0.0
+                        controller.body_yaw = 0.0
+                        controller.leg_spread = 100.0
+                    logger.info(f"Pose preset applied: {preset}")
         except WebSocketDisconnect:
             manager.disconnect(websocket)
 
