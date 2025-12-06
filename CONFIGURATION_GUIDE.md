@@ -4,6 +4,25 @@
 
 Your hexapod now has a complete configuration system for servo calibration, Bluetooth controllers, and camera settings.
 
+### Dedicated Configuration Page
+
+The configuration workspace is available at **http://localhost:8000/config.html** whenever the web server is running. It provides:
+- Profile switching (Default, Outdoor Rough, Indoor Demo, Calibration) and target selection (Simulation/Real/Both)
+- Navigation tabs for **Overview & Profiles**, **Geometry & Frames**, **Servos & Calibration**, **Body Posture & Poses**, **Gaits & Timing**, **Power & Safety**, and **Networks & Telemetry**
+- Live connection status with an E-STOP control and battery indicator so you can verify the robot is reachable before applying changes
+
+**How to use it**
+1. Start the server (`poetry run python -m hexapod.main`) and open `http://localhost:8000/config.html` in your browser.
+2. Pick a profile and target in the header, then walk through each tab:
+   - **Geometry & Frames**: set body dimensions, leg link lengths, and coordinate frames.
+   - **Servos & Calibration**: map channels, set offsets/limits, and run the calibration wizard.
+   - **Body Posture & Poses**: tune stance height/width and save named poses.
+   - **Gaits & Timing**: choose gait mode and adjust step length/height and cycle time.
+   - **Power & Safety**: review battery state, enable/disable power rails, and configure E-STOP behavior.
+   - **Networks & Telemetry**: configure camera feeds, logging, and BLE diagnostics.
+3. Use **Save/Apply** buttons within each tab to persist settings; the backend writes to `~/.hexapod/config.json` so values survive restarts.
+4. Switch to the Controller UI (`http://localhost:8000`) to drive the robot with the new configuration.
+
 ## What's Been Fixed
 
 ### ✅ 1. Camera Orientation

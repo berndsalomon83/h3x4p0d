@@ -53,10 +53,12 @@ Quick Start (Development)
    - Monitor **Temperature** and **Battery** voltage
    - Open `http://localhost:8001` to configure geometry, calibration, and profiles
 
-5. **Test the code** (optional):
+5. **Test the code**:
    ```bash
-   poetry run python -m hexapod.test_runner
+   poetry run pytest tests -v
    ```
+
+   The repository also includes `run_tests.sh` for a one-command run with coverage output.
 
 Hardware Setup (Raspberry Pi)
 =============================
@@ -84,15 +86,16 @@ Connect PCA9685 via I2C to Raspberry Pi:
 - **SCL** → GPIO 3 (I2C SCL)
 - **Servo channels 0-17**: attach 18 servos (6 legs × 3 joints)
 
-### 3. Calibrate Servos
+### 3. Configure & Calibrate (Dedicated page)
 
-Use the web-based configuration tool at `http://localhost:8001` (Calibration tab) to:
-- Map servo channels to leg joints (leg 0-5, coxa/femur/tibia)
-- Test individual servo angles with sliders
-- Auto-assign channels for quick setup
-- Save calibration to `~/.hexapod_calibration.json`
+The configuration workspace lives at **http://localhost:8000/config.html** and opens alongside the controller UI. Use it to:
+- Select a profile (Default, Outdoor Rough, Indoor Demo, Calibration) and target (Simulation/Real/Both)
+- Walk through tabs for Geometry, Servos & Calibration, Body Posture, Gaits, Power & Safety, and Networks & Telemetry
+- Map servo channels to leg joints, set offsets/limits, and test angles with sliders
+- Adjust body/leg dimensions, stance width/height, gait cycle time, and step length/height
+- Save changes directly to `~/.hexapod/config.json` so they persist across restarts
 
-The configuration server starts automatically with the main server.
+The controller UI remains available at `http://localhost:8000` for live driving once configuration is saved.
 
 For CLI-based calibration (legacy):
 ```bash
@@ -182,7 +185,7 @@ hexapod/
 │   ├── web.py                  # Main FastAPI server + WebSocket
 │   ├── calibrate_web.py        # Web-based servo calibration server
 │   ├── calibrate.py            # CLI servo calibration (legacy)
-│   └── test_runner.py          # Unit tests
+│   └── test_runner.py          # Legacy test entry point (pytest preferred)
 ├── web_static/
 │   ├── index.html              # Main web UI (3D simulator and controls)
 │   ├── config.html             # Configuration web UI (geometry, gaits, profiles)
@@ -191,7 +194,7 @@ hexapod/
 │   ├── calibrate.html          # Servo calibration web UI
 │   ├── app.js                  # 3D simulator and controls (JavaScript)
 │   └── favicon.svg             # Hexapod icon
-└── tests/                      # pytest test suite
+└── tests/                      # pytest suite (unit + integration)
 ```
 
 Key Modules
@@ -253,18 +256,12 @@ Key Modules
 Testing & Validation
 ====================
 
-Run the unit test suite:
+- **Unit + integration tests**: `poetry run pytest tests -v`
+  - Covers hardware mocks, sensors, gait generation, IK reachability/solutions, Bluetooth controller events, FastAPI REST/WebSocket endpoints, and long-running gait loops.
+- **Coverage/HTML report**: `./run_tests.sh`
+- **Linting**: `ruff check .` (configuration in `pyproject.toml`)
 
-```bash
-poetry run python -m hexapod.test_runner
-```
-
-Tests cover:
-- Servo controller basic operation
-- Sensor reading and calibration
-- Inverse kinematics (reachability, solving)
-- Gait generation for all modes
-- Continuous simulation operation
+The `tests/README.md` file documents the current test suite (170+ checks), markers, and coverage breakdown if you need more detail.
 
 Troubleshooting
 ===============

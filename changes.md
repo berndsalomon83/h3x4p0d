@@ -1,5 +1,18 @@
 # Changelog
 
+## 2025-12-14
+
+### Configuration Page Documentation
+
+- Documented how to launch and use the dedicated configuration UI at `http://localhost:8000/config.html`, including tab coverage and save/apply behavior. (CONFIGURATION_GUIDE.md, README.md)
+
+## 2025-12-13
+
+### Documentation Refresh
+
+- Updated README testing guidance to point to the pytest-based suite and added lint/coverage entry points for contributors. (README.md)
+- Refreshed the project summary with current pytest counts, Python support, dependency list, and test suite layout to match the codebase. (PROJECT_SUMMARY.md)
+
 ## 2025-12-12
 
 ### Controller Input Test Coverage
