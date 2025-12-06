@@ -234,10 +234,7 @@ class GaitEngine:
         Phase determines when each leg starts its swing/stance cycle relative
         to other legs. A phase of 0.5 means the leg is 180° out of phase.
 
-        Gait modes:
-            - tripod: Two groups (0,2,4 and 1,3,5) alternate, phase = 0 or 0.5
-            - wave: Sequential front-to-back, phase = leg/6
-            - ripple: Offset pattern for smooth ripple effect
+        Phase offsets are loaded from config, allowing gaits to be customized.
 
         Args:
             leg: Leg index (0-5)
@@ -246,17 +243,12 @@ class GaitEngine:
         Returns:
             Phase offset (0.0 to 1.0)
         """
-        if mode == "tripod":
-            # two groups 180 degrees apart
-            return 0.0 if leg in (0, 2, 4) else 0.5
-        elif mode == "wave":
-            # evenly distributed front-to-back
-            return leg / 6.0
-        elif mode == "ripple":
-            # ripple: neighboring legs offset slightly
-            mapping = [0.0, 0.25, 0.5, 0.75, 0.1, 0.6]
-            return mapping[leg % 6]
-        return 0.0
+        cfg = get_config()
+        phase_offsets = cfg.get_gait_phase_offsets(mode)
+        if leg < len(phase_offsets):
+            return phase_offsets[leg]
+        # Fallback to tripod pattern if invalid
+        return 0.0 if leg in (0, 2, 4) else 0.5
 
 
 class InverseKinematics:

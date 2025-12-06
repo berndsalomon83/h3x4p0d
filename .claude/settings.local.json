@@ -39,7 +39,9 @@
       "Bash(.venv/bin/ruff check src/ tests/ --fix --unsafe-fixes)",
       "Bash(ls:*)",
       "Bash(.venv/bin/ruff check src/hexapod/web.py)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(lsof:*)",
+      "Bash(.venv/bin/ruff check:*)"
     ],
     "deny": [],
     "ask": []

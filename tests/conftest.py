@@ -7,6 +7,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
+@pytest.fixture(autouse=True)
+def reset_global_config():
+    """Reset global config state before and after each test."""
+    from hexapod.config import reset_profile_manager
+    reset_profile_manager()
+    yield
+    reset_profile_manager()
+
+
 @pytest.fixture
 def mock_servo():
     """Provide a MockServoController instance."""

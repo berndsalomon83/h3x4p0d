@@ -180,3 +180,242 @@ class TestGlobalConfig:
         # Should have default values
         assert config.get("leg_coxa_length") is not None
         assert config.get("step_height") is not None
+
+
+@pytest.mark.unit
+class TestHexapodConfigPoses:
+    """Test HexapodConfig pose management functionality."""
+
+    def test_get_poses_returns_default_poses(self):
+        """Test that get_poses returns default poses."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        poses = config.get_poses()
+
+        assert isinstance(poses, dict)
+        assert "default_stance" in poses
+        assert "low_stance" in poses
+        assert "high_stance" in poses
+        assert "rest_pose" in poses
+        assert "power_off" in poses
+
+    def test_get_pose_existing(self):
+        """Test getting an existing pose by ID."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        pose = config.get_pose("default_stance")
+
+        assert pose is not None
+        assert pose["name"] == "Default Stance"
+        assert pose["height"] == 120.0
+        assert pose["builtin"] is True
+
+    def test_get_pose_nonexistent(self):
+        """Test getting a nonexistent pose returns None."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        pose = config.get_pose("nonexistent_pose")
+
+        assert pose is None
+
+    def test_create_pose_success(self):
+        """Test creating a new pose."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        result = config.create_pose(
+            pose_id="test_pose",
+            name="Test Pose",
+            category="debug",
+            height=100.0,
+            roll=5.0,
+            pitch=10.0,
+            yaw=15.0,
+            leg_spread=110.0
+        )
+
+        assert result is True
+        pose = config.get_pose("test_pose")
+        assert pose is not None
+        assert pose["name"] == "Test Pose"
+        assert pose["category"] == "debug"
+        assert pose["height"] == 100.0
+        assert pose["roll"] == 5.0
+        assert pose["pitch"] == 10.0
+        assert pose["yaw"] == 15.0
+        assert pose["leg_spread"] == 110.0
+        assert pose["builtin"] is False
+
+    def test_create_pose_duplicate_fails(self):
+        """Test creating a pose with existing ID fails."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        # Try to create a pose with an existing ID
+        result = config.create_pose(
+            pose_id="default_stance",
+            name="Duplicate",
+            category="operation",
+            height=100.0,
+            roll=0.0,
+            pitch=0.0,
+            yaw=0.0,
+            leg_spread=100.0
+        )
+
+        assert result is False
+
+    def test_update_pose_success(self):
+        """Test updating an existing pose."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        # Create a pose first
+        config.create_pose(
+            pose_id="update_test",
+            name="Original Name",
+            category="operation",
+            height=100.0,
+            roll=0.0,
+            pitch=0.0,
+            yaw=0.0,
+            leg_spread=100.0
+        )
+
+        # Update the pose
+        result = config.update_pose("update_test", {
+            "name": "Updated Name",
+            "height": 150.0,
+            "roll": 10.0
+        })
+
+        assert result is True
+        pose = config.get_pose("update_test")
+        assert pose["name"] == "Updated Name"
+        assert pose["height"] == 150.0
+        assert pose["roll"] == 10.0
+        # Unchanged fields should remain
+        assert pose["pitch"] == 0.0
+
+    def test_update_pose_nonexistent_fails(self):
+        """Test updating a nonexistent pose fails."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        result = config.update_pose("nonexistent", {"name": "New Name"})
+
+        assert result is False
+
+    def test_update_pose_ignores_disallowed_fields(self):
+        """Test that update_pose ignores disallowed fields like builtin."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        # Create a pose
+        config.create_pose(
+            pose_id="protected_test",
+            name="Protected",
+            category="operation",
+            height=100.0,
+            roll=0.0,
+            pitch=0.0,
+            yaw=0.0,
+            leg_spread=100.0
+        )
+
+        # Try to update builtin field (should be ignored)
+        config.update_pose("protected_test", {"builtin": True})
+
+        pose = config.get_pose("protected_test")
+        assert pose["builtin"] is False
+
+    def test_delete_pose_success(self):
+        """Test deleting a non-builtin pose."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        # Create a pose to delete
+        config.create_pose(
+            pose_id="to_delete",
+            name="To Delete",
+            category="debug",
+            height=100.0,
+            roll=0.0,
+            pitch=0.0,
+            yaw=0.0,
+            leg_spread=100.0
+        )
+
+        result = config.delete_pose("to_delete")
+
+        assert result is True
+        assert config.get_pose("to_delete") is None
+
+    def test_delete_pose_builtin_fails(self):
+        """Test that deleting a builtin pose fails."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        result = config.delete_pose("default_stance")
+
+        assert result is False
+        # Pose should still exist
+        assert config.get_pose("default_stance") is not None
+
+    def test_delete_pose_nonexistent_fails(self):
+        """Test that deleting a nonexistent pose fails."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        result = config.delete_pose("nonexistent")
+
+        assert result is False
+
+    def test_delete_pose_last_remaining_fails(self):
+        """Test that deleting the last remaining pose fails."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+
+        # Delete all non-builtin poses
+        poses = config.get_poses()
+        for pose_id, pose in list(poses.items()):
+            if not pose.get("builtin", False):
+                config.delete_pose(pose_id)
+
+        # Now only default_stance (builtin) should remain
+        # Try to delete it - should fail because it's builtin AND last
+        result = config.delete_pose("default_stance")
+        assert result is False
+
+        # Verify at least one pose remains
+        assert len(config.get_poses()) >= 1
+
+    def test_pose_values_are_floats(self):
+        """Test that pose values are stored as floats."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+        config.create_pose(
+            pose_id="float_test",
+            name="Float Test",
+            category="operation",
+            height=100,  # int
+            roll=5,  # int
+            pitch=10,  # int
+            yaw=15,  # int
+            leg_spread=110  # int
+        )
+
+        pose = config.get_pose("float_test")
+        assert isinstance(pose["height"], float)
+        assert isinstance(pose["roll"], float)
+        assert isinstance(pose["pitch"], float)
+        assert isinstance(pose["yaw"], float)
+        assert isinstance(pose["leg_spread"], float)
+
+    def test_pose_default_values(self):
+        """Test default pose values are correct."""
+        config = HexapodConfig(config_file=Path("/tmp/test_poses.json"))
+
+        # Check default_stance
+        default = config.get_pose("default_stance")
+        assert default["height"] == 120.0
+        assert default["roll"] == 0.0
+        assert default["pitch"] == 0.0
+        assert default["yaw"] == 0.0
+        assert default["leg_spread"] == 100.0
+
+        # Check low_stance
+        low = config.get_pose("low_stance")
+        assert low["height"] == 80.0
+
+        # Check high_stance
+        high = config.get_pose("high_stance")
+        assert high["height"] == 160.0
+
+        # Check rest_pose
+        rest = config.get_pose("rest_pose")
+        assert rest["height"] == 40.0
+        assert rest["leg_spread"] == 120.0
+
+        # Check power_off
+        power_off = config.get_pose("power_off")
+        assert power_off["height"] == 30.0

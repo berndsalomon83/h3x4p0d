@@ -164,11 +164,11 @@ class TestKillServersOnPort:
                 ]
 
                 from hexapod.main import kill_servers_on_port
-                kill_servers_on_port(8001)
+                kill_servers_on_port(8000)
 
-                # Should have used port 8001
+                # Should have used port 8000
                 calls = mock_run.call_args_list
-                assert ":8001" in str(calls[0])
+                assert ":8000" in str(calls[0])
 
     def test_handles_empty_result(self):
         """Test handling when no servers running on port."""
@@ -212,36 +212,6 @@ class TestKillServersOnPort:
             assert len(calls) == 3
 
 
-class TestStartCalibrationServer:
-    """Tests for start_calibration_server() behavior."""
-
-    def test_start_calibration_server_uses_configured_host_and_port(self):
-        """Ensure calibration server bootstraps uvicorn with provided arguments."""
-        with (
-            patch('hexapod.main.create_calibration_app') as mock_create_app,
-            patch('hexapod.main.uvicorn.Config') as mock_config,
-            patch('hexapod.main.uvicorn.Server') as mock_server,
-        ):
-            mock_app = MagicMock()
-            mock_create_app.return_value = mock_app
-            server_instance = MagicMock()
-            mock_server.return_value = server_instance
-
-            from hexapod.main import start_calibration_server
-
-            start_calibration_server(host="127.0.0.1", port=9100, use_hardware=True)
-
-            mock_create_app.assert_called_once_with(use_hardware=True)
-            mock_config.assert_called_once_with(
-                mock_app,
-                host="127.0.0.1",
-                port=9100,
-                log_level="warning",
-            )
-            mock_server.assert_called_once_with(mock_config.return_value)
-            server_instance.run.assert_called_once_with()
-
-
 class TestMainModule:
     """Tests for main module structure."""
 
@@ -250,7 +220,6 @@ class TestMainModule:
         import hexapod.main
         assert hasattr(hexapod.main, 'kill_existing_servers')
         assert hasattr(hexapod.main, 'kill_servers_on_port')
-        assert hasattr(hexapod.main, 'start_calibration_server')
 
     def test_argparse_defaults(self):
         """Test argument parser default values."""

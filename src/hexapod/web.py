@@ -109,7 +109,7 @@ class HexapodController:
         gait_mode: Current gait ("tripod", "wave", or "ripple")
         speed: Movement speed multiplier (0.0 to 1.0)
         heading: Current heading/direction in degrees
-        body_height: Height of body above ground in mm (30-90mm)
+        body_height: Height of body above ground in mm (30-200mm)
         body_pitch/roll/yaw: Body pose angles in degrees
         leg_spread: Leg spread percentage (50-150%, 100 = default stance width)
         rotation_speed: Rotation rate in degrees per second
@@ -144,6 +144,22 @@ class HexapodController:
         self.bt_controller = GenericController()
         self.bt_controller.on_event(self._handle_motion_cmd)
 
+    def _get_leg_mount_positions(self) -> List[Tuple[float, float]]:
+        """Get leg mount positions from config.
+
+        Returns list of (x, y) tuples for legs 0-5, where:
+        - x = front/back position (positive = front)
+        - y = left/right position (positive = right)
+        """
+        from .config import get_config
+        cfg = get_config()
+        positions = []
+        for leg in range(6):
+            x = cfg.get(f"leg_{leg}_attach_x", 0.0)
+            y = cfg.get(f"leg_{leg}_attach_y", 0.0)
+            positions.append((x, y))
+        return positions
+
     def _handle_motion_cmd(self, cmd: MotionCommand):
         """Handle motion commands from controller."""
         if cmd.type == "move":
@@ -156,7 +172,10 @@ class HexapodController:
                     self.heading = math.degrees(math.atan2(x, y))
         elif cmd.type == "gait":
             mode = cmd.data.get("mode", "tripod")
-            if mode in ("tripod", "wave", "ripple"):
+            from .config import get_config
+            cfg = get_config()
+            enabled_gaits = cfg.get_enabled_gaits()
+            if mode in enabled_gaits:
                 self.gait_mode = mode
         elif cmd.type == "start":
             self.running = True
@@ -182,16 +201,8 @@ class HexapodController:
         angles = []
         ground_level = -10.0  # mm
 
-        # Leg mount positions relative to body center (X=front/back, Z=left/right)
-        # Matches frontend legPositions array
-        leg_mount_positions = [
-            (60.0, 50.0),    # leg 0: front-right
-            (0.0, 60.0),     # leg 1: mid-right
-            (-60.0, 50.0),   # leg 2: rear-right
-            (-60.0, -50.0),  # leg 3: rear-left
-            (0.0, -60.0),    # leg 4: mid-left
-            (60.0, -50.0),   # leg 5: front-left
-        ]
+        # Get leg mount positions from config (X=front/back, Y=left/right)
+        leg_mount_positions = self._get_leg_mount_positions()
 
         # Calculate stance width dynamically based on actual leg geometry
         coxa_len = self.gait.ik.L1
@@ -271,15 +282,8 @@ class HexapodController:
             base_angles = self.calculate_standing_pose()
             self.ground_contacts = [True] * 6
 
-        # Leg mount positions for body pose adjustment during walking
-        leg_mount_positions = [
-            (60.0, 50.0),    # leg 0: front-right
-            (0.0, 60.0),     # leg 1: mid-right
-            (-60.0, 50.0),   # leg 2: rear-right
-            (-60.0, -50.0),  # leg 3: rear-left
-            (0.0, -60.0),    # leg 4: mid-left
-            (60.0, -50.0),   # leg 5: front-left
-        ]
+        # Get leg mount positions from config for body pose adjustment during walking
+        leg_mount_positions = self._get_leg_mount_positions()
 
         # Convert body pose to radians for walking adjustments
         pitch_rad = math.radians(self.body_pitch)
@@ -475,6 +479,7 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         return HTMLResponse("<h1>Hexapod Controller</h1><p>UI files not found.</p>")
 
     @app.get("/config.html")
+    @app.get("/config")
     async def config_page():
         """Serve the configuration page."""
         config_file = Path(__file__).parent.parent.parent / "web_static" / "config.html"
@@ -523,14 +528,98 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             "websocket_clients": len(manager.active)
         }
 
-    @app.post("/api/gait")
-    async def set_gait(request: Request):
+    @app.get("/api/gaits")
+    async def list_gaits():
+        """List all available gaits with their configurations."""
+        from .config import get_config
+        cfg = get_config()
+        gaits = cfg.get_gaits()
+        enabled_gaits = cfg.get_enabled_gaits()
+
+        # Format response with current active gait
+        return {
+            "gaits": gaits,
+            "enabled": list(enabled_gaits.keys()),
+            "current": controller.gait_mode,
+            "default": cfg.get("default_gait", "tripod")
+        }
+
+    @app.post("/api/gaits")
+    async def manage_gaits(request: Request):
+        """Manage gait configurations (enable, disable, update)."""
+        from .config import get_config
+        cfg = get_config()
+
         body, error = await parse_json_body(request)
         if error:
             return error
+
+        action = body.get("action")
+        gait_id = body.get("gait")
+
+        if not gait_id:
+            return JSONResponse({"error": "Gait ID required"}, status_code=400)
+
+        if action == "enable":
+            success = cfg.set_gait_enabled(gait_id, True)
+            if success:
+                cfg.save()
+                logger.info(f"Gait enabled: {gait_id}")
+                return {"ok": True, "gaits": cfg.get_gaits()}
+            return JSONResponse({"error": "Gait not found"}, status_code=404)
+
+        elif action == "disable":
+            # Don't allow disabling the current active gait
+            if gait_id == controller.gait_mode:
+                return JSONResponse({"error": "Cannot disable active gait"}, status_code=400)
+
+            # Don't allow disabling the last enabled gait
+            enabled_gaits = cfg.get_enabled_gaits()
+            if len(enabled_gaits) <= 1 and gait_id in enabled_gaits:
+                return JSONResponse({"error": "Cannot disable last enabled gait"}, status_code=400)
+
+            success = cfg.set_gait_enabled(gait_id, False)
+            if success:
+                cfg.save()
+                logger.info(f"Gait disabled: {gait_id}")
+                return {"ok": True, "gaits": cfg.get_gaits()}
+            return JSONResponse({"error": "Gait not found"}, status_code=404)
+
+        elif action == "update":
+            updates = body.get("updates", {})
+            # Only allow updating certain fields
+            allowed = {"description", "speed_range", "stability", "best_for", "phase_offsets"}
+            updates = {k: v for k, v in updates.items() if k in allowed}
+            success = cfg.update_gait(gait_id, updates)
+            if success:
+                cfg.save()
+                logger.info(f"Gait updated: {gait_id}")
+                return {"ok": True, "gaits": cfg.get_gaits()}
+            return JSONResponse({"error": "Gait not found"}, status_code=404)
+
+        else:
+            return JSONResponse({"error": f"Unknown action: {action}"}, status_code=400)
+
+    @app.post("/api/gait")
+    async def set_gait(request: Request):
+        """Set the active gait mode."""
+        from .config import get_config
+        cfg = get_config()
+
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
         mode = body.get("mode")
-        if mode not in ("tripod", "wave", "ripple"):
-            return JSONResponse({"error": "unsupported mode"}, status_code=400)
+
+        # Validate against enabled gaits from config
+        enabled_gaits = cfg.get_enabled_gaits()
+        if mode not in enabled_gaits:
+            available = list(enabled_gaits.keys())
+            return JSONResponse({
+                "error": f"Gait '{mode}' not available. Enabled gaits: {available}"
+            }, status_code=400)
+
         controller.gait_mode = mode
         logger.info(f"Gait mode changed to: {mode}")
         return {"ok": True, "mode": mode}
@@ -604,8 +693,8 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             height = float(body.get("height", 60.0))
         except (TypeError, ValueError):
             return JSONResponse({"error": "Invalid height value"}, status_code=400)
-        # Clamp to safe range
-        height = max(30.0, min(90.0, height))
+        # Clamp to safe range (30-200mm)
+        height = max(30.0, min(200.0, height))
         controller.body_height = height
         return {"ok": True, "body_height": height}
 
@@ -705,24 +794,287 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             "battery_v": sensor.read_battery_voltage(),
         }
 
-    @app.get("/api/config")
-    async def get_config_endpoint():
-        """Get current configuration."""
+    @app.get("/api/poses")
+    async def list_poses():
+        """List all saved poses."""
         from .config import get_config
         cfg = get_config()
+        poses = cfg.get_poses()
+        return {"poses": poses}
+
+    @app.post("/api/poses")
+    async def manage_poses(request: Request):
+        """Manage poses (create, update, delete, apply)."""
+        from .config import get_config
+        cfg = get_config()
+
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        action = body.get("action")
+
+        if action == "create":
+            name = body.get("name", "").strip()
+            if not name:
+                return JSONResponse({"error": "Pose name required"}, status_code=400)
+
+            # Generate pose_id from name
+            pose_id = name.lower().replace(" ", "_")
+            pose_id = "".join(c for c in pose_id if c.isalnum() or c == "_")
+
+            category = body.get("category", "operation")
+            height = float(body.get("height", 120.0))
+            roll = float(body.get("roll", 0.0))
+            pitch = float(body.get("pitch", 0.0))
+            yaw = float(body.get("yaw", 0.0))
+            leg_spread = float(body.get("leg_spread", 100.0))
+
+            # Clamp values to valid ranges
+            height = max(30.0, min(200.0, height))
+            roll = max(-30.0, min(30.0, roll))
+            pitch = max(-30.0, min(30.0, pitch))
+            yaw = max(-45.0, min(45.0, yaw))
+            leg_spread = max(50.0, min(150.0, leg_spread))
+
+            success = cfg.create_pose(pose_id, name, category, height, roll, pitch, yaw, leg_spread)
+            if success:
+                cfg.save()
+                logger.info(f"Pose created: {name} ({pose_id})")
+                return {"ok": True, "pose_id": pose_id, "poses": cfg.get_poses()}
+            return JSONResponse({"error": "Pose already exists or invalid"}, status_code=400)
+
+        elif action == "update":
+            pose_id = body.get("pose_id")
+            if not pose_id:
+                return JSONResponse({"error": "Pose ID required"}, status_code=400)
+
+            updates = {}
+            if "name" in body:
+                updates["name"] = body["name"]
+            if "category" in body:
+                updates["category"] = body["category"]
+            if "height" in body:
+                updates["height"] = max(30.0, min(200.0, float(body["height"])))
+            if "roll" in body:
+                updates["roll"] = max(-30.0, min(30.0, float(body["roll"])))
+            if "pitch" in body:
+                updates["pitch"] = max(-30.0, min(30.0, float(body["pitch"])))
+            if "yaw" in body:
+                updates["yaw"] = max(-45.0, min(45.0, float(body["yaw"])))
+            if "leg_spread" in body:
+                updates["leg_spread"] = max(50.0, min(150.0, float(body["leg_spread"])))
+
+            success = cfg.update_pose(pose_id, updates)
+            if success:
+                cfg.save()
+                logger.info(f"Pose updated: {pose_id}")
+                return {"ok": True, "poses": cfg.get_poses()}
+            return JSONResponse({"error": "Pose not found"}, status_code=404)
+
+        elif action == "delete":
+            pose_id = body.get("pose_id")
+            if not pose_id:
+                return JSONResponse({"error": "Pose ID required"}, status_code=400)
+
+            # Check if this is the last pose
+            poses = cfg.get_poses()
+            if len(poses) <= 1:
+                return JSONResponse({"error": "Cannot delete last pose"}, status_code=400)
+
+            # Check if pose is builtin
+            pose = cfg.get_pose(pose_id)
+            if pose and pose.get("builtin", False):
+                return JSONResponse({"error": "Cannot delete builtin pose"}, status_code=400)
+
+            success = cfg.delete_pose(pose_id)
+            if success:
+                cfg.save()
+                logger.info(f"Pose deleted: {pose_id}")
+                return {"ok": True, "poses": cfg.get_poses()}
+            return JSONResponse({"error": "Pose not found or cannot be deleted"}, status_code=404)
+
+        elif action == "apply":
+            pose_id = body.get("pose_id")
+            if not pose_id:
+                return JSONResponse({"error": "Pose ID required"}, status_code=400)
+
+            pose = cfg.get_pose(pose_id)
+            if not pose:
+                return JSONResponse({"error": "Pose not found"}, status_code=404)
+
+            # Apply pose to controller
+            controller.running = False  # Stop walking
+            controller.body_height = pose.get("height", 120.0)
+            controller.body_roll = pose.get("roll", 0.0)
+            controller.body_pitch = pose.get("pitch", 0.0)
+            controller.body_yaw = pose.get("yaw", 0.0)
+            controller.leg_spread = pose.get("leg_spread", 100.0)
+
+            logger.info(f"Pose applied: {pose_id}")
+            return {"ok": True, "pose_id": pose_id, "applied": pose}
+
+        elif action == "record":
+            # Record current controller state as a new pose
+            name = body.get("name", "").strip()
+            if not name:
+                return JSONResponse({"error": "Pose name required"}, status_code=400)
+
+            pose_id = name.lower().replace(" ", "_")
+            pose_id = "".join(c for c in pose_id if c.isalnum() or c == "_")
+
+            category = body.get("category", "operation")
+
+            # Get current values from controller
+            height = controller.body_height
+            roll = controller.body_roll
+            pitch = controller.body_pitch
+            yaw = controller.body_yaw
+            leg_spread = controller.leg_spread
+
+            success = cfg.create_pose(pose_id, name, category, height, roll, pitch, yaw, leg_spread)
+            if success:
+                cfg.save()
+                logger.info(f"Pose recorded: {name} ({pose_id})")
+                return {"ok": True, "pose_id": pose_id, "poses": cfg.get_poses()}
+            return JSONResponse({"error": "Pose already exists"}, status_code=400)
+
+        else:
+            return JSONResponse({"error": f"Unknown action: {action}"}, status_code=400)
+
+    @app.get("/api/profiles")
+    async def list_profiles():
+        """List all available profiles."""
+        from .config import get_profile_manager
+        pm = get_profile_manager()
+        return JSONResponse({
+            "profiles": pm.list_profiles(),
+            "current": pm.get_current_profile(),
+            "default": pm.get_default_profile()
+        })
+
+    @app.post("/api/profiles")
+    async def manage_profiles(request: Request):
+        """Manage profiles (create, delete, set-default, update)."""
+        from .config import get_profile_manager
+        pm = get_profile_manager()
+
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        action = body.get("action")
+
+        if action == "create":
+            name = body.get("name", "").strip().lower().replace(" ", "_")
+            if not name:
+                return JSONResponse({"error": "Profile name required"}, status_code=400)
+            copy_from = body.get("copyFrom")
+            description = body.get("description", "")
+
+            if pm.profile_exists(name):
+                return JSONResponse({"error": "Profile already exists"}, status_code=400)
+
+            success = pm.create_profile(name, copy_from=copy_from, description=description)
+            if success:
+                logger.info(f"Profile created: {name}")
+                return {"ok": True, "name": name, "profiles": pm.list_profiles()}
+            return JSONResponse({"error": "Failed to create profile"}, status_code=500)
+
+        elif action == "delete":
+            name = body.get("name")
+            if not name:
+                return JSONResponse({"error": "Profile name required"}, status_code=400)
+
+            if name == pm.get_default_profile():
+                return JSONResponse({"error": "Cannot delete default profile"}, status_code=400)
+
+            success = pm.delete_profile(name)
+            if success:
+                logger.info(f"Profile deleted: {name}")
+                return {"ok": True, "profiles": pm.list_profiles()}
+            return JSONResponse({"error": "Profile not found"}, status_code=404)
+
+        elif action == "set-default":
+            name = body.get("name")
+            if not name:
+                return JSONResponse({"error": "Profile name required"}, status_code=400)
+
+            success = pm.set_default_profile(name)
+            if success:
+                logger.info(f"Default profile set to: {name}")
+                return {"ok": True, "default": name}
+            return JSONResponse({"error": "Profile not found"}, status_code=404)
+
+        elif action == "rename":
+            old_name = body.get("oldName")
+            new_name = body.get("newName", "").strip().lower().replace(" ", "_")
+            if not old_name or not new_name:
+                return JSONResponse({"error": "Both oldName and newName required"}, status_code=400)
+
+            success = pm.rename_profile(old_name, new_name)
+            if success:
+                logger.info(f"Profile renamed: {old_name} -> {new_name}")
+                return {"ok": True, "profiles": pm.list_profiles()}
+            return JSONResponse({"error": "Rename failed"}, status_code=400)
+
+        elif action == "update":
+            name = body.get("name")
+            description = body.get("description")
+            if not name:
+                return JSONResponse({"error": "Profile name required"}, status_code=400)
+
+            if description is not None:
+                pm.update_profile_description(name, description)
+
+            logger.info(f"Profile updated: {name}")
+            return {"ok": True, "profiles": pm.list_profiles()}
+
+        elif action == "switch":
+            name = body.get("name")
+            if not name:
+                return JSONResponse({"error": "Profile name required"}, status_code=400)
+
+            if not pm.profile_exists(name):
+                return JSONResponse({"error": "Profile not found"}, status_code=404)
+
+            pm.load_profile(name)
+            logger.info(f"Switched to profile: {name}")
+            return {"ok": True, "current": name}
+
+        else:
+            return JSONResponse({"error": f"Unknown action: {action}"}, status_code=400)
+
+    @app.get("/api/config")
+    async def get_config_endpoint(request: Request):
+        """Get configuration for a profile."""
+        from .config import get_profile_manager
+        pm = get_profile_manager()
+
+        # Check for profile query parameter
+        profile = request.query_params.get("profile")
+        cfg = pm.get_config(profile)
         return JSONResponse(cfg.to_dict())
 
     @app.post("/api/config")
     async def update_config_endpoint(request: Request):
-        """Update configuration values."""
-        from .config import get_config
-        cfg = get_config()
+        """Update configuration values for current profile."""
+        from .config import get_profile_manager
+        pm = get_profile_manager()
+
         body, error = await parse_json_body(request)
         if error:
             return error
+
+        # Check for profile query parameter
+        profile = request.query_params.get("profile")
+        cfg = pm.get_config(profile)
+
         cfg.update(body)
         cfg.save()
-        logger.info(f"Configuration updated: {list(body.keys())}")
+        pm.save_current()  # Update metadata timestamp
+
+        logger.info(f"Configuration updated for profile '{pm.get_current_profile()}': {list(body.keys())}")
 
         # Refresh IK solver if leg dimensions were updated
         leg_keys = [k for k in body.keys() if 'leg' in k and 'length' in k]
@@ -730,7 +1082,7 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             controller.gait.refresh_leg_geometry()
             logger.info("Refreshed leg geometry for IK solver")
 
-        return {"ok": True, "message": "Configuration updated"}
+        return {"ok": True, "message": "Configuration updated", "profile": pm.get_current_profile()}
 
     @app.post("/api/config/servo_offset")
     async def set_servo_offset_endpoint(request: Request):
@@ -832,7 +1184,12 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                 data = await websocket.receive_json()
                 typ = data.get("type")
                 if typ == "set_gait":
-                    controller.gait_mode = data.get("mode", "tripod")
+                    mode = data.get("mode", "tripod")
+                    from .config import get_config
+                    cfg = get_config()
+                    enabled_gaits = cfg.get_enabled_gaits()
+                    if mode in enabled_gaits:
+                        controller.gait_mode = mode
                 elif typ == "walk":
                     controller.running = bool(data.get("walking", False))
                 elif typ == "move":
@@ -846,7 +1203,7 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                     controller.rotation_speed = controller.gait.turn_rate * 90.0
                 elif typ == "body_height":
                     height = float(data.get("height", 60.0))
-                    height = max(30.0, min(90.0, height))
+                    height = max(30.0, min(200.0, height))  # 30-200mm range
                     controller.body_height = height
                 elif typ == "leg_spread":
                     spread = float(data.get("spread", 100.0))
@@ -881,6 +1238,21 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                         controller.body_yaw = 0.0
                         controller.leg_spread = 100.0
                     logger.info(f"Pose preset applied: {preset}")
+                elif typ == "apply_pose":
+                    # Apply a saved pose from config
+                    pose_id = data.get("pose_id")
+                    if pose_id:
+                        from .config import get_config
+                        cfg = get_config()
+                        pose = cfg.get_pose(pose_id)
+                        if pose:
+                            controller.running = False
+                            controller.body_height = pose.get("height", 120.0)
+                            controller.body_roll = pose.get("roll", 0.0)
+                            controller.body_pitch = pose.get("pitch", 0.0)
+                            controller.body_yaw = pose.get("yaw", 0.0)
+                            controller.leg_spread = pose.get("leg_spread", 100.0)
+                            logger.info(f"Saved pose applied: {pose_id}")
         except WebSocketDisconnect:
             manager.disconnect(websocket)
 

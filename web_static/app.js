@@ -565,6 +565,46 @@
     }
   }
 
+  // Load available gaits from API and populate the gait selector
+  async function loadGaits() {
+    const gaitSelect = document.getElementById('gait');
+    if (!gaitSelect) return;
+
+    try {
+      const response = await fetch('/api/gaits');
+      if (!response.ok) {
+        console.warn('Failed to load gaits from backend, using defaults');
+        return;
+      }
+      const data = await response.json();
+      const gaits = data.gaits || {};
+      const enabled = data.enabled || [];
+      const current = data.current || 'tripod';
+
+      // Clear existing options
+      gaitSelect.innerHTML = '';
+
+      // Add enabled gaits only
+      enabled.forEach(gaitId => {
+        const gait = gaits[gaitId];
+        if (gait) {
+          const option = document.createElement('option');
+          option.value = gaitId;
+          option.textContent = `${gait.name} (${gait.speed_range || 'N/A'})`;
+          option.title = gait.description || '';
+          if (gaitId === current) {
+            option.selected = true;
+          }
+          gaitSelect.appendChild(option);
+        }
+      });
+
+      console.log(`Loaded ${enabled.length} gaits from backend`);
+    } catch(e) {
+      console.warn('Failed to load gaits, using defaults:', e);
+    }
+  }
+
   // Load config from backend on startup (called after WebSocket connects)
   // Initial load happens after page load
 
@@ -743,8 +783,11 @@
 
   function updateRunButtonTheme() {
     if (!runBtn) return;
-    runBtn.style.background = walking ? getThemeColor('--danger', '#ff6b6b') : getThemeColor('--success', '#51cf66');
-    runBtn.style.color = '#041019';
+    const bgColor = walking ? getThemeColor('--danger', '#ff6b6b') : getThemeColor('--success', '#51cf66');
+    runBtn.style.background = bgColor;
+    // Use white text for better contrast on colored backgrounds
+    runBtn.style.color = '#ffffff';
+    runBtn.style.textShadow = '0 1px 2px rgba(0, 0, 0, 0.3)';
   }
 
   // Joystick controls
@@ -921,6 +964,8 @@
       document.getElementById('disconnectedBanner').classList.remove('visible');
       // Load configuration from backend API
       loadConfigFromBackend();
+      // Load available gaits from API
+      loadGaits();
       // Load gait parameters from backend
       if (typeof loadGaitParams === 'function') {
         loadGaitParams();

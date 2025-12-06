@@ -707,3 +707,332 @@ class TestConnectionManager:
         assert "time" in data
         assert isinstance(data["time"], (int, float))
         assert data["time"] >= 0
+
+
+@pytest.mark.integration
+class TestPosesAPI:
+    """Test poses API endpoints."""
+
+    def test_list_poses_endpoint(self, client):
+        """Test GET /api/poses returns all poses."""
+        response = client.get("/api/poses")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "poses" in data
+        poses = data["poses"]
+        assert isinstance(poses, dict)
+        assert "default_stance" in poses
+        assert "low_stance" in poses
+        assert "high_stance" in poses
+
+    def test_list_poses_contains_required_fields(self, client):
+        """Test that each pose has required fields."""
+        response = client.get("/api/poses")
+        data = response.json()
+
+        for pose_id, pose in data["poses"].items():
+            assert "name" in pose
+            assert "category" in pose
+            assert "height" in pose
+            assert "roll" in pose
+            assert "pitch" in pose
+            assert "yaw" in pose
+            assert "leg_spread" in pose
+
+    def test_create_pose_endpoint(self, client):
+        """Test POST /api/poses with create action."""
+        import uuid
+        unique_name = f"Test Pose {uuid.uuid4().hex[:8]}"
+        expected_id = unique_name.lower().replace(" ", "_")
+
+        response = client.post("/api/poses", json={
+            "action": "create",
+            "name": unique_name,
+            "category": "debug",
+            "height": 100.0,
+            "roll": 5.0,
+            "pitch": 10.0,
+            "yaw": 15.0,
+            "leg_spread": 110.0
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+        # Verify pose was created
+        list_response = client.get("/api/poses")
+        poses = list_response.json()["poses"]
+        assert expected_id in poses
+
+    def test_create_pose_duplicate_fails(self, client):
+        """Test that creating a duplicate pose returns error."""
+        # The API generates pose_id from name, so use "Default Stance" which generates "default_stance"
+        response = client.post("/api/poses", json={
+            "action": "create",
+            "name": "Default Stance",  # This generates pose_id "default_stance" which exists
+            "category": "operation",
+            "height": 100.0,
+            "roll": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "leg_spread": 100.0
+        })
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "error" in data
+
+    def test_update_pose_endpoint(self, client):
+        """Test POST /api/poses with update action."""
+        # First create a pose - API generates pose_id from name
+        # "Update Test" -> "update_test"
+        client.post("/api/poses", json={
+            "action": "create",
+            "name": "Update Test",
+            "category": "operation",
+            "height": 100.0,
+            "roll": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "leg_spread": 100.0
+        })
+
+        # Then update it using the generated pose_id
+        response = client.post("/api/poses", json={
+            "action": "update",
+            "pose_id": "update_test",
+            "name": "Updated Name",
+            "height": 150.0
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+        # Verify update
+        list_response = client.get("/api/poses")
+        pose = list_response.json()["poses"]["update_test"]
+        assert pose["name"] == "Updated Name"
+        assert pose["height"] == 150.0
+
+    def test_update_nonexistent_pose_fails(self, client):
+        """Test that updating a nonexistent pose returns 404."""
+        response = client.post("/api/poses", json={
+            "action": "update",
+            "pose_id": "nonexistent_pose",
+            "name": "New Name"
+        })
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "error" in data
+
+    def test_delete_pose_endpoint(self, client):
+        """Test POST /api/poses with delete action."""
+        # First create a pose to delete
+        # API generates pose_id from name: "To Delete" -> "to_delete"
+        client.post("/api/poses", json={
+            "action": "create",
+            "name": "To Delete",
+            "category": "debug",
+            "height": 100.0,
+            "roll": 0.0,
+            "pitch": 0.0,
+            "yaw": 0.0,
+            "leg_spread": 100.0
+        })
+
+        # Delete it using the generated pose_id
+        response = client.post("/api/poses", json={
+            "action": "delete",
+            "pose_id": "to_delete"
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+        # Verify deletion
+        list_response = client.get("/api/poses")
+        poses = list_response.json()["poses"]
+        assert "to_delete" not in poses
+
+    def test_delete_builtin_pose_fails(self, client):
+        """Test that deleting a builtin pose returns error."""
+        response = client.post("/api/poses", json={
+            "action": "delete",
+            "pose_id": "default_stance"
+        })
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "error" in data
+
+    def test_apply_pose_endpoint(self, client):
+        """Test POST /api/poses with apply action."""
+        response = client.post("/api/poses", json={
+            "action": "apply",
+            "pose_id": "low_stance"
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+        # Verify body_height was changed
+        status = client.get("/api/status")
+        status_data = status.json()
+        assert status_data["body_height"] == 80.0
+
+    def test_apply_nonexistent_pose_fails(self, client):
+        """Test that applying a nonexistent pose returns 404."""
+        response = client.post("/api/poses", json={
+            "action": "apply",
+            "pose_id": "nonexistent"
+        })
+
+        assert response.status_code == 404
+        data = response.json()
+        assert "error" in data
+
+    def test_record_pose_endpoint(self, client):
+        """Test POST /api/poses with record action."""
+        import uuid
+        unique_name = f"Recorded {uuid.uuid4().hex[:8]}"
+        expected_id = unique_name.lower().replace(" ", "_")
+
+        response = client.post("/api/poses", json={
+            "action": "record",
+            "name": unique_name,
+            "category": "debug"
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+        # Verify pose was created with current values
+        list_response = client.get("/api/poses")
+        poses = list_response.json()["poses"]
+        assert expected_id in poses
+
+    def test_invalid_action_fails(self, client):
+        """Test that an invalid action returns error."""
+        response = client.post("/api/poses", json={
+            "action": "invalid_action",
+            "pose_id": "test"
+        })
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "error" in data
+
+    def test_pose_value_clamping(self, client):
+        """Test that pose values are clamped to valid ranges."""
+        import uuid
+        unique_name = f"Clamped {uuid.uuid4().hex[:8]}"
+        expected_id = unique_name.lower().replace(" ", "_")
+
+        response = client.post("/api/poses", json={
+            "action": "create",
+            "name": unique_name,
+            "category": "debug",
+            "height": 500.0,  # Should be clamped to 200
+            "roll": 100.0,   # Should be clamped to 30
+            "pitch": -100.0, # Should be clamped to -30
+            "yaw": 100.0,    # Should be clamped to 45
+            "leg_spread": 200.0  # Should be clamped to 150
+        })
+
+        assert response.status_code == 200
+
+        # Verify values were clamped
+        list_response = client.get("/api/poses")
+        pose = list_response.json()["poses"][expected_id]
+        assert pose["height"] == 200.0
+        assert pose["roll"] == 30.0
+        assert pose["pitch"] == -30.0
+        assert pose["yaw"] == 45.0
+        assert pose["leg_spread"] == 150.0
+
+
+@pytest.mark.integration
+class TestWebSocketPoses:
+    """Test WebSocket pose commands."""
+
+    def test_websocket_apply_pose_command(self, client):
+        """Test apply_pose command via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({
+                "type": "apply_pose",
+                "pose_id": "high_stance"
+            })
+
+            # Verify pose was applied
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 160.0
+            assert data["running"] is False
+
+    def test_websocket_apply_pose_low_stance(self, client):
+        """Test applying low_stance pose via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({
+                "type": "apply_pose",
+                "pose_id": "low_stance"
+            })
+
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 80.0
+
+    def test_websocket_apply_pose_rest_pose(self, client):
+        """Test applying rest_pose via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({
+                "type": "apply_pose",
+                "pose_id": "rest_pose"
+            })
+
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 40.0
+            assert data["leg_spread"] == 120.0
+
+    def test_websocket_apply_pose_default_stance(self, client):
+        """Test applying default_stance via WebSocket."""
+        with client.websocket_connect("/ws") as websocket:
+            # First apply a different pose
+            websocket.send_json({
+                "type": "apply_pose",
+                "pose_id": "low_stance"
+            })
+            # Then apply default
+            websocket.send_json({
+                "type": "apply_pose",
+                "pose_id": "default_stance"
+            })
+
+            response = client.get("/api/status")
+            data = response.json()
+            assert data["body_height"] == 120.0
+            assert data["leg_spread"] == 100.0
+
+    def test_websocket_apply_nonexistent_pose(self, client):
+        """Test applying a nonexistent pose via WebSocket (should be ignored)."""
+        with client.websocket_connect("/ws") as websocket:
+            # Get current state
+            status_before = client.get("/api/status").json()
+
+            # Try to apply nonexistent pose
+            websocket.send_json({
+                "type": "apply_pose",
+                "pose_id": "nonexistent"
+            })
+
+            # State should be unchanged
+            status_after = client.get("/api/status").json()
+            assert status_after["body_height"] == status_before["body_height"]

@@ -666,7 +666,7 @@
               <div class="toggle-desc">Automatically compensate for terrain tilt using IMU data</div>
             </div>
             <label class="toggle">
-              <input type="checkbox">
+              <input type="checkbox" id="keepBodyLevel" data-config="keep_body_level">
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -678,7 +678,8 @@
         <div class="card">
           <div class="card-header">
             <span class="card-title">Saved Poses</span>
-            <button class="btn btn-primary btn-sm">+ New Pose</button>
+            <span class="card-badge" id="poseCount">0 poses</span>
+            <button class="btn btn-primary btn-sm" id="btnNewPose">+ New Pose</button>
           </div>
           <table class="data-table" id="savedPosesTable">
             <thead>
@@ -686,63 +687,18 @@
                 <th>Name</th>
                 <th>Category</th>
                 <th>Height</th>
+                <th>Leg Spread</th>
                 <th>Orientation</th>
                 <th>Actions</th>
               </tr>
             </thead>
-            <tbody>
-              <tr data-height="120" data-roll="0" data-pitch="0" data-yaw="0">
-                <td><strong>Default Stance</strong></td>
-                <td><span class="tag tag-success">Operation</span></td>
-                <td>120mm</td>
-                <td>0&deg;, 0&deg;, 0&deg;</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                </td>
-              </tr>
-              <tr data-height="80" data-roll="0" data-pitch="0" data-yaw="0">
-                <td><strong>Low Stance</strong></td>
-                <td><span class="tag tag-success">Operation</span></td>
-                <td>80mm</td>
-                <td>0&deg;, 0&deg;, 0&deg;</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                </td>
-              </tr>
-              <tr data-height="160" data-roll="0" data-pitch="0" data-yaw="0">
-                <td><strong>High Stance</strong></td>
-                <td><span class="tag tag-success">Operation</span></td>
-                <td>160mm</td>
-                <td>0&deg;, 0&deg;, 0&deg;</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                </td>
-              </tr>
-              <tr data-height="40" data-roll="0" data-pitch="0" data-yaw="0">
-                <td><strong>Rest Pose</strong></td>
-                <td><span class="tag tag-primary">Rest</span></td>
-                <td>40mm</td>
-                <td>0&deg;, 0&deg;, 0&deg;</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                </td>
-              </tr>
-              <tr data-height="0" data-roll="0" data-pitch="0" data-yaw="0">
-                <td><strong>Power Off</strong></td>
-                <td><span class="tag tag-warning">Rest</span></td>
-                <td>0mm</td>
-                <td>0&deg;, 0&deg;, 0&deg;</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                </td>
-              </tr>
+            <tbody id="posesTableBody">
+              <!-- Poses will be populated dynamically by JavaScript -->
             </tbody>
           </table>
+          <p id="noPosesMsg" style="color: var(--text-muted); text-align: center; padding: 24px; display: none;">
+            No poses saved yet. Create your first pose below.
+          </p>
         </div>
 
         <div class="card">
@@ -750,23 +706,89 @@
             <span class="card-title">Record Current Pose</span>
           </div>
           <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
-            Capture the robot's current joint states and save as a new pose.
+            Capture the robot's current posture and save as a new pose.
           </p>
           <div class="form-row" style="align-items: flex-end;">
             <div class="form-group" style="flex: 1;">
               <label class="form-label">Pose Name</label>
-              <input type="text" class="form-input" placeholder="Enter pose name...">
+              <input type="text" class="form-input" id="recordPoseName" placeholder="Enter pose name...">
             </div>
             <div class="form-group">
               <label class="form-label">Category</label>
-              <select class="form-select">
-                <option>Operation</option>
-                <option>Rest</option>
-                <option>Debug</option>
+              <select class="form-select" id="recordPoseCategory">
+                <option value="operation">Operation</option>
+                <option value="rest">Rest</option>
+                <option value="debug">Debug</option>
               </select>
             </div>
-            <button class="btn btn-success" data-action="record-pose">Record Pose</button>
+            <button class="btn btn-success" id="btnRecordPose">Record Pose</button>
           </div>
+        </div>
+
+        <!-- Create/Edit Pose Modal -->
+        <div class="card" id="poseEditorCard" style="display: none; border: 2px solid var(--primary);">
+          <div class="card-header">
+            <span class="card-title" id="poseEditorTitle">Create New Pose</span>
+            <button class="btn btn-secondary btn-sm" id="btnCancelPoseEdit">Cancel</button>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Pose Name</label>
+              <input type="text" class="form-input" id="editPoseName" placeholder="Enter pose name...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select class="form-select" id="editPoseCategory">
+                <option value="operation">Operation</option>
+                <option value="rest">Rest</option>
+                <option value="debug">Debug</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Height</span>
+                <span class="slider-value" id="editPoseHeightValue">120 mm</span>
+              </div>
+              <input type="range" class="slider" id="editPoseHeight" min="30" max="200" value="120">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Leg Spread</span>
+                <span class="slider-value" id="editPoseLegSpreadValue">100%</span>
+              </div>
+              <input type="range" class="slider" id="editPoseLegSpread" min="50" max="150" value="100">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Roll</span>
+                <span class="slider-value" id="editPoseRollValue">0&deg;</span>
+              </div>
+              <input type="range" class="slider" id="editPoseRoll" min="-30" max="30" value="0">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Pitch</span>
+                <span class="slider-value" id="editPosePitchValue">0&deg;</span>
+              </div>
+              <input type="range" class="slider" id="editPosePitch" min="-30" max="30" value="0">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span class="slider-label">Yaw</span>
+                <span class="slider-value" id="editPoseYawValue">0&deg;</span>
+              </div>
+              <input type="range" class="slider" id="editPoseYaw" min="-45" max="45" value="0">
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; margin-top: 16px;">
+            <button class="btn btn-secondary" id="btnPreviewPoseEdit">Preview</button>
+            <button class="btn btn-primary" id="btnSavePose">Save Pose</button>
+          </div>
+          <input type="hidden" id="editPoseId" value="">
         </div>
       </div>
     </section>
@@ -789,53 +811,27 @@
         <div class="card">
           <div class="card-header">
             <span class="card-title">Available Gaits</span>
+            <span class="card-badge" id="gaitCount">0 gaits</span>
           </div>
-          <table class="data-table">
+          <table class="data-table" id="gaitsTable">
             <thead>
               <tr>
-                <th></th>
+                <th style="width: 40px;"></th>
                 <th>Gait</th>
                 <th>Speed Range</th>
                 <th>Stability</th>
                 <th>Best For</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
-            <tbody>
-              <tr class="gait-row" data-gait="tripod">
-                <td><input type="radio" name="activeGait" checked></td>
-                <td><strong>Tripod</strong></td>
-                <td>Medium - Fast</td>
-                <td><span class="tag tag-warning">Medium</span></td>
-                <td>Flat terrain, speed</td>
-                <td><span class="tag tag-success gait-status">Active</span></td>
-              </tr>
-              <tr class="gait-row" data-gait="wave">
-                <td><input type="radio" name="activeGait"></td>
-                <td><strong>Wave</strong></td>
-                <td>Slow</td>
-                <td><span class="tag tag-success">High</span></td>
-                <td>Rough terrain, stability</td>
-                <td class="gait-status">-</td>
-              </tr>
-              <tr class="gait-row" data-gait="ripple">
-                <td><input type="radio" name="activeGait"></td>
-                <td><strong>Ripple</strong></td>
-                <td>Medium</td>
-                <td><span class="tag tag-success">High</span></td>
-                <td>General purpose</td>
-                <td class="gait-status">-</td>
-              </tr>
-              <tr class="gait-row" data-gait="creep">
-                <td><input type="radio" name="activeGait"></td>
-                <td><strong>Creep</strong></td>
-                <td>Very Slow</td>
-                <td><span class="tag tag-success">Very High</span></td>
-                <td>Precision, obstacles</td>
-                <td class="gait-status">-</td>
-              </tr>
+            <tbody id="gaitsTableBody">
+              <!-- Populated dynamically from API -->
             </tbody>
           </table>
+          <div id="noGaitsMsg" style="display: none; padding: 24px; text-align: center; color: var(--text-muted);">
+            No gaits configured. Check your configuration.
+          </div>
         </div>
       </div>
 
@@ -863,9 +859,9 @@
               <div class="slider-group">
                 <div class="slider-header">
                   <span class="slider-label">Duty Factor</span>
-                  <span class="slider-value">65%</span>
+                  <span class="slider-value" id="gaitDutyFactorValue">65%</span>
                 </div>
-                <input type="range" class="slider" data-config="gait_duty_factor" min="40" max="80" value="65">
+                <input type="range" class="slider" id="gaitDutyFactor" data-config="gait_duty_factor" min="40" max="80" value="65">
               </div>
             <div class="slider-group">
               <div class="slider-header">
@@ -903,18 +899,18 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Turn Mode</label>
-              <select class="form-select">
-                <option>In-place rotation</option>
-                <option>Arc turn</option>
-                <option>Differential</option>
+              <select class="form-select" id="turnMode" data-config="turn_mode">
+                <option value="in-place">In-place rotation</option>
+                <option value="arc">Arc turn</option>
+                <option value="differential">Differential</option>
               </select>
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Yaw Rate</span>
-                <span class="slider-value">60 &deg;/s</span>
+                <span class="slider-value" id="maxYawRateValue">60 &deg;/s</span>
               </div>
-              <input type="range" class="slider" min="20" max="120" value="60">
+              <input type="range" class="slider" id="maxYawRate" data-config="max_yaw_rate" min="20" max="120" value="60">
             </div>
           </div>
         </div>
@@ -930,16 +926,16 @@
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Linear Acceleration</span>
-                <span class="slider-value">0.5 m/s&sup2;</span>
+                <span class="slider-value" id="maxLinearAccelValue">0.5 m/s&sup2;</span>
               </div>
-              <input type="range" class="slider" min="0.1" max="2" step="0.1" value="0.5">
+              <input type="range" class="slider" id="maxLinearAccel" data-config="max_linear_accel" min="0.1" max="2" step="0.1" value="0.5">
             </div>
             <div class="slider-group">
               <div class="slider-header">
                 <span class="slider-label">Max Angular Acceleration</span>
-                <span class="slider-value">90 &deg;/s&sup2;</span>
+                <span class="slider-value" id="maxAngularAccelValue">90 &deg;/s&sup2;</span>
               </div>
-              <input type="range" class="slider" min="30" max="180" value="90">
+              <input type="range" class="slider" id="maxAngularAccel" data-config="max_angular_accel" min="30" max="180" value="90">
             </div>
           </div>
         </div>
@@ -954,16 +950,16 @@
               <div class="toggle-desc">Apply exponential smoothing to control inputs</div>
             </div>
             <label class="toggle">
-              <input type="checkbox" checked>
+              <input type="checkbox" id="inputSmoothingEnabled" data-config="input_smoothing_enabled" checked>
               <span class="toggle-slider"></span>
             </label>
           </div>
           <div class="slider-group" style="margin-top: 16px;">
             <div class="slider-header">
               <span class="slider-label">Smoothing Factor</span>
-              <span class="slider-value">0.15</span>
+              <span class="slider-value" id="inputSmoothingFactorValue">0.15</span>
             </div>
-            <input type="range" class="slider" min="0.05" max="0.5" step="0.01" value="0.15">
+            <input type="range" class="slider" id="inputSmoothingFactor" data-config="input_smoothing_factor" min="0.05" max="0.5" step="0.01" value="0.15">
           </div>
         </div>
       </div>
@@ -1344,11 +1340,23 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td><code>/api/cmd/vel</code></td><td>POST</td><td>Set velocity command (vx, vy, vyaw)</td></tr>
-              <tr><td><code>/api/cmd/pose</code></td><td>POST</td><td>Set body pose (height, roll, pitch, yaw)</td></tr>
-              <tr><td><code>/api/config/apply</code></td><td>POST</td><td>Apply configuration changes</td></tr>
-              <tr><td><code>/api/gait/set</code></td><td>POST</td><td>Change active gait</td></tr>
-              <tr><td><code>/api/estop</code></td><td>POST</td><td>Trigger emergency stop</td></tr>
+              <tr><td><code>/api/gait</code></td><td>POST</td><td>Set gait mode (tripod, wave, ripple)</td></tr>
+              <tr><td><code>/api/gait/params</code></td><td>GET/POST</td><td>Get or set gait parameters (step_height, step_length, cycle_time)</td></tr>
+              <tr><td><code>/api/run</code></td><td>POST</td><td>Start/stop walking ({"run": true/false})</td></tr>
+              <tr><td><code>/api/stop</code></td><td>POST</td><td>Stop walking</td></tr>
+              <tr><td><code>/api/body_height</code></td><td>POST</td><td>Set body height in mm (30-90)</td></tr>
+              <tr><td><code>/api/body_pose</code></td><td>GET/POST</td><td>Get or set body pose (pitch, roll, yaw)</td></tr>
+              <tr><td><code>/api/leg_spread</code></td><td>POST</td><td>Set leg spread percentage (50-150%)</td></tr>
+              <tr><td><code>/api/rotation</code></td><td>POST</td><td>Set rotation speed (degrees/second)</td></tr>
+              <tr><td><code>/api/emergency_stop</code></td><td>POST</td><td>Trigger emergency stop - halts all movement</td></tr>
+              <tr><td><code>/api/status</code></td><td>GET</td><td>Get current robot status and telemetry</td></tr>
+              <tr><td><code>/api/sensors</code></td><td>GET</td><td>Get sensor readings (temperature, battery)</td></tr>
+              <tr><td><code>/api/health</code></td><td>GET</td><td>Health check endpoint</td></tr>
+              <tr><td><code>/api/config</code></td><td>GET/POST</td><td>Get or update configuration values</td></tr>
+              <tr><td><code>/api/config/save</code></td><td>POST</td><td>Save configuration to file</td></tr>
+              <tr><td><code>/api/profiles</code></td><td>GET/POST</td><td>List profiles or manage (create, delete, switch)</td></tr>
+              <tr><td><code>/api/servo/test</code></td><td>POST</td><td>Test a specific servo (leg, joint, angle)</td></tr>
+              <tr><td><code>/ws</code></td><td>WebSocket</td><td>Real-time telemetry and command streaming</td></tr>
             </tbody>
           </table>
         </div>

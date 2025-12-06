@@ -17,6 +17,8 @@ const state = {
   },
   config: {},
   activeGait: 'tripod',
+  gaits: {},  // Will be populated from API with gait definitions
+  enabledGaits: [],  // List of enabled gait IDs
   telemetry: {
     battery: 11.4,
     temperature: 42,
@@ -31,6 +33,7 @@ const state = {
   footContacts: [true, false, true, true, false, true],
   selectedLeg: null,
   recordedPoses: [],
+  poses: {},  // Saved poses from backend (pose_id -> pose data)
   isRecording: false,
   gaitPhase: 0,
   testActionActive: false  // When true, disables idle animation
@@ -645,6 +648,199 @@ document.getElementById('btnTestWalk')?.addEventListener('click', () => {
     }, 3000);
   }
 });
+
+// ========== Gaits Management ==========
+function loadDefaultGaits() {
+  // Fallback gaits for offline/demo mode (matches backend defaults)
+  state.gaits = {
+    tripod: { name: 'Tripod', description: 'Fast, stable gait with alternating groups of 3 legs', enabled: true, speed_range: 'Medium - Fast', stability: 'Medium', best_for: 'Flat terrain, speed' },
+    wave: { name: 'Wave', description: 'Smooth, elegant sequential leg movement', enabled: true, speed_range: 'Slow', stability: 'High', best_for: 'Rough terrain, stability' },
+    ripple: { name: 'Ripple', description: 'Balanced offset pattern between legs', enabled: true, speed_range: 'Medium', stability: 'High', best_for: 'General purpose' },
+    creep: { name: 'Creep', description: 'Very slow, maximum stability gait', enabled: true, speed_range: 'Very Slow', stability: 'Very High', best_for: 'Precision, obstacles' }
+  };
+  state.enabledGaits = ['tripod', 'wave', 'ripple', 'creep'];
+  state.activeGait = state.activeGait || 'tripod';  // Set default active gait if not already set
+  renderGaitsTable();
+  updateGaitSelector();
+}
+
+async function loadGaits() {
+  try {
+    const response = await fetch('/api/gaits');
+    if (response.ok) {
+      const data = await response.json();
+      state.gaits = data.gaits || {};
+      state.enabledGaits = data.enabled || [];
+      state.activeGait = data.current || 'tripod';
+      renderGaitsTable();
+      updateGaitSelector();
+      console.log('Loaded gaits from API:', Object.keys(state.gaits));
+    } else {
+      console.log('API returned error, using default gaits');
+      loadDefaultGaits();
+    }
+  } catch (e) {
+    console.log('Failed to load gaits from API, using defaults:', e);
+    loadDefaultGaits();
+  }
+}
+
+function renderGaitsTable() {
+  const tbody = document.getElementById('gaitsTableBody');
+  if (!tbody) return;
+
+  const gaitIds = Object.keys(state.gaits);
+  const countEl = document.getElementById('gaitCount');
+
+  if (gaitIds.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No gaits configured</td></tr>';
+    if (countEl) countEl.textContent = '0 gaits';
+    return;
+  }
+
+  // Update gait count badge
+  if (countEl) {
+    const enabledCount = state.enabledGaits.length;
+    countEl.textContent = `${enabledCount}/${gaitIds.length} enabled`;
+  }
+
+  tbody.innerHTML = gaitIds.map(gaitId => {
+    const gait = state.gaits[gaitId];
+    const isEnabled = state.enabledGaits.includes(gaitId);
+    const isActive = state.activeGait === gaitId;
+
+    return `
+      <tr class="gait-row ${isActive ? 'selected' : ''}" data-gait="${gaitId}">
+        <td><input type="radio" name="activeGait" class="gait-radio" ${isActive ? 'checked' : ''} ${!isEnabled ? 'disabled' : ''} data-gait="${gaitId}"></td>
+        <td>
+          <strong class="gait-name">${escapeHtml(gait.name || gaitId)}</strong>
+          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(gait.description || '')}</div>
+        </td>
+        <td style="color: var(--text-muted); font-size: 12px;">${escapeHtml(gait.speed_range || '--')}</td>
+        <td style="color: var(--text-muted); font-size: 12px;">${escapeHtml(gait.stability || '--')}</td>
+        <td style="color: var(--text-muted); font-size: 12px;">${escapeHtml(gait.best_for || '--')}</td>
+        <td>
+          <span class="tag ${isEnabled ? 'tag-success' : 'tag-muted'}">${isEnabled ? 'Enabled' : 'Disabled'}</span>
+        </td>
+        <td>
+          <button class="btn btn-secondary btn-sm gait-action-btn"
+                  data-action="${isEnabled ? 'disable' : 'enable'}"
+                  data-gait="${gaitId}"
+                  ${isEnabled && isActive ? 'disabled title="Cannot disable active gait"' : ''}>
+            ${isEnabled ? 'Disable' : 'Enable'}
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Add event listeners for radio buttons
+  tbody.querySelectorAll('.gait-radio').forEach(radio => {
+    radio.addEventListener('change', async (e) => {
+      const gaitId = e.target.dataset.gait;
+      await setActiveGait(gaitId);
+    });
+  });
+
+  // Add event listeners for action buttons
+  tbody.querySelectorAll('.gait-action-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const button = e.currentTarget;
+      const action = button.dataset.action;
+      const gaitId = button.dataset.gait;
+      if (action && gaitId) {
+        await handleGaitAction(action, gaitId);
+      } else {
+        console.error('Missing action or gaitId:', { action, gaitId });
+      }
+    });
+  });
+}
+
+function updateGaitSelector() {
+  // Update any gait selector dropdowns in the UI
+  const gaitSelect = document.getElementById('gaitMode');
+  if (gaitSelect) {
+    gaitSelect.innerHTML = state.enabledGaits.map(gaitId => {
+      const gait = state.gaits[gaitId];
+      return `<option value="${gaitId}" ${gaitId === state.activeGait ? 'selected' : ''}>${gait?.name || gaitId}</option>`;
+    }).join('');
+  }
+}
+
+async function setActiveGait(gaitId) {
+  if (!state.enabledGaits.includes(gaitId)) {
+    logEvent('WARN', `Cannot select disabled gait: ${gaitId}`);
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/gait', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: gaitId })
+    });
+
+    if (response.ok) {
+      state.activeGait = gaitId;
+      renderGaitsTable();
+      updateGaitSelector();
+      logEvent('INFO', `Active gait changed to: ${state.gaits[gaitId]?.name || gaitId}`);
+    } else {
+      const err = await response.json();
+      logEvent('ERROR', `Failed to set gait: ${err.error || 'Unknown error'}`);
+    }
+  } catch (e) {
+    // Offline mode - just update locally
+    state.activeGait = gaitId;
+    renderGaitsTable();
+    updateGaitSelector();
+    logEvent('INFO', `Active gait changed to: ${state.gaits[gaitId]?.name || gaitId} (offline)`);
+  }
+}
+
+async function handleGaitAction(action, gaitId) {
+  try {
+    const response = await fetch('/api/gaits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, gait: gaitId })
+    });
+
+    if (response.ok) {
+      // Refresh the gaits list
+      await loadGaits();
+      logEvent('INFO', `Gait "${state.gaits[gaitId]?.name || gaitId}" ${action}d`);
+    } else {
+      const err = await response.json();
+      logEvent('ERROR', `Failed to ${action} gait: ${err.error || 'Unknown error'}`);
+    }
+  } catch (e) {
+    // Offline mode - update locally
+    if (action === 'enable') {
+      if (!state.enabledGaits.includes(gaitId)) {
+        state.enabledGaits.push(gaitId);
+      }
+      if (state.gaits[gaitId]) state.gaits[gaitId].enabled = true;
+    } else if (action === 'disable') {
+      // Prevent disabling last enabled gait
+      if (state.enabledGaits.length <= 1) {
+        logEvent('ERROR', 'Cannot disable last enabled gait');
+        return;
+      }
+      state.enabledGaits = state.enabledGaits.filter(g => g !== gaitId);
+      if (state.gaits[gaitId]) state.gaits[gaitId].enabled = false;
+      // If this was the active gait, switch to another
+      if (state.activeGait === gaitId && state.enabledGaits.length > 0) {
+        state.activeGait = state.enabledGaits[0];
+      }
+    }
+    renderGaitsTable();
+    updateGaitSelector();
+    logEvent('INFO', `Gait "${state.gaits[gaitId]?.name || gaitId}" ${action}d (offline)`);
+  }
+}
 
 // ========== Apply Config to UI ==========
 function applyConfigToUI() {
@@ -2411,24 +2607,452 @@ document.querySelectorAll('input[name="activeGait"]').forEach(radio => {
   });
 });
 
-// ========== Pose Recording ==========
-document.querySelector('[data-action="record-pose"]')?.addEventListener('click', () => {
-  const pose = {
-    timestamp: Date.now(),
-    name: `Pose ${state.recordedPoses.length + 1}`,
-    angles: JSON.parse(JSON.stringify(state.legAngles)),
-    bodyPose: {
+// ========== Saved Poses Management ==========
+async function loadPoses() {
+  try {
+    const response = await fetch('/api/poses');
+    if (response.ok) {
+      const data = await response.json();
+      state.poses = data.poses || {};
+      renderPosesTable();
+      logEvent('INFO', `Loaded ${Object.keys(state.poses).length} poses`);
+    } else {
+      console.log('Failed to load poses: HTTP', response.status);
+      loadDefaultPoses();
+    }
+  } catch (e) {
+    console.log('Failed to load poses from server:', e);
+    loadDefaultPoses();
+  }
+}
+
+function loadDefaultPoses() {
+  // Set default poses for offline mode
+  state.poses = {
+    'default_stance': { name: 'Default Stance', category: 'operation', height: 120, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: true },
+    'low_stance': { name: 'Low Stance', category: 'operation', height: 80, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: false },
+    'high_stance': { name: 'High Stance', category: 'operation', height: 160, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: false },
+    'rest_pose': { name: 'Rest Pose', category: 'rest', height: 40, roll: 0, pitch: 0, yaw: 0, leg_spread: 120, builtin: false },
+    'power_off': { name: 'Power Off', category: 'rest', height: 30, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: false }
+  };
+  renderPosesTable();
+  logEvent('INFO', 'Using default poses (offline mode)');
+}
+
+function renderPosesTable() {
+  const tbody = document.getElementById('posesTableBody');
+  const noMsg = document.getElementById('noPosesMsg');
+  const countEl = document.getElementById('poseCount');
+
+  if (!tbody) return;
+
+  const poseIds = Object.keys(state.poses);
+
+  if (poseIds.length === 0) {
+    tbody.innerHTML = '';
+    if (noMsg) noMsg.style.display = 'block';
+    if (countEl) countEl.textContent = '0 poses';
+    return;
+  }
+
+  if (noMsg) noMsg.style.display = 'none';
+  if (countEl) countEl.textContent = `${poseIds.length} pose${poseIds.length !== 1 ? 's' : ''}`;
+
+  const categoryStyles = {
+    'operation': 'tag-success',
+    'rest': 'tag-primary',
+    'debug': 'tag-warning'
+  };
+
+  tbody.innerHTML = poseIds.map(poseId => {
+    const pose = state.poses[poseId];
+    const categoryClass = categoryStyles[pose.category] || 'tag-secondary';
+    const categoryLabel = pose.category ? pose.category.charAt(0).toUpperCase() + pose.category.slice(1) : 'Other';
+    const isBuiltin = pose.builtin || false;
+    const canDelete = !isBuiltin && poseIds.length > 1;
+
+    // Ensure numeric values for display
+    const height = Number(pose.height) || 0;
+    const legSpread = Number(pose.leg_spread) || 100;
+    const roll = Number(pose.roll) || 0;
+    const pitch = Number(pose.pitch) || 0;
+    const yaw = Number(pose.yaw) || 0;
+
+    return `
+      <tr class="pose-row" data-pose-id="${poseId}">
+        <td>
+          <strong>${escapeHtml(pose.name || poseId)}</strong>
+          ${isBuiltin ? '<span class="tag tag-secondary" style="margin-left: 8px; font-size: 9px;">DEFAULT</span>' : ''}
+        </td>
+        <td><span class="tag ${categoryClass}">${categoryLabel}</span></td>
+        <td>${height.toFixed(0)}mm</td>
+        <td>${legSpread.toFixed(0)}%</td>
+        <td>R: ${roll.toFixed(0)}&deg;, P: ${pitch.toFixed(0)}&deg;, Y: ${yaw.toFixed(0)}&deg;</td>
+        <td>
+          <button class="btn btn-secondary btn-sm pose-action-btn" data-action="preview" data-pose-id="${poseId}">Preview</button>
+          <button class="btn btn-primary btn-sm pose-action-btn" data-action="apply" data-pose-id="${poseId}">Apply</button>
+          <button class="btn btn-secondary btn-sm pose-action-btn" data-action="edit" data-pose-id="${poseId}">Edit</button>
+          ${canDelete ? `<button class="btn btn-danger btn-sm pose-action-btn" data-action="delete" data-pose-id="${poseId}">Delete</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Add event listeners to action buttons
+  tbody.querySelectorAll('.pose-action-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const poseId = btn.dataset.poseId;
+      handlePoseAction(action, poseId);
+    });
+  });
+}
+
+function handlePoseAction(action, poseId) {
+  const pose = state.poses[poseId];
+  if (!pose) return;
+
+  switch (action) {
+    case 'preview':
+      // Animate to pose in 3D preview only (don't send to robot)
+      animatePoseTransition(
+        Number(pose.height) || 120,
+        Number(pose.roll) || 0,
+        Number(pose.pitch) || 0,
+        Number(pose.yaw) || 0
+      );
+      logEvent('INFO', `Previewing pose: ${pose.name}`);
+      break;
+
+    case 'apply':
+      // Apply pose to robot via backend
+      applyPose(poseId);
+      break;
+
+    case 'edit':
+      openPoseEditor(poseId);
+      break;
+
+    case 'delete':
+      deletePose(poseId);
+      break;
+  }
+}
+
+async function applyPose(poseId) {
+  const pose = state.poses[poseId];
+  if (!pose) return;
+
+  // Ensure numeric values
+  const height = Number(pose.height) || 120;
+  const roll = Number(pose.roll) || 0;
+  const pitch = Number(pose.pitch) || 0;
+  const yaw = Number(pose.yaw) || 0;
+  const legSpread = Number(pose.leg_spread) || 100;
+
+  // Update local state immediately for visual feedback
+  state.telemetry.bodyHeight = height;
+  state.telemetry.roll = roll;
+  state.telemetry.pitch = pitch;
+  state.telemetry.yaw = yaw;
+  state.telemetry.legSpread = legSpread;
+
+  // Update sliders
+  setSliderValue('body_height', height);
+  setSliderValue('body_roll', roll);
+  setSliderValue('body_pitch', pitch);
+  setSliderValue('body_yaw', yaw);
+  setSliderValue('leg_spread', legSpread);
+
+  // Send to backend
+  if (state.connected) {
+    sendCommand('apply_pose', { pose_id: poseId });
+  } else {
+    // Try API call if not using WebSocket
+    try {
+      await fetch('/api/poses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'apply', pose_id: poseId })
+      });
+    } catch (e) {
+      console.log('Failed to apply pose via API');
+    }
+  }
+
+  logEvent('INFO', `Applied pose: ${pose.name}`);
+}
+
+function openPoseEditor(poseId = null) {
+  const editorCard = document.getElementById('poseEditorCard');
+  const titleEl = document.getElementById('poseEditorTitle');
+  const nameInput = document.getElementById('editPoseName');
+  const categorySelect = document.getElementById('editPoseCategory');
+  const heightSlider = document.getElementById('editPoseHeight');
+  const legSpreadSlider = document.getElementById('editPoseLegSpread');
+  const rollSlider = document.getElementById('editPoseRoll');
+  const pitchSlider = document.getElementById('editPosePitch');
+  const yawSlider = document.getElementById('editPoseYaw');
+  const poseIdInput = document.getElementById('editPoseId');
+
+  if (!editorCard) return;
+
+  if (poseId && state.poses[poseId]) {
+    // Editing existing pose
+    const pose = state.poses[poseId];
+    titleEl.textContent = 'Edit Pose';
+    nameInput.value = pose.name || '';
+    categorySelect.value = pose.category || 'operation';
+    heightSlider.value = Number(pose.height) || 120;
+    legSpreadSlider.value = Number(pose.leg_spread) || 100;
+    rollSlider.value = Number(pose.roll) || 0;
+    pitchSlider.value = Number(pose.pitch) || 0;
+    yawSlider.value = Number(pose.yaw) || 0;
+    poseIdInput.value = poseId;
+  } else {
+    // Creating new pose
+    titleEl.textContent = 'Create New Pose';
+    nameInput.value = '';
+    categorySelect.value = 'operation';
+    heightSlider.value = state.telemetry.bodyHeight || 120;
+    legSpreadSlider.value = state.telemetry.legSpread || 100;
+    rollSlider.value = state.telemetry.roll || 0;
+    pitchSlider.value = state.telemetry.pitch || 0;
+    yawSlider.value = state.telemetry.yaw || 0;
+    poseIdInput.value = '';
+  }
+
+  // Update slider value displays
+  updatePoseEditorSliderValues();
+
+  editorCard.style.display = 'block';
+  editorCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  nameInput.focus();
+}
+
+function updatePoseEditorSliderValues() {
+  const heightSlider = document.getElementById('editPoseHeight');
+  const legSpreadSlider = document.getElementById('editPoseLegSpread');
+  const rollSlider = document.getElementById('editPoseRoll');
+  const pitchSlider = document.getElementById('editPosePitch');
+  const yawSlider = document.getElementById('editPoseYaw');
+
+  if (heightSlider) {
+    document.getElementById('editPoseHeightValue').textContent = heightSlider.value + ' mm';
+  }
+  if (legSpreadSlider) {
+    document.getElementById('editPoseLegSpreadValue').textContent = legSpreadSlider.value + '%';
+  }
+  if (rollSlider) {
+    document.getElementById('editPoseRollValue').textContent = rollSlider.value + '\u00B0';
+  }
+  if (pitchSlider) {
+    document.getElementById('editPosePitchValue').textContent = pitchSlider.value + '\u00B0';
+  }
+  if (yawSlider) {
+    document.getElementById('editPoseYawValue').textContent = yawSlider.value + '\u00B0';
+  }
+}
+
+function closePoseEditor() {
+  const editorCard = document.getElementById('poseEditorCard');
+  if (editorCard) {
+    editorCard.style.display = 'none';
+  }
+}
+
+async function savePose() {
+  const nameInput = document.getElementById('editPoseName');
+  const categorySelect = document.getElementById('editPoseCategory');
+  const heightSlider = document.getElementById('editPoseHeight');
+  const legSpreadSlider = document.getElementById('editPoseLegSpread');
+  const rollSlider = document.getElementById('editPoseRoll');
+  const pitchSlider = document.getElementById('editPosePitch');
+  const yawSlider = document.getElementById('editPoseYaw');
+  const poseIdInput = document.getElementById('editPoseId');
+
+  const name = nameInput.value.trim();
+  if (!name) {
+    logEvent('WARN', 'Pose name is required');
+    nameInput.focus();
+    return;
+  }
+
+  const existingPoseId = poseIdInput.value;
+  const isUpdate = existingPoseId && state.poses[existingPoseId];
+
+  const poseData = {
+    name: name,
+    category: categorySelect.value,
+    height: parseFloat(heightSlider.value),
+    roll: parseFloat(rollSlider.value),
+    pitch: parseFloat(pitchSlider.value),
+    yaw: parseFloat(yawSlider.value),
+    leg_spread: parseFloat(legSpreadSlider.value)
+  };
+
+  try {
+    const response = await fetch('/api/poses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: isUpdate ? 'update' : 'create',
+        pose_id: existingPoseId || undefined,
+        ...poseData
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      state.poses = data.poses || state.poses;
+      renderPosesTable();
+      closePoseEditor();
+      logEvent('INFO', isUpdate ? `Pose updated: ${name}` : `Pose created: ${name}`);
+    } else {
+      const error = await response.json();
+      logEvent('ERROR', error.error || 'Failed to save pose');
+    }
+  } catch (e) {
+    // Fallback for offline mode - update local state
+    if (isUpdate) {
+      state.poses[existingPoseId] = { ...state.poses[existingPoseId], ...poseData };
+    } else {
+      const newId = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      state.poses[newId] = { ...poseData, builtin: false };
+    }
+    renderPosesTable();
+    closePoseEditor();
+    logEvent('INFO', `Pose saved locally: ${name}`);
+  }
+}
+
+async function deletePose(poseId) {
+  const pose = state.poses[poseId];
+  if (!pose) return;
+
+  // Check if this is the last pose
+  if (Object.keys(state.poses).length <= 1) {
+    logEvent('WARN', 'Cannot delete the last pose');
+    return;
+  }
+
+  // Check if pose is builtin
+  if (pose.builtin) {
+    logEvent('WARN', 'Cannot delete builtin pose');
+    return;
+  }
+
+  if (!confirm(`Delete pose "${pose.name}"?`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/poses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', pose_id: poseId })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      state.poses = data.poses || state.poses;
+      renderPosesTable();
+      logEvent('INFO', `Pose deleted: ${pose.name}`);
+    } else {
+      const error = await response.json();
+      logEvent('ERROR', error.error || 'Failed to delete pose');
+    }
+  } catch (e) {
+    // Fallback for offline mode
+    delete state.poses[poseId];
+    renderPosesTable();
+    logEvent('INFO', `Pose deleted locally: ${pose.name}`);
+  }
+}
+
+async function recordCurrentPose() {
+  const nameInput = document.getElementById('recordPoseName');
+  const categorySelect = document.getElementById('recordPoseCategory');
+
+  const name = nameInput.value.trim();
+  if (!name) {
+    logEvent('WARN', 'Pose name is required');
+    nameInput.focus();
+    return;
+  }
+
+  const category = categorySelect.value;
+
+  try {
+    const response = await fetch('/api/poses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'record',
+        name: name,
+        category: category
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      state.poses = data.poses || state.poses;
+      renderPosesTable();
+      nameInput.value = '';
+      logEvent('INFO', `Pose recorded: ${name}`);
+    } else {
+      const error = await response.json();
+      logEvent('ERROR', error.error || 'Failed to record pose');
+    }
+  } catch (e) {
+    // Fallback for offline mode - save current telemetry state
+    const newId = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    state.poses[newId] = {
+      name: name,
+      category: category,
+      height: state.telemetry.bodyHeight,
       roll: state.telemetry.roll,
       pitch: state.telemetry.pitch,
       yaw: state.telemetry.yaw,
-      height: state.telemetry.bodyHeight
-    }
-  };
-  state.recordedPoses.push(pose);
-  updatePoseList();
-  logEvent('INFO', `Recorded ${pose.name}`);
+      leg_spread: state.telemetry.legSpread,
+      builtin: false
+    };
+    renderPosesTable();
+    nameInput.value = '';
+    logEvent('INFO', `Pose recorded locally: ${name}`);
+  }
+}
+
+// Pose editor slider event listeners
+document.getElementById('editPoseHeight')?.addEventListener('input', updatePoseEditorSliderValues);
+document.getElementById('editPoseLegSpread')?.addEventListener('input', updatePoseEditorSliderValues);
+document.getElementById('editPoseRoll')?.addEventListener('input', updatePoseEditorSliderValues);
+document.getElementById('editPosePitch')?.addEventListener('input', updatePoseEditorSliderValues);
+document.getElementById('editPoseYaw')?.addEventListener('input', updatePoseEditorSliderValues);
+
+// Pose editor button event listeners
+document.getElementById('btnNewPose')?.addEventListener('click', () => openPoseEditor(null));
+document.getElementById('btnCancelPoseEdit')?.addEventListener('click', closePoseEditor);
+document.getElementById('btnSavePose')?.addEventListener('click', savePose);
+document.getElementById('btnRecordPose')?.addEventListener('click', recordCurrentPose);
+
+document.getElementById('btnPreviewPoseEdit')?.addEventListener('click', () => {
+  const heightSlider = document.getElementById('editPoseHeight');
+  const rollSlider = document.getElementById('editPoseRoll');
+  const pitchSlider = document.getElementById('editPosePitch');
+  const yawSlider = document.getElementById('editPoseYaw');
+
+  animatePoseTransition(
+    parseFloat(heightSlider.value),
+    parseFloat(rollSlider.value),
+    parseFloat(pitchSlider.value),
+    parseFloat(yawSlider.value)
+  );
+  logEvent('INFO', 'Previewing pose editor values');
 });
 
+// Legacy pose recording (for backwards compatibility)
 function updatePoseList() {
   const list = document.getElementById('poseList');
   if (!list) return;
@@ -2451,7 +3075,7 @@ window.playPose = function(index) {
   }
 };
 
-window.deletePose = function(index) {
+window.deleteLegacyPose = function(index) {
   state.recordedPoses.splice(index, 1);
   updatePoseList();
 };
@@ -2597,6 +3221,8 @@ function connectWebSocket() {
       // Load config after connection
       loadConfig();
       loadProfiles();
+      loadGaits();
+      loadPoses();
     };
 
     ws.onclose = () => {
@@ -4255,6 +4881,8 @@ setTimeout(initSensorsSection, 200);
 connectWebSocket();
 loadProfiles();
 loadConfig();  // Load config immediately for demo mode / summary cards
+loadGaits();   // Load gaits for config page table
+loadPoses();   // Load poses for body posture section
 
 // Initialize geometry section
 setTimeout(initGeometrySection, 100);

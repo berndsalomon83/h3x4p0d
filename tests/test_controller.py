@@ -285,7 +285,6 @@ class TestBLEDeviceScannerScan:
         scanner = BLEDeviceScanner()
 
         # Should not raise exception even if bleak not available
-        import asyncio
 
         asyncio.run(scanner.scan(timeout=0.1))
 
@@ -524,7 +523,6 @@ class TestBLEDeviceScannerEdgeCases:
         scanner = BLEDeviceScanner()
 
         # Should not raise
-        import asyncio
 
         asyncio.run(scanner.scan(timeout=0.01))
         asyncio.run(scanner.scan(timeout=0.01))
