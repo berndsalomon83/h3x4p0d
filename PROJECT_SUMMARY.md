@@ -12,7 +12,7 @@ A complete, production-ready hexapod controller framework for Raspberry Pi with:
 ✓ Web-based 3D simulator and control interface
 ✓ Bluetooth/joystick controller support
 ✓ Real-time telemetry (temperature, battery voltage)
-✓ Comprehensive test suite (6/6 tests passing)
+✓ Comprehensive pytest suite (170+ unit and integration checks)
 ✓ Interactive calibration tool
 ✓ Detailed setup and configuration guides
 
@@ -56,12 +56,11 @@ hexapod/
 │   │   ├── Servo testing at angles
 │   │   └── JSON configuration save/load
 │   │
-│   └── test_runner.py          # Unit test suite (200+ lines)
-│       ├── Servo controller tests
-│       ├── Sensor reading tests
-│       ├── IK solver validation
-│       ├── Gait generation tests
-│       └── Continuous operation simulation
+│   └── test_runner.py          # Legacy test entry point (pytest recommended)
+│
+├── tests/                      # pytest suite (unit + integration)
+│   ├── README.md               # coverage breakdown, markers, and usage
+│   └── test_*.py               # hardware, gait, config, controller, and API tests
 │
 └── web_static/                 # Web UI
     ├── index.html              # Responsive control panel (HTML5/CSS3)
@@ -105,12 +104,11 @@ hexapod/
 - **Web UI**: direct browser control
 
 ### 6. Testing & Validation
-- 6 unit tests covering all major components
-- Servo controller operation
-- Sensor reading and calibration
-- IK solver reachability and solving
-- Gait generation for all modes
-- 10-second continuous operation simulation
+- 170+ pytest checks across unit and integration layers
+- Servo controller operation (mock + per-leg updates)
+- Sensor reading/calibration workflows and offsets
+- IK solver reachability and gait engine generation for all modes
+- FastAPI REST and WebSocket APIs, controller event handling, and long-running gait loops
 
 ---
 
@@ -122,8 +120,8 @@ cd hexapod
 # Install dependencies
 poetry install
 
-# Run tests (should show 6/6 passing)
-poetry run python -m hexapod.test_runner
+# Run tests (unit + integration)
+poetry run pytest tests -v
 
 # Start web server
 poetry run python -m hexapod.main
@@ -183,7 +181,7 @@ poetry run python -m hexapod.main
 ## DEPENDENCIES
 
 Core (development):
-- Python 3.11+
+- Python 3.10+
 - FastAPI 0.100+
 - Uvicorn 0.22+
 - Starlette 0.28+
@@ -198,7 +196,7 @@ Optional (hardware on Pi):
 - RPi.GPIO 0.7.1+ (GPIO alternative, optional)
 
 Development (testing):
-- inputs library (joystick input)
+- pytest, pytest-asyncio, pytest-cov, httpx, hypothesis, ruff
 
 ---
 
