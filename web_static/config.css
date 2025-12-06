@@ -208,7 +208,7 @@ body {
 }
 .preview-container {
   flex: 1;
-  background: #0a0f18;
+  background: #87ceeb;
   position: relative;
   min-height: 300px;
 }

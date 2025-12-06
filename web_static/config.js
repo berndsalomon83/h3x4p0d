@@ -1860,7 +1860,7 @@ function updateCameraPosition() {
   camera.position.x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
   camera.position.y = cameraRadius * Math.cos(cameraPhi);
   camera.position.z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-  camera.lookAt(0, 50, 0);
+  camera.lookAt(0, 0, 0);
 }
 
 // Smooth camera transition function
@@ -1908,6 +1908,7 @@ function animateCameraTo(targetTheta, targetPhi, duration = 1500) {
 
 // Scale factor: mm in config → units in 3D scene (roughly 1/3 scale)
 const GEOMETRY_SCALE = 1 / 3;
+const GROUND_Y = -10 * GEOMETRY_SCALE;
 
 // Materials (shared across rebuilds)
 let bodyMaterial, legMaterial, jointMaterial, footMaterial, highlightMaterial;
@@ -1959,14 +1960,14 @@ function rebuildHexapodPreview() {
     scene,
     geometry,
     bodyHeight: scaledBodyHeight,
-    groundY: 0,
+    groundY: GROUND_Y,
     materials: {
       bodyMaterial,
       legMaterial,
       jointMaterial,
       footMaterial
     },
-    defaultPose: Hexapod3D.computeGroundingAngles(scaledBodyHeight, geometry, 0)
+    defaultPose: Hexapod3D.computeGroundingAngles(scaledBodyHeight, geometry, GROUND_Y)
   });
 
   body = hexapodModel.body;
@@ -1994,24 +1995,45 @@ console.log('3D Preview: previewCanvas found:', !!previewCanvas, 'THREE loaded:'
 if (previewCanvas && typeof THREE !== 'undefined') {
   console.log('3D Preview: Initializing...');
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0f18);
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 300, 900);
 
   camera = new THREE.PerspectiveCamera(45, previewCanvas.clientWidth / previewCanvas.clientHeight, 0.1, 1000);
   // Use updateCameraPosition to set initial position matching ISO preset
   updateCameraPosition();
 
   renderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
   renderer.setSize(previewCanvas.clientWidth, previewCanvas.clientHeight);
 
   // Lights
-  const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+  const ambientLight = new THREE.AmbientLight(0xaaaaaa, 0.6);
   scene.add(ambientLight);
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(100, 200, 100);
+  directionalLight.position.set(200, 200, 200);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
+  directionalLight.shadow.camera.far = 500;
+  directionalLight.shadow.camera.left = -200;
+  directionalLight.shadow.camera.right = 200;
+  directionalLight.shadow.camera.top = 200;
+  directionalLight.shadow.camera.bottom = -200;
   scene.add(directionalLight);
 
-  // Ground grid
-  const gridHelper = new THREE.GridHelper(400, 20, 0x1f2c46, 0x0d1727);
+  // Ground plane and subtle grid to match main view
+  const groundGeom = new THREE.PlaneGeometry(800, 600);
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x66aa44 });
+  const ground = new THREE.Mesh(groundGeom, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = GROUND_Y;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  const gridHelper = new THREE.GridHelper(400, 20, 0x444444, 0x222222);
+  gridHelper.position.y = GROUND_Y + 0.1;
+  gridHelper.visible = false;
   scene.add(gridHelper);
 
   // Initialize shared materials
@@ -2095,7 +2117,7 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     // Compute base leg pose angles using IK
     const scaledBodyHeight = bodyHeight * GEOMETRY_SCALE;
     const geom = getScaledGeometry();
-    const poseAngles = Hexapod3D.computeGroundingAngles(scaledBodyHeight, geom, 0);
+    const poseAngles = Hexapod3D.computeGroundingAngles(scaledBodyHeight, geom, GROUND_Y);
 
     // Add idle breathing animation (in radians)
     let femurAngle = poseAngles.femur;
