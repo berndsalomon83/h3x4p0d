@@ -1955,6 +1955,9 @@ function rebuildHexapodPreview() {
 
   const scaledBodyHeight = (state.telemetry.bodyHeight || 80) * GEOMETRY_SCALE;
 
+  console.log('rebuildHexapodPreview: geometry.leg_attach_points =', JSON.stringify(geometry.leg_attach_points));
+  console.log('rebuildHexapodPreview: scaledBodyHeight =', scaledBodyHeight);
+
   hexapodModel = Hexapod3D.buildHexapod({
     THREE,
     scene,
@@ -1973,6 +1976,12 @@ function rebuildHexapodPreview() {
   body = hexapodModel.body;
   legs = hexapodModel.legs;
   groundContactIndicators = hexapodModel.contactIndicators;
+
+  // Debug: log leg positions and joint angles after buildHexapod
+  console.log('rebuildHexapodPreview: leg positions after buildHexapod:');
+  legs.forEach((leg, i) => {
+    console.log(`  Leg ${i}: pos=(${leg.group.position.x.toFixed(2)}, ${leg.group.position.y.toFixed(2)}, ${leg.group.position.z.toFixed(2)}), groupRot.y=${(leg.group.rotation.y * 180 / Math.PI).toFixed(1)}°, femur.x=${(leg.femurJoint.rotation.x * 180 / Math.PI).toFixed(1)}°, tibia.x=${(leg.tibiaJoint.rotation.x * 180 / Math.PI).toFixed(1)}°`);
+  });
 }
 
 // Rebuild body mesh with current geometry
@@ -2089,6 +2098,7 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     };
   }
 
+  let animateLogOnce = true;
   function animate() {
     requestAnimationFrame(animate);
     animationTime += 0.016; // ~60fps
@@ -2118,6 +2128,12 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     const scaledBodyHeight = bodyHeight * GEOMETRY_SCALE;
     const geom = getScaledGeometry();
     const poseAngles = Hexapod3D.computeGroundingAngles(scaledBodyHeight, geom, GROUND_Y);
+
+    if (animateLogOnce) {
+      console.log('animate: scaledBodyHeight=', scaledBodyHeight, 'geom=', geom);
+      console.log('animate: poseAngles.femur=', (poseAngles.femur * 180 / Math.PI).toFixed(1) + '°', 'poseAngles.tibia=', (poseAngles.tibia * 180 / Math.PI).toFixed(1) + '°');
+      animateLogOnce = false;
+    }
 
     // Add idle breathing animation (in radians)
     let femurAngle = poseAngles.femur;
