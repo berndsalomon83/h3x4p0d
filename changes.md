@@ -1,5 +1,11 @@
 # Changelog
 
+## 2025-02-18
+
+### Config Preview Visual Refresh
+
+- Matched the configuration page's right-hand 3D preview to the main controller view with a sky backdrop, lit ground plane, and shadow-ready lighting so both screens share the same presentation. (web_static/config.js, web_static/config.css)
+
 ## 2025-02-13
 
 ### Hexapod Preview Alignment
