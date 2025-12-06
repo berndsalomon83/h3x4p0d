@@ -12,6 +12,25 @@ poetry run python -m hexapod.main # Run web server (localhost:8000)
 poetry run python -m hexapod.test_runner  # Run tests
 ```
 
+### Command-Line API (hexapod-api)
+```bash
+hexapod-api status              # Get current status
+hexapod-api sensors             # Get sensor readings
+hexapod-api run true            # Start walking
+hexapod-api stop                # Emergency stop
+hexapod-api gait wave           # Set gait mode
+hexapod-api config              # Get full configuration
+hexapod-api keys                # List all config keys
+hexapod-api keys leg            # Filter keys containing 'leg'
+hexapod-api get step_height     # Get a specific config value
+hexapod-api set body_height 100 # Set body height
+hexapod-api poses               # List all poses
+hexapod-api apply low_stance    # Apply a pose
+hexapod-api profiles            # List profiles
+hexapod-api profile-switch outdoor  # Switch profile
+hexapod-api --host 192.168.1.10 status  # Remote host
+```
+
 ### Calibration
 ```bash
 poetry run python -c "from hexapod.calibrate import interactive_calibration; interactive_calibration()"
@@ -76,7 +95,42 @@ EOF
 - `ConnectionManager` - WebSocket broadcast
 - FastAPI routes: /api/*, /ws
 
-## REST API
+## CLI API Reference (hexapod-api)
+
+```bash
+# Status & Control
+hexapod-api status              # Get current status
+hexapod-api sensors             # Get sensor readings
+hexapod-api run true/false      # Start/stop walking
+hexapod-api stop                # Emergency stop
+hexapod-api gait <mode>         # Set gait (tripod/wave/ripple/creep)
+hexapod-api gaits               # List available gaits
+
+# Configuration
+hexapod-api config              # Get full configuration
+hexapod-api keys [filter]       # List config keys (optionally filtered)
+hexapod-api get <key>           # Get specific config value
+hexapod-api set <key> <value>   # Set config value
+
+# Poses
+hexapod-api poses               # List all poses
+hexapod-api pose <id>           # Get specific pose
+hexapod-api apply <id>          # Apply a pose
+hexapod-api create-pose <name> [--height N] [--leg-spread N] [--roll N] [--pitch N] [--yaw N]
+hexapod-api record-pose <name>  # Record current position as pose
+hexapod-api delete-pose <id>    # Delete a pose
+
+# Profiles
+hexapod-api profiles            # List profiles
+hexapod-api profile-switch <name>           # Switch to profile
+hexapod-api profile-create <name> [--copy-from X] [--description "..."]
+hexapod-api profile-delete <name>           # Delete profile
+hexapod-api profile-default <name>          # Set default profile
+
+# Options: --host/-H <host>, --port/-p <port>, --compact/-c
+```
+
+## REST API (curl)
 
 ```bash
 # Set gait mode
@@ -276,13 +330,14 @@ Total lines of code: ~2,490
   Config: 3 files (pyproject.toml, calibration, startup script)
 
 Test coverage: 6 unit tests, all passing
-Components: 8 modules
+Components: 9 modules
   - hardware.py (servo & sensor abstraction)
   - gait.py (walking algorithms & IK)
   - controller_bluetooth.py (input handling)
   - web.py (FastAPI server)
   - main.py (entry point)
   - calibrate.py (interactive setup)
+  - cli_api.py (command-line API tool)
   - test_runner.py (validation suite)
   - web_static/ (UI)
 ```

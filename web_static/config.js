@@ -179,8 +179,8 @@ async function loadConfig() {
   } catch (e) {
     // Use demo config for offline mode
     state.config = {
-      body_length: 300,
-      body_width: 200,
+      body_radius: 80,
+      body_height_geo: 30,
       body_height: 120,
       leg_coxa_length: 30,
       leg_femur_length: 50,
@@ -847,9 +847,8 @@ function applyConfigToUI() {
   const c = state.config;
 
   // Geometry sliders
-  setSliderValue('body_height_geo', c.body_height_geo || 50);
-  setSliderValue('body_width', c.body_width || 100);
-  setSliderValue('body_length', c.body_length || 150);
+  setSliderValue('body_height_geo', c.body_height_geo || 30);
+  setSliderValue('body_radius', c.body_radius || 80);
 
   // Leg geometry
   const coxa = c.leg_coxa_length || c.leg0_coxa_length || 30;
@@ -1816,9 +1815,8 @@ function renderWizardInitial() {
 // ========== Default Geometry Configuration ==========
 // Defined here so 3D preview can access it during initialization
 const defaultGeometry = {
-  body_length: 300,
-  body_width: 250,
-  body_height_geo: 50,
+  body_radius: 80,  // Octagonal body radius
+  body_height_geo: 30,  // Thinner body
   body_origin: 'center',
   leg_coxa_length: 40,
   leg_femur_length: 80,
@@ -1826,13 +1824,14 @@ const defaultGeometry = {
   coxa_axis: 'z',
   femur_axis: 'y',
   tibia_axis: 'y',
+  // Spider-like leg arrangement: 6 legs evenly distributed around body
   leg_attach_points: [
-    { leg: 0, name: 'FR', x: 150, y: 120, z: 0, angle: 45 },
-    { leg: 1, name: 'MR', x: 0, y: 150, z: 0, angle: 90 },
-    { leg: 2, name: 'RR', x: -150, y: 120, z: 0, angle: 135 },
-    { leg: 3, name: 'RL', x: -150, y: -120, z: 0, angle: 225 },
-    { leg: 4, name: 'ML', x: 0, y: -150, z: 0, angle: 270 },
-    { leg: 5, name: 'FL', x: 150, y: -120, z: 0, angle: 315 }
+    { leg: 0, name: 'FR', x: 70, y: 40, z: 0, angle: 30 },    // Front right
+    { leg: 1, name: 'MR', x: 80, y: 0, z: 0, angle: 90 },     // Middle right
+    { leg: 2, name: 'RR', x: 70, y: -40, z: 0, angle: 150 },  // Rear right
+    { leg: 3, name: 'RL', x: -70, y: -40, z: 0, angle: 210 }, // Rear left
+    { leg: 4, name: 'ML', x: -80, y: 0, z: 0, angle: 270 },   // Middle left
+    { leg: 5, name: 'FL', x: -70, y: 40, z: 0, angle: 330 }   // Front left
   ],
   frames: [
     { name: 'world', parent: null, position: [0, 0, 0], orientation: [0, 0, 0], fixed: true },
@@ -1937,8 +1936,7 @@ function rebuildHexapodPreview() {
   }
 
   const geometry = {
-    body_length: getGeometryValue('body_length') * GEOMETRY_SCALE,
-    body_width: getGeometryValue('body_width') * GEOMETRY_SCALE,
+    body_radius: getGeometryValue('body_radius') * GEOMETRY_SCALE,
     body_height_geo: getGeometryValue('body_height_geo') * GEOMETRY_SCALE,
     leg_coxa_length: getGeometryValue('leg_coxa_length') * GEOMETRY_SCALE,
     leg_femur_length: getGeometryValue('leg_femur_length') * GEOMETRY_SCALE,
@@ -1954,11 +1952,13 @@ function rebuildHexapodPreview() {
     })
   };
 
+  const scaledBodyHeight = (state.telemetry.bodyHeight || 80) * GEOMETRY_SCALE;
+
   hexapodModel = Hexapod3D.buildHexapod({
     THREE,
     scene,
     geometry,
-    bodyHeight: state.telemetry.bodyHeight || 80,
+    bodyHeight: scaledBodyHeight,
     groundY: 0,
     materials: {
       bodyMaterial,
@@ -1966,7 +1966,7 @@ function rebuildHexapodPreview() {
       jointMaterial,
       footMaterial
     },
-    defaultPose: Hexapod3D.computeGroundingAngles(state.telemetry.bodyHeight || 80, geometry, 0)
+    defaultPose: Hexapod3D.computeGroundingAngles(scaledBodyHeight, geometry, 0)
   });
 
   body = hexapodModel.body;
@@ -2058,43 +2058,13 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   // Animation loop
   let animationTime = 0;
 
-  // Calculate leg angles for natural spider-like poses
-  // Uses direct mapping based on body height for predictable visual results
-  function calculateLegAngles(attachHeight, legIndex, bodyYaw, legSpread) {
-    const attachPoint = getLegAttachPoint(legIndex);
-    const baseAngle = attachPoint.angle * Math.PI / 180;
-    const spreadFactor = (legSpread || 100) / 100;
-
-    // Coxa angle: base angle + counter-rotation for yaw + spread adjustment
-    const coxaBase = 90 + (baseAngle * 180 / Math.PI);
-    const coxaYawCompensation = -bodyYaw;
-    const coxaSpreadAdjust = (spreadFactor - 1) * 15;
-    const coxa = coxaBase + coxaYawCompensation + coxaSpreadAdjust;
-
-    // Map body height to leg angles for natural spider pose
-    const standHeight = 80 * GEOMETRY_SCALE;   // Standing body height (~26.7 units)
-    const crouchHeight = 40 * GEOMETRY_SCALE;  // Crouching body height (~13.3 units)
-
-    // Calculate normalized height (1 = standing, 0 = crouching)
-    const heightRatio = Math.max(0, Math.min(1,
-      (attachHeight - crouchHeight) / (standHeight - crouchHeight)
-    ));
-
-    // Femur angle (degrees below horizontal, 0=horizontal, 90=vertical down)
-    // Stand: ~55° below horizontal (legs point mostly down with slight outward angle)
-    // Crouch: ~35° below horizontal (legs spread more horizontally)
-    const femurStand = 55 - (spreadFactor - 1) * 10;
-    const femurCrouch = 35 - (spreadFactor - 1) * 5;
-    const femur = femurCrouch + (femurStand - femurCrouch) * heightRatio;
-
-    // Tibia angle (knee bend, 0=straight, negative=bent backward)
-    // Stand: very mild bend (~-15°) - tibia points mostly vertical toward ground
-    // Crouch: moderate bend (~-55°) - knee bends but tibia still points downward
-    const tibiaStand = -15;
-    const tibiaCrouch = -55;
-    const tibia = tibiaCrouch + (tibiaStand - tibiaCrouch) * heightRatio;
-
-    return { coxa, femur, tibia };
+  // Get geometry for IK calculations (in scene units, already scaled)
+  function getScaledGeometry() {
+    return {
+      leg_coxa_length: getGeometryValue('leg_coxa_length') * GEOMETRY_SCALE,
+      leg_femur_length: getGeometryValue('leg_femur_length') * GEOMETRY_SCALE,
+      leg_tibia_length: getGeometryValue('leg_tibia_length') * GEOMETRY_SCALE
+    };
   }
 
   function animate() {
@@ -2105,7 +2075,6 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     const bodyRollDeg = state.telemetry.roll || 0;
     const bodyPitchDeg = state.telemetry.pitch || 0;
     const bodyYawDeg = state.telemetry.yaw || 0;
-    const legSpread = state.telemetry.legSpread || 100;
 
     const bodyRoll = bodyRollDeg * Math.PI / 180;
     const bodyPitch = bodyPitchDeg * Math.PI / 180;
@@ -2117,96 +2086,35 @@ if (previewCanvas && typeof THREE !== 'undefined') {
       idleBreath = Math.sin(animationTime * 1.5) * 3;
     }
 
-    // Update body pose
+    // Update body pose (position is set by buildHexapod, we only update y for height changes)
     body.position.y = bodyHeight * GEOMETRY_SCALE;
     body.rotation.x = bodyPitch;
     body.rotation.z = bodyRoll;
     body.rotation.y = bodyYaw;
 
-    // Update each leg
+    // Compute base leg pose angles using IK
+    const scaledBodyHeight = bodyHeight * GEOMETRY_SCALE;
+    const geom = getScaledGeometry();
+    const poseAngles = Hexapod3D.computeGroundingAngles(scaledBodyHeight, geom, 0);
+
+    // Add idle breathing animation (in radians)
+    let femurAngle = poseAngles.femur;
+    let tibiaAngle = poseAngles.tibia;
+    if (!state.connected && !state.testActionActive) {
+      const breathRad = idleBreath * Math.PI / 180;
+      femurAngle += breathRad;
+      tibiaAngle -= breathRad * 0.5;
+    }
+
+    // Update each leg - only joint rotations, positions are set by buildHexapod
     legs.forEach((leg, i) => {
-      const attachPoint = getLegAttachPoint(i);
+      // Update joint rotations (matches app.js and hexapod-3d.js conventions)
+      // Coxa: Y-axis rotation (horizontal/yaw)
+      leg.coxaJoint.rotation.y = 0;  // Keep coxa neutral for preview
 
-      // Base attachment position (relative to body center, in scaled units)
-      const baseX = attachPoint.y * GEOMETRY_SCALE;
-      const baseZ = attachPoint.x * GEOMETRY_SCALE;
-      const baseY = attachPoint.z * GEOMETRY_SCALE;
-
-      // Transform attachment point by body rotation
-      // Yaw rotation (around Y axis)
-      const yawCos = Math.cos(bodyYaw);
-      const yawSin = Math.sin(bodyYaw);
-      const afterYawX = baseX * yawCos - baseZ * yawSin;
-      const afterYawZ = baseX * yawSin + baseZ * yawCos;
-
-      // Pitch rotation (around X axis) - affects Y and Z
-      const pitchCos = Math.cos(bodyPitch);
-      const pitchSin = Math.sin(bodyPitch);
-      const afterPitchY = baseY * pitchCos - afterYawZ * pitchSin;
-      const afterPitchZ = baseY * pitchSin + afterYawZ * pitchCos;
-
-      // Roll rotation (around Z axis) - affects X and Y
-      const rollCos = Math.cos(bodyRoll);
-      const rollSin = Math.sin(bodyRoll);
-      const finalX = afterYawX * rollCos - afterPitchY * rollSin;
-      const finalY = afterYawX * rollSin + afterPitchY * rollCos;
-
-      // Position leg at transformed attachment point
-      leg.group.position.set(finalX, bodyHeight * GEOMETRY_SCALE + finalY, afterPitchZ);
-
-      // Calculate the effective height of this attachment point above ground
-      const attachHeightAboveGround = leg.group.position.y;
-
-      // Calculate leg angles for visualization using local IK
-      // Always calculate locally - this gives accurate preview of what pose SHOULD look like
-      // (Backend angles are raw servo positions, not ideal for visualization)
-      let angles = calculateLegAngles(
-        attachHeightAboveGround,
-        i,
-        bodyYawDeg,
-        legSpread
-      );
-
-      // Override with highlight angles if set (used by Highlight All feature)
-      if (state.highlightOverrides && state.highlightOverrides[i]) {
-        const override = state.highlightOverrides[i];
-        if (override.coxa !== undefined) angles.coxa = override.coxa;
-        if (override.femur !== undefined) angles.femur = override.femur;
-        if (override.tibia !== undefined) angles.tibia = override.tibia;
-      }
-
-      // Add idle breathing animation only when not in test mode
-      if (!state.connected && !state.testActionActive) {
-        angles.femur += idleBreath;
-        angles.tibia -= idleBreath * 0.5;
-      }
-
-      // Lift leg during swing phase (walking simulation)
-      if (walkSimulation && !state.footContacts[i]) {
-        // Leg in swing - lift and tuck to clear ground
-        angles.femur -= 15;  // Raise femur slightly (more horizontal)
-        angles.tibia -= 20;  // Bend knee more to tuck foot
-      }
-
-      // Leg group rotation to match attachment angle (points leg outward)
-      // Subtract 90° because leg mesh points along +X, and angle=0° should point forward (+Z)
-      const legAngle = (attachPoint.angle - 90) * Math.PI / 180;
-      leg.group.rotation.y = legAngle + bodyYaw;
-
-      // Update joint rotations
-      // Coxa: horizontal rotation relative to leg's base direction
-      const coxaOffset = angles.coxa - 90 - (attachPoint.angle || 0);
-      leg.coxaJoint.rotation.y = coxaOffset * Math.PI / 180;
-
-      // Femur: rotation around Z axis (up/down movement)
-      // Positive rotation tilts femur outward, negative tilts inward
-      const femurRotation = (90 - angles.femur) * Math.PI / 180;
-      leg.femurJoint.rotation.z = femurRotation;
-
-      // Tibia: rotation around Z axis relative to femur
-      // Negative tibia angle = knee bent backward → positive rotation
-      const tibiaRotation = -angles.tibia * Math.PI / 180;
-      leg.tibiaJoint.rotation.z = tibiaRotation;
+      // Femur & Tibia: X-axis rotation - angles from computeGroundingAngles are in radians
+      leg.femurJoint.rotation.x = femurAngle;
+      leg.tibiaJoint.rotation.x = tibiaAngle;
 
       // Update foot color based on contact
       if (leg.foot.material) {
@@ -3252,11 +3160,10 @@ function updateSummaryCards() {
   const c = state.config;
 
   // Geometry card
-  const bodyLength = c.body_length || 300;
-  const bodyWidth = c.body_width || 200;
+  const bodyRadius = c.body_radius || 80;
   const summaryGeometry = document.getElementById('summaryGeometry');
   if (summaryGeometry) {
-    summaryGeometry.textContent = `${bodyLength} x ${bodyWidth}mm`;
+    summaryGeometry.textContent = `R${bodyRadius}mm (octagonal)`;
   }
   const summaryGeometryMeta = document.getElementById('summaryGeometryMeta');
   if (summaryGeometryMeta) {
@@ -3455,8 +3362,7 @@ document.getElementById('btnImportProfile')?.addEventListener('click', () => {
 // Initialize geometry from config or defaults
 function initGeometrySection() {
   // Body dimension sliders with specific value elements
-  setupGeometrySlider('bodyLength', 'bodyLengthValue', 'body_length', 'mm');
-  setupGeometrySlider('bodyWidth', 'bodyWidthValue', 'body_width', 'mm');
+  setupGeometrySlider('bodyRadius', 'bodyRadiusValue', 'body_radius', 'mm');
   setupGeometrySlider('bodyHeightGeo', 'bodyHeightGeoValue', 'body_height_geo', 'mm');
 
   // Leg segment sliders
@@ -3843,9 +3749,8 @@ function addNewFrame(name) {
 }
 
 function resetGeometryToDefaults() {
-  // Reset body dimensions
-  setSliderAndSave('bodyLength', 'bodyLengthValue', defaultGeometry.body_length, 'mm', 'body_length');
-  setSliderAndSave('bodyWidth', 'bodyWidthValue', defaultGeometry.body_width, 'mm', 'body_width');
+  // Reset body dimensions (octagonal body uses radius)
+  setSliderAndSave('bodyRadius', 'bodyRadiusValue', defaultGeometry.body_radius, 'mm', 'body_radius');
   setSliderAndSave('bodyHeightGeo', 'bodyHeightGeoValue', defaultGeometry.body_height_geo, 'mm', 'body_height_geo');
 
   // Reset leg segments
@@ -3893,8 +3798,8 @@ function updateGeometryPreview(configKey, value) {
   // Update the 3D preview based on geometry changes
   if (!scene) return;
 
-  // Body dimension changes require rebuilding the body mesh
-  if (configKey === 'body_length' || configKey === 'body_width' || configKey === 'body_height_geo') {
+  // Body dimension changes require rebuilding the body mesh (octagonal body uses radius)
+  if (configKey === 'body_radius' || configKey === 'body_height_geo') {
     rebuildBodyMesh();
     logEvent('DEBUG', `Body geometry updated: ${configKey} = ${value}`);
   }

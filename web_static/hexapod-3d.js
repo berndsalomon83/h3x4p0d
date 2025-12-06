@@ -1,18 +1,19 @@
 (function(global) {
   const DEFAULT_GEOMETRY = {
-    body_length: 300,
-    body_width: 250,
-    body_height_geo: 50,
+    body_radius: 80,  // Octagonal body radius
+    body_height_geo: 30,  // Thinner body
     leg_coxa_length: 40,
     leg_femur_length: 80,
     leg_tibia_length: 100,
+    // Spider-like leg arrangement: 6 legs evenly distributed around body
+    // Front pair angled forward, middle pair sideways, rear pair angled back
     leg_attach_points: [
-      { x: 150, y: 120, z: 0, angle: 45 },
-      { x: 0, y: 150, z: 0, angle: 90 },
-      { x: -150, y: 120, z: 0, angle: 135 },
-      { x: -150, y: -120, z: 0, angle: 225 },
-      { x: 0, y: -150, z: 0, angle: 270 },
-      { x: 150, y: -120, z: 0, angle: 315 }
+      { x: 70, y: 40, z: 0, angle: 30 },    // Front right
+      { x: 80, y: 0, z: 0, angle: 90 },     // Middle right
+      { x: 70, y: -40, z: 0, angle: 150 },  // Rear right
+      { x: -70, y: -40, z: 0, angle: 210 }, // Rear left
+      { x: -80, y: 0, z: 0, angle: 270 },   // Middle left
+      { x: -70, y: 40, z: 0, angle: 330 }   // Front left
     ]
   };
 
@@ -49,11 +50,10 @@
   }
 
   function createBody(THREE, geometry, materials, bodyHeight) {
-    const bodyGeometry = new THREE.BoxGeometry(
-      geometry.body_width,
-      geometry.body_height_geo,
-      geometry.body_length
-    );
+    // Create octagonal body using CylinderGeometry with 8 segments
+    const radius = geometry.body_radius || 80;
+    const height = geometry.body_height_geo || 30;
+    const bodyGeometry = new THREE.CylinderGeometry(radius, radius, height, 8);
     const bodyMesh = new THREE.Mesh(bodyGeometry, materials.bodyMaterial);
     bodyMesh.position.y = bodyHeight;
     bodyMesh.castShadow = true;

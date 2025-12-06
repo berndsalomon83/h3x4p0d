@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hexapod Configuration</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <link rel="stylesheet" href="config.css">
+  <link rel="stylesheet" href="/static/config.css">
 </head>
 <body>
   <!-- ===== HEADER ===== -->
@@ -229,24 +229,17 @@
           <div class="form-row">
             <div class="slider-group">
               <div class="slider-header">
-                <span class="slider-label">Body Length</span>
-                <span class="slider-value" id="bodyLengthValue">300 mm</span>
+                <span class="slider-label">Body Radius (Octagonal)</span>
+                <span class="slider-value" id="bodyRadiusValue">80 mm</span>
               </div>
-              <input type="range" class="slider" id="bodyLength" data-config="body_length" min="150" max="500" value="300">
+              <input type="range" class="slider" id="bodyRadius" data-config="body_radius" min="40" max="150" value="80">
             </div>
             <div class="slider-group">
               <div class="slider-header">
-                <span class="slider-label">Body Width</span>
-                <span class="slider-value" id="bodyWidthValue">250 mm</span>
+                <span class="slider-label">Body Thickness</span>
+                <span class="slider-value" id="bodyHeightGeoValue">30 mm</span>
               </div>
-              <input type="range" class="slider" id="bodyWidth" data-config="body_width" min="100" max="400" value="250">
-            </div>
-            <div class="slider-group">
-              <div class="slider-header">
-                <span class="slider-label">Body Height</span>
-                <span class="slider-value" id="bodyHeightGeoValue">50 mm</span>
-              </div>
-              <input type="range" class="slider" id="bodyHeightGeo" data-config="body_height_geo" min="20" max="100" value="50">
+              <input type="range" class="slider" id="bodyHeightGeo" data-config="body_height_geo" min="15" max="80" value="30">
             </div>
           </div>
           <div class="form-group" style="margin-top: 16px;">
@@ -1859,7 +1852,7 @@
 
   <!-- ===== SCRIPTS ===== -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
-  <script src="hexapod-3d.js"></script>
-  <script src="config.js"></script>
+  <script src="/static/hexapod-3d.js"></script>
+  <script src="/static/config.js"></script>
 </body>
 </html>

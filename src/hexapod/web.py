@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 from .hardware import MockServoController, SensorReader, ServoController
 from .gait import GaitEngine
 from .controller_bluetooth import GenericController, MotionCommand
+from .calibrate import load_existing_calibration, save_calibration
 
 try:
     _HAS_I2C = True
@@ -1140,6 +1141,75 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             return {"ok": True, "leg": leg, "joint": joint, "angle": angle}
         except Exception as e:
             logger.error(f"Servo test failed: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    # ========== Calibration Endpoints ==========
+
+    @app.get("/api/calibration")
+    async def get_calibration():
+        """Get servo calibration data."""
+        cal_file = Path.home() / ".hexapod_calibration.json"
+        calibration = load_existing_calibration()
+
+        # Determine if running on hardware
+        is_hardware = not isinstance(servo_ctrl, MockServoController)
+
+        # File metadata
+        metadata = {
+            "path": str(cal_file),
+            "exists": cal_file.exists(),
+            "size": cal_file.stat().st_size if cal_file.exists() else None
+        }
+
+        # Coverage analysis
+        mapped_keys = list(calibration.keys())
+        all_keys = [f"{leg},{joint}" for leg in range(6) for joint in range(3)]
+        unmapped = [k for k in all_keys if k not in calibration]
+        legs_configured = len(set(k.split(",")[0] for k in mapped_keys))
+        used_channels = set(calibration.values())
+        available_channels = [ch for ch in range(16) if ch not in used_channels]
+
+        coverage = {
+            "mapped": len(mapped_keys),
+            "legs_configured": legs_configured,
+            "available_channels": available_channels,
+            "unmapped": unmapped
+        }
+
+        return {
+            "calibration": calibration,
+            "hardware": is_hardware,
+            "metadata": metadata,
+            "coverage": coverage
+        }
+
+    @app.post("/api/calibration")
+    async def update_calibration(request: Request):
+        """Update servo calibration mappings."""
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        calibration = body.get("calibration")
+        if calibration is None:
+            return JSONResponse({"error": "Missing calibration data"}, status_code=400)
+
+        try:
+            save_calibration(calibration)
+            return {"ok": True, "saved": len(calibration)}
+        except Exception as e:
+            logger.error(f"Failed to save calibration: {e}")
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/api/calibration/save")
+    async def save_calibration_to_disk():
+        """Save current calibration to disk (alias for POST /api/calibration)."""
+        calibration = load_existing_calibration()
+        try:
+            save_calibration(calibration)
+            return {"ok": True, "saved": len(calibration)}
+        except Exception as e:
+            logger.error(f"Failed to save calibration: {e}")
             return JSONResponse({"error": str(e)}, status_code=500)
 
     @app.get("/api/bluetooth/scan")

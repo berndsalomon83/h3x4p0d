@@ -180,6 +180,70 @@ def cmd_set(args):
         sys.exit(1)
 
 
+def cmd_get(args):
+    """Get a specific configuration value."""
+    result = get("/api/config", args.host, args.port)
+    if "error" in result:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+    key = args.key
+    if key in result:
+        value = result[key]
+        if args.compact:
+            print(json.dumps(value) if isinstance(value, (dict, list)) else value)
+        else:
+            print(f"{key} = {json.dumps(value, indent=2) if isinstance(value, (dict, list)) else value}")
+    else:
+        # Try partial match
+        matches = [k for k in result.keys() if key.lower() in k.lower()]
+        if matches:
+            print(f"Key '{key}' not found. Did you mean one of these?")
+            for m in sorted(matches)[:10]:
+                print(f"  {m}")
+        else:
+            print(f"Key '{key}' not found")
+        sys.exit(1)
+
+
+def cmd_keys(args):
+    """List all available configuration keys."""
+    result = get("/api/config", args.host, args.port)
+    if "error" in result:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+    # Filter keys if pattern provided
+    keys = sorted(result.keys())
+    if args.filter:
+        keys = [k for k in keys if args.filter.lower() in k.lower()]
+
+    if args.compact:
+        for key in keys:
+            print(key)
+    else:
+        # Group keys by prefix
+        groups = {}
+        for key in keys:
+            # Skip complex nested objects for grouping
+            if isinstance(result[key], dict):
+                groups.setdefault("objects", []).append(key)
+            else:
+                prefix = key.split("_")[0] if "_" in key else "other"
+                groups.setdefault(prefix, []).append(key)
+
+        for group, group_keys in sorted(groups.items()):
+            print(f"\n{group.upper()}:")
+            for key in group_keys:
+                value = result[key]
+                if isinstance(value, dict):
+                    print(f"  {key}: <object>")
+                elif isinstance(value, list):
+                    print(f"  {key}: <list[{len(value)}]>")
+                else:
+                    print(f"  {key}: {value}")
+
+
 def cmd_profiles(args):
     """List profiles."""
     result = get("/api/profiles", args.host, args.port)
@@ -255,6 +319,51 @@ def cmd_record_pose(args):
         sys.exit(1)
 
 
+def cmd_profile_switch(args):
+    """Switch to a profile."""
+    result = post("/api/profiles", {"action": "switch", "name": args.name}, args.host, args.port)
+    if result.get("ok"):
+        print(f"Switched to profile: {args.name}")
+    else:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+
+def cmd_profile_create(args):
+    """Create a new profile."""
+    data = {"action": "create", "name": args.name}
+    if args.copy_from:
+        data["copyFrom"] = args.copy_from
+    if args.description:
+        data["description"] = args.description
+    result = post("/api/profiles", data, args.host, args.port)
+    if result.get("ok"):
+        print(f"Created profile: {result.get('name', args.name)}")
+    else:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+
+def cmd_profile_delete(args):
+    """Delete a profile."""
+    result = post("/api/profiles", {"action": "delete", "name": args.name}, args.host, args.port)
+    if result.get("ok"):
+        print(f"Deleted profile: {args.name}")
+    else:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+
+def cmd_profile_set_default(args):
+    """Set default profile."""
+    result = post("/api/profiles", {"action": "set-default", "name": args.name}, args.host, args.port)
+    if result.get("ok"):
+        print(f"Default profile set to: {args.name}")
+    else:
+        print(f"Error: {result.get('error', 'Unknown error')}")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="CLI tool for hexapod API",
@@ -271,8 +380,17 @@ Examples:
   %(prog)s run false                 Stop walking
   %(prog)s stop                      Emergency stop
   %(prog)s config                    Get full configuration
+  %(prog)s keys                      List all config keys
+  %(prog)s keys leg                  List config keys containing 'leg'
+  %(prog)s get step_height           Get a specific config value
   %(prog)s set body_height 100       Set body height to 100mm
+  %(prog)s set step_length 50        Set step length to 50mm
+  %(prog)s set keep_body_level true  Enable body leveling
   %(prog)s profiles                  List configuration profiles
+  %(prog)s profile-switch outdoor    Switch to 'outdoor' profile
+  %(prog)s profile-create myprofile  Create a new profile
+  %(prog)s profile-delete myprofile  Delete a profile
+  %(prog)s profile-default outdoor   Set default profile
   %(prog)s gaits                     List available gaits
   %(prog)s create-pose "My Pose"     Create a new pose
   %(prog)s delete-pose my_pose       Delete a pose
@@ -332,6 +450,16 @@ Examples:
     sub.add_argument("value", help="Value to set")
     sub.set_defaults(func=cmd_set)
 
+    # Get
+    sub = subparsers.add_parser("get", help="Get a specific configuration value")
+    sub.add_argument("key", help="Configuration key")
+    sub.set_defaults(func=cmd_get)
+
+    # Keys
+    sub = subparsers.add_parser("keys", help="List all configuration keys")
+    sub.add_argument("filter", nargs="?", help="Filter keys containing this string")
+    sub.set_defaults(func=cmd_keys)
+
     # Profiles
     sub = subparsers.add_parser("profiles", help="List profiles")
     sub.set_defaults(func=cmd_profiles)
@@ -361,6 +489,28 @@ Examples:
     sub.add_argument("name", help="Pose name")
     sub.add_argument("--category", "-cat", default="operation", help="Category (operation/rest/debug)")
     sub.set_defaults(func=cmd_record_pose)
+
+    # Profile switch
+    sub = subparsers.add_parser("profile-switch", help="Switch to a profile")
+    sub.add_argument("name", help="Profile name")
+    sub.set_defaults(func=cmd_profile_switch)
+
+    # Profile create
+    sub = subparsers.add_parser("profile-create", help="Create a new profile")
+    sub.add_argument("name", help="Profile name")
+    sub.add_argument("--copy-from", dest="copy_from", help="Copy settings from existing profile")
+    sub.add_argument("--description", "-d", help="Profile description")
+    sub.set_defaults(func=cmd_profile_create)
+
+    # Profile delete
+    sub = subparsers.add_parser("profile-delete", help="Delete a profile")
+    sub.add_argument("name", help="Profile name")
+    sub.set_defaults(func=cmd_profile_delete)
+
+    # Profile set-default
+    sub = subparsers.add_parser("profile-default", help="Set default profile")
+    sub.add_argument("name", help="Profile name")
+    sub.set_defaults(func=cmd_profile_set_default)
 
     args = parser.parse_args()
 

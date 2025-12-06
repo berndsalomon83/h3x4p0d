@@ -99,13 +99,14 @@
   
   // Hexapod preview configuration shared with the configuration UI
   let defaultBodyY = 80;
+  // Spider-like leg arrangement: 6 legs evenly distributed around body
   const ATTACH_POINTS = [
-    { x: 150, y: 120, z: 0, angle: 45 },
-    { x: 0, y: 150, z: 0, angle: 90 },
-    { x: -150, y: 120, z: 0, angle: 135 },
-    { x: -150, y: -120, z: 0, angle: 225 },
-    { x: 0, y: -150, z: 0, angle: 270 },
-    { x: 150, y: -120, z: 0, angle: 315 }
+    { x: 70, y: 40, z: 0, angle: 30 },    // Front right
+    { x: 80, y: 0, z: 0, angle: 90 },     // Middle right
+    { x: 70, y: -40, z: 0, angle: 150 },  // Rear right
+    { x: -70, y: -40, z: 0, angle: 210 }, // Rear left
+    { x: -80, y: 0, z: 0, angle: 270 },   // Middle left
+    { x: -70, y: 40, z: 0, angle: 330 }   // Front left
   ];
 
   const DEFAULT_LEG_CONFIG = {
@@ -634,9 +635,8 @@
     }
 
     const geometry = {
-      body_length: 300,
-      body_width: 250,
-      body_height_geo: 50,
+      body_radius: 80,  // Octagonal body radius
+      body_height_geo: 30,  // Thinner body
       leg_coxa_length: legConfigs[0].coxaLength,
       leg_femur_length: legConfigs[0].femurLength,
       leg_tibia_length: legConfigs[0].tibiaLength,
@@ -3130,14 +3130,56 @@
     iso: { angleY: Math.PI * 0.75, angleX: Math.PI / 6 }
   };
 
+  // Smooth camera transition function
+  let cameraTransition = null;
+  function animateCameraTo(targetAngleY, targetAngleX, duration = 800) {
+    // Cancel any existing transition
+    if (cameraTransition) {
+      cancelAnimationFrame(cameraTransition.frameId);
+    }
+
+    const startAngleY = cameraAngleY;
+    const startAngleX = cameraAngleX;
+    const startTime = Date.now();
+
+    // Normalize angle difference for shortest path
+    let deltaAngleY = targetAngleY - startAngleY;
+    if (deltaAngleY > Math.PI) deltaAngleY -= 2 * Math.PI;
+    if (deltaAngleY < -Math.PI) deltaAngleY += 2 * Math.PI;
+
+    function step() {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Ease-out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      cameraAngleY = startAngleY + deltaAngleY * eased;
+      cameraAngleX = startAngleX + (targetAngleX - startAngleX) * eased;
+
+      updateCameraPosition();
+
+      if (progress < 1) {
+        cameraTransition = { frameId: requestAnimationFrame(step) };
+      } else {
+        cameraTransition = null;
+        // Ensure we end exactly at target
+        cameraAngleY = targetAngleY;
+        cameraAngleX = targetAngleX;
+        updateCameraPosition();
+      }
+    }
+
+    cameraTransition = { frameId: requestAnimationFrame(step) };
+  }
+
   document.querySelectorAll('.camera-preset-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view;
       const preset = cameraPresets[view];
       if (preset) {
-        cameraAngleY = preset.angleY;
-        cameraAngleX = preset.angleX;
-        updateCameraPosition();
+        // Use smooth animation instead of instant transition
+        animateCameraTo(preset.angleY, preset.angleX);
 
         // Update active state
         document.querySelectorAll('.camera-preset-btn').forEach(b => b.classList.remove('active'));

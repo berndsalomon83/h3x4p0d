@@ -130,6 +130,57 @@ poetry run python -m hexapod.main
 
 Then access the web UI from any device on your network.
 
+Command-Line API Tool
+=====================
+
+The `hexapod-api` CLI provides full control over the robot from the terminal:
+
+### Basic Usage
+```bash
+hexapod-api status              # Get current status
+hexapod-api sensors             # Get sensor readings
+hexapod-api run true            # Start walking
+hexapod-api run false           # Stop walking
+hexapod-api stop                # Emergency stop
+hexapod-api gait wave           # Set gait mode
+```
+
+### Configuration
+```bash
+hexapod-api config              # Get full configuration
+hexapod-api keys                # List all config keys (grouped)
+hexapod-api keys leg            # Filter keys containing 'leg'
+hexapod-api get step_height     # Get a specific value
+hexapod-api set body_height 100 # Set body height to 100mm
+hexapod-api set step_length 50  # Set step length
+hexapod-api set cycle_time 1.5  # Set gait cycle time
+```
+
+### Poses
+```bash
+hexapod-api poses               # List all poses
+hexapod-api pose low_stance     # Get specific pose details
+hexapod-api apply low_stance    # Apply a pose
+hexapod-api create-pose "My Pose" --height 100 --leg-spread 110
+hexapod-api record-pose "Current"  # Record current position as pose
+hexapod-api delete-pose my_pose    # Delete a pose
+```
+
+### Profiles
+```bash
+hexapod-api profiles            # List profiles
+hexapod-api profile-switch outdoor     # Switch to profile
+hexapod-api profile-create myprofile   # Create new profile
+hexapod-api profile-create myprofile --copy-from outdoor
+hexapod-api profile-delete myprofile   # Delete a profile
+hexapod-api profile-default outdoor    # Set default profile
+```
+
+### Options
+- `--host / -H` - API host (default: localhost)
+- `--port / -p` - API port (default: 8000)
+- `--compact / -c` - Compact JSON output (for scripting)
+
 Controller Input
 ================
 
@@ -185,6 +236,7 @@ hexapod/
 │   ├── web.py                  # Main FastAPI server + WebSocket
 │   ├── calibrate_web.py        # Web-based servo calibration server
 │   ├── calibrate.py            # CLI servo calibration (legacy)
+│   ├── cli_api.py              # Command-line API tool (hexapod-api)
 │   └── test_runner.py          # Legacy test entry point (pytest preferred)
 ├── web_static/
 │   ├── index.html              # Main web UI (3D simulator and controls)
