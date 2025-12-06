@@ -1,5 +1,11 @@
 # Changelog
 
+## 2025-02-13
+
+### Hexapod Preview Alignment
+
+- Added a shared `hexapod-3d.js` helper so the controller and configuration pages render the same boxy body and spider-like legs with working ground contact rings. (web_static/hexapod-3d.js, web_static/index.html, web_static/config.html, web_static/app.js, web_static/config.js)
+
 ## 2025-12-14
 
 ### Configuration Page Documentation

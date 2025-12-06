@@ -1845,6 +1845,8 @@ const defaultGeometry = {
 
 // ========== 3D Preview ==========
 let scene, camera, renderer, body, legs = [];
+let hexapodModel;
+let groundContactIndicators = [];
 let cameraRadius = 400;
 let cameraTheta = Math.PI / 4;
 let cameraPhi = Math.PI / 4;
@@ -1927,131 +1929,63 @@ function getLegAttachPoint(legIndex) {
   };
 }
 
-// Rebuild body mesh with current geometry
-function rebuildBodyMesh() {
+function rebuildHexapodPreview() {
   if (!scene || !bodyMaterial) return;
 
-  // Remove old body
-  if (body) {
-    scene.remove(body);
-    body.geometry.dispose();
+  if (hexapodModel) {
+    hexapodModel.dispose();
   }
 
-  // Get dimensions from config (scaled)
-  const bodyLength = getGeometryValue('body_length') * GEOMETRY_SCALE;
-  const bodyWidth = getGeometryValue('body_width') * GEOMETRY_SCALE;
-  const bodyHeight = getGeometryValue('body_height_geo') * GEOMETRY_SCALE;
+  const geometry = {
+    body_length: getGeometryValue('body_length') * GEOMETRY_SCALE,
+    body_width: getGeometryValue('body_width') * GEOMETRY_SCALE,
+    body_height_geo: getGeometryValue('body_height_geo') * GEOMETRY_SCALE,
+    leg_coxa_length: getGeometryValue('leg_coxa_length') * GEOMETRY_SCALE,
+    leg_femur_length: getGeometryValue('leg_femur_length') * GEOMETRY_SCALE,
+    leg_tibia_length: getGeometryValue('leg_tibia_length') * GEOMETRY_SCALE,
+    leg_attach_points: defaultGeometry.leg_attach_points.map((pt, idx) => {
+      const attach = getLegAttachPoint(idx);
+      return {
+        x: attach.x * GEOMETRY_SCALE,
+        y: attach.y * GEOMETRY_SCALE,
+        z: attach.z * GEOMETRY_SCALE,
+        angle: attach.angle
+      };
+    })
+  };
 
-  // Create new body: BoxGeometry(width, height, depth) maps to (x, y, z)
-  // body_width → x (left-right), body_height_geo → y (thickness), body_length → z (front-back)
-  const bodyGeometry = new THREE.BoxGeometry(bodyWidth, bodyHeight, bodyLength);
-  body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-  body.position.y = state.telemetry.bodyHeight || 80;
-  scene.add(body);
+  hexapodModel = Hexapod3D.buildHexapod({
+    THREE,
+    scene,
+    geometry,
+    bodyHeight: state.telemetry.bodyHeight || 80,
+    groundY: 0,
+    materials: {
+      bodyMaterial,
+      legMaterial,
+      jointMaterial,
+      footMaterial
+    },
+    defaultPose: Hexapod3D.computeGroundingAngles(state.telemetry.bodyHeight || 80, geometry, 0)
+  });
+
+  body = hexapodModel.body;
+  legs = hexapodModel.legs;
+  groundContactIndicators = hexapodModel.contactIndicators;
 }
 
-// Create a single leg with proper segment lengths
-function createLeg(legIndex) {
-  const coxaLen = getGeometryValue('leg_coxa_length') * GEOMETRY_SCALE;
-  const femurLen = getGeometryValue('leg_femur_length') * GEOMETRY_SCALE;
-  const tibiaLen = getGeometryValue('leg_tibia_length') * GEOMETRY_SCALE;
-  const attachPoint = getLegAttachPoint(legIndex);
-
-  const legGroup = new THREE.Group();
-
-  // Coxa joint
-  const coxaJoint = new THREE.Group();
-  const coxa = new THREE.Mesh(
-    new THREE.CylinderGeometry(4, 4, coxaLen, 8),
-    legMaterial
-  );
-  coxa.rotation.z = Math.PI / 2;
-  coxa.position.x = coxaLen / 2;
-  coxaJoint.add(coxa);
-
-  // Femur joint
-  const femurJoint = new THREE.Group();
-  femurJoint.position.x = coxaLen;
-  const femur = new THREE.Mesh(
-    new THREE.CylinderGeometry(3, 3, femurLen, 8),
-    legMaterial
-  );
-  femur.position.y = -femurLen / 2;
-  femurJoint.add(femur);
-  const femurBall = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), jointMaterial);
-  femurJoint.add(femurBall);
-
-  // Tibia joint
-  const tibiaJoint = new THREE.Group();
-  tibiaJoint.position.y = -femurLen;
-  const tibia = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.5, 2.5, tibiaLen, 8),
-    legMaterial
-  );
-  tibia.position.y = -tibiaLen / 2;
-  tibiaJoint.add(tibia);
-  const tibiaBall = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), jointMaterial);
-  tibiaJoint.add(tibiaBall);
-
-  // Foot
-  const foot = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), footMaterial.clone());
-  foot.position.y = -tibiaLen;
-  tibiaJoint.add(foot);
-
-  // Build hierarchy
-  femurJoint.add(tibiaJoint);
-  coxaJoint.add(femurJoint);
-  legGroup.add(coxaJoint);
-
-  // Position leg at attach point (config x→3D z, config y→3D x)
-  const posX = attachPoint.y * GEOMETRY_SCALE;
-  const posZ = attachPoint.x * GEOMETRY_SCALE;
-  const posY = (state.telemetry.bodyHeight || 80) + (attachPoint.z * GEOMETRY_SCALE);
-  legGroup.position.set(posX, posY, posZ);
-  // Leg mesh points along +X; subtract 90° so angle=0° points forward (+Z)
-  legGroup.rotation.y = ((attachPoint.angle - 90) * Math.PI) / 180;
-
-  return {
-    group: legGroup,
-    coxaJoint, femurJoint, tibiaJoint, foot,
-    // Store mesh references for highlighting
-    coxaMesh: coxa, femurMesh: femur, tibiaMesh: tibia
-  };
+// Rebuild body mesh with current geometry
+function rebuildBodyMesh() {
+  rebuildHexapodPreview();
 }
 
 // Rebuild all legs with current geometry
 function rebuildLegs() {
-  if (!scene || !legMaterial) return;
-
-  // Remove old legs
-  legs.forEach(leg => {
-    scene.remove(leg.group);
-    // Dispose geometries recursively
-    leg.group.traverse(child => {
-      if (child.geometry) child.geometry.dispose();
-    });
-  });
-  legs = [];
-
-  // Create 6 new legs
-  for (let i = 0; i < 6; i++) {
-    const leg = createLeg(i);
-    scene.add(leg.group);
-    legs.push(leg);
-  }
+  rebuildHexapodPreview();
 }
 
-// Update leg positions without full rebuild (for attach point changes)
 function updateLegPositions() {
-  legs.forEach((leg, i) => {
-    const attachPoint = getLegAttachPoint(i);
-    const posX = attachPoint.y * GEOMETRY_SCALE;
-    const posZ = attachPoint.x * GEOMETRY_SCALE;
-    const posY = (state.telemetry.bodyHeight || 80) + (attachPoint.z * GEOMETRY_SCALE);
-    leg.group.position.set(posX, posY, posZ);
-    // Subtract 90° because leg mesh points along +X, and angle=0° should point forward (+Z)
-    leg.group.rotation.y = ((attachPoint.angle - 90) * Math.PI) / 180;
-  });
+  rebuildHexapodPreview();
 }
 
 const previewCanvas = document.getElementById('previewCanvas');
