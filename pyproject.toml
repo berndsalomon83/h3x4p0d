@@ -26,6 +26,7 @@ ruff = "^0.6.2"
 
 [tool.poetry.scripts]
 hexapod-calibrate = "hexapod.calibrate_web:main"
+hexapod-api = "hexapod.cli_api:main"
 
 [tool.poetry.extras]
 pi = ["pigpio", "RPi.GPIO"]
