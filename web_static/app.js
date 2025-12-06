@@ -97,31 +97,25 @@
   gridHelper.visible = false;
   scene.add(gridHelper);
   
-  // Hexapod body - ellipsoid (stretched sphere) for realistic proportions
-  let defaultBodyY = 80; // Higher off ground for realistic leg extension (adjustable)
-  const bodyGeom = new THREE.SphereGeometry(50, 32, 32); // Sphere base
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0x333333,
-    metalness: 0.4,
-    roughness: 0.6
-  });
-  const body = new THREE.Mesh(bodyGeom, bodyMat);
-  body.scale.set(1.0, 0.3, 1.2); // Ellipsoid: compressed height, stretched length
-  body.position.y = defaultBodyY;
-  body.castShadow = true;
-  body.receiveShadow = true;
-  scene.add(body);
+  // Hexapod preview configuration shared with the configuration UI
+  let defaultBodyY = 80;
+  const ATTACH_POINTS = [
+    { x: 150, y: 120, z: 0, angle: 45 },
+    { x: 0, y: 150, z: 0, angle: 90 },
+    { x: -150, y: 120, z: 0, angle: 135 },
+    { x: -150, y: -120, z: 0, angle: 225 },
+    { x: 0, y: -150, z: 0, angle: 270 },
+    { x: 150, y: -120, z: 0, angle: 315 }
+  ];
 
-  // Leg dimensions loaded from backend API (in mm)
-  // Default values used until backend config is fetched
   const DEFAULT_LEG_CONFIG = {
-    coxaLength: 15,
-    femurLength: 50,
-    tibiaLength: 55,
-    coxaRadius: 4,
-    femurRadius: 4,
-    tibiaRadius: 3.5,
-    jointRadius: 5,
+    coxaLength: 40,
+    femurLength: 80,
+    tibiaLength: 100,
+    coxaRadius: 3,
+    femurRadius: 3,
+    tibiaRadius: 2.5,
+    jointRadius: 4,
     footRadius: 4
   };
 
@@ -611,158 +605,69 @@
   // Frontend no longer calculates IK - all leg angles come from backend telemetry
   // This ensures the visualization accurately mirrors the real hexapod state
 
-  // Leg objects: store references for animation with proper hierarchy
-  const legs = [];
-  // Position legs closer to body surface (ellipsoid with radii: x=50, z=60)
-  // Each position is calculated to be at or near the body surface
-  const legPositions = [
-    [40, 35],    // leg 0: front-right (at body surface)
-    [0, 50],     // leg 1: mid-right (at body surface)
-    [-40, 35],   // leg 2: rear-right (at body surface)
-    [-40, -35],  // leg 3: rear-left (at body surface)
-    [0, -50],    // leg 4: mid-left (at body surface)
-    [40, -35],   // leg 5: front-left (at body surface)
-  ];
-
-  // Interpolation targets for smooth animation
   const legTargets = [];
   const groundContactStates = Array(6).fill(true);
-
-  // Track manual control for each leg (timestamp of last manual adjustment)
   const manualControlTimestamps = Array(6).fill(-Infinity);
   const MANUAL_CONTROL_TIMEOUT = 5000; // 5 seconds in milliseconds
 
-  for(let i = 0; i < 6; i++){
-    const legGroup = new THREE.Group();
+  const materialOverrides = {
+    bodyMaterial: new THREE.MeshLambertMaterial({ color: 0x2d3b5a }),
+    legMaterial: new THREE.MeshLambertMaterial({ color: 0x44dd88 }),
+    jointMaterial: new THREE.MeshLambertMaterial({ color: 0x666666 }),
+    footMaterial: new THREE.MeshLambertMaterial({ color: 0x333333 }),
+    contactMaterial: new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide
+    })
+  };
 
-    // Determine if this is a right-side leg (positive Z) or left-side leg (negative Z)
-    const isRightSide = legPositions[i][1] > 0;
+  let hexapodModel;
+  let body;
+  let legs = [];
+  let groundContactIndicators = [];
 
-    // Use this leg's specific config
-    const legConfig = legConfigs[i];
+  function rebuildHexapodModel() {
+    if (hexapodModel) {
+      hexapodModel.dispose();
+    }
 
-    // Coxa joint and segment (base rotation)
-    const coxaJoint = new THREE.Group();
-    const coxaGeom = new THREE.CapsuleGeometry(legConfig.coxaRadius, legConfig.coxaLength, 4, 8);
-    const coxaMat = new THREE.MeshStandardMaterial({
-      color: 0xaa6633,
-      metalness: 0.4,
-      roughness: 0.6
-    });
-    const coxaMesh = new THREE.Mesh(coxaGeom, coxaMat);
-    // Orient coxa to point outward from body (along local Z after leg group rotation)
-    coxaMesh.rotation.x = Math.PI / 2;
-    // Position coxa to start at origin (attach to body) and extend outward
-    coxaMesh.position.z = legConfig.coxaLength / 2;
-    coxaMesh.castShadow = true;
-    coxaMesh.receiveShadow = true;
-    coxaJoint.add(coxaMesh);
+    const geometry = {
+      body_length: 300,
+      body_width: 250,
+      body_height_geo: 50,
+      leg_coxa_length: legConfigs[0].coxaLength,
+      leg_femur_length: legConfigs[0].femurLength,
+      leg_tibia_length: legConfigs[0].tibiaLength,
+      leg_attach_points: ATTACH_POINTS
+    };
 
-    // Joint sphere at coxa end
-    const coxaJointSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(legConfig.jointRadius, 8, 8),
-      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
-    );
-    coxaJointSphere.position.z = legConfig.coxaLength;
-    coxaJointSphere.castShadow = true;
-    coxaJoint.add(coxaJointSphere);
-
-    // Femur joint and segment (attach to end of coxa)
-    const femurJoint = new THREE.Group();
-    femurJoint.position.z = legConfig.coxaLength; // Position at end of coxa (Z direction now)
-
-    const femurGeom = new THREE.CapsuleGeometry(legConfig.femurRadius, legConfig.femurLength, 4, 8);
-    const femurMat = new THREE.MeshStandardMaterial({
-      color: 0xbb88ff,
-      metalness: 0.3,
-      roughness: 0.7
-    });
-    const femurMesh = new THREE.Mesh(femurGeom, femurMat);
-    femurMesh.position.y = -legConfig.femurLength / 2;
-    femurMesh.castShadow = true;
-    femurMesh.receiveShadow = true;
-    femurJoint.add(femurMesh);
-
-    // Joint sphere at femur end
-    const femurJointSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(legConfig.jointRadius, 8, 8),
-      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
-    );
-    femurJointSphere.position.y = -legConfig.femurLength;
-    femurJointSphere.castShadow = true;
-    femurJoint.add(femurJointSphere);
-
-    // Tibia joint and segment (attach to end of femur)
-    const tibiaJoint = new THREE.Group();
-    tibiaJoint.position.y = -legConfig.femurLength; // Position at end of femur
-
-    const tibiaGeom = new THREE.CapsuleGeometry(legConfig.tibiaRadius, legConfig.tibiaLength, 4, 8);
-    const tibiaMat = new THREE.MeshStandardMaterial({
-      color: 0x44dd88,
-      metalness: 0.3,
-      roughness: 0.7
-    });
-    const tibiaMesh = new THREE.Mesh(tibiaGeom, tibiaMat);
-    tibiaMesh.position.y = -legConfig.tibiaLength / 2;
-    tibiaMesh.castShadow = true;
-    tibiaMesh.receiveShadow = true;
-    tibiaJoint.add(tibiaMesh);
-
-    // Foot tip
-    const footGeom = new THREE.SphereGeometry(legConfig.footRadius, 8, 8);
-    const footMat = new THREE.MeshStandardMaterial({
-      color: 0x333333,
-      metalness: 0.8,
-      roughness: 0.3
-    });
-    const footMesh = new THREE.Mesh(footGeom, footMat);
-    footMesh.position.y = -legConfig.tibiaLength;
-    footMesh.castShadow = true;
-    tibiaJoint.add(footMesh);
-
-    // Set a default visual pose before backend telemetry arrives
-    // Backend will immediately send correct IK-calculated angles
-    femurJoint.rotation.x = DEFAULT_VISUAL_POSE.femur;
-    tibiaJoint.rotation.x = DEFAULT_VISUAL_POSE.tibia;
-
-    // Build hierarchy: tibia -> femur -> coxa -> leg group
-    femurJoint.add(tibiaJoint);
-    coxaJoint.add(femurJoint);
-    legGroup.add(coxaJoint);
-
-    // Position leg around body
-    legGroup.position.x = legPositions[i][0];
-    legGroup.position.z = legPositions[i][1];
-    legGroup.position.y = defaultBodyY;
-
-    // Orient leg to point outward from body center
-    // Calculate angle from body center to leg position
-    // Use PI/2 - angle so that local +Z points radially (rotation.x bends in radial plane)
-    let angle = Math.atan2(legPositions[i][1], legPositions[i][0]);
-    legGroup.rotation.y = Math.PI / 2 - angle;
-
-    // Keep femur/tibia bending in vertical plane (no outward tilt)
-    // The legs already point outward due to legGroup.rotation.y
-    femurJoint.rotation.z = 0;
-
-    scene.add(legGroup);
-    legs.push({
-      group: legGroup,
-      coxaJoint: coxaJoint,
-      femurJoint: femurJoint,
-      tibiaJoint: tibiaJoint,
-      isRightSide: isRightSide
+    hexapodModel = Hexapod3D.buildHexapod({
+      THREE,
+      scene,
+      geometry,
+      bodyHeight: defaultBodyY,
+      groundY: GROUND_Y,
+      materials: materialOverrides,
+      defaultPose: Hexapod3D.computeGroundingAngles(defaultBodyY, geometry, GROUND_Y)
     });
 
-    // Initialize interpolation targets to default visual pose
-    // Backend telemetry will immediately provide correct IK-calculated angles
-    legTargets.push({
-      coxa: DEFAULT_VISUAL_POSE.coxa,
-      femur: DEFAULT_VISUAL_POSE.femur,
-      tibia: DEFAULT_VISUAL_POSE.tibia
-    });
+    body = hexapodModel.body;
+    legs = hexapodModel.legs;
+    groundContactIndicators = hexapodModel.contactIndicators;
 
+    legTargets.length = 0;
+    for (let i = 0; i < legs.length; i++) {
+      legTargets.push({
+        coxa: DEFAULT_VISUAL_POSE.coxa,
+        femur: legs[i].femurJoint.rotation.x,
+        tibia: legs[i].tibiaJoint.rotation.x
+      });
+    }
   }
+
+  rebuildHexapodModel();
 
   // UI controls
   const runBtn = document.getElementById('run');
@@ -1497,9 +1402,6 @@
   // Mini preview scenes for each leg
   const legPreviews = [];
 
-  // Ground contact indicators for each leg
-  const groundContactIndicators = [];
-
   // Settings values
   let settingsValues = {
     smoothing: 0.2,
@@ -1933,16 +1835,6 @@
         });
       }
 
-      // Create ground contact indicator for this leg
-      const contactIndicator = new THREE.Mesh(
-        new THREE.RingGeometry(8, 12, 16),
-        new THREE.MeshBasicMaterial({color: 0x00ff00, transparent: true, opacity: 0.6, side: THREE.DoubleSide})
-      );
-      contactIndicator.rotation.x = -Math.PI / 2;
-      contactIndicator.position.y = -9;
-      contactIndicator.visible = false;
-      scene.add(contactIndicator);
-      groundContactIndicators.push(contactIndicator);
     }
   }
 
@@ -2003,8 +1895,8 @@
       saveConfigToBackend({[backendKey]: value});
     }
 
-    // Rebuild only the affected leg
-    rebuildLeg(legIndex);
+    // Rebuild with shared geometry so the preview stays in sync
+    rebuildHexapodModel();
     applyDefaultVisualPose();
 
     logMsg(`Updated leg ${legIndex} ${part} length to ${value}mm`);
@@ -2018,109 +1910,12 @@
       [`leg${legIndex}_femur_length`]: config.femurLength,
       [`leg${legIndex}_tibia_length`]: config.tibiaLength
     });
-    rebuildLeg(legIndex);
+    rebuildHexapodModel();
     applyDefaultVisualPose();
   }
 
-  // Rebuild a specific leg with new dimensions
-  function rebuildLeg(legIndex) {
-    const oldLeg = legs[legIndex];
-    const legPos = legPositions[legIndex];
-
-    // Remove old leg from scene
-    scene.remove(oldLeg.group);
-
-    // Create new leg with updated dimensions
-    const legGroup = new THREE.Group();
-    const isRightSide = legPos[1] > 0;
-
-    // Coxa
-    const coxaJoint = new THREE.Group();
-    const legCfg = legConfigs[legIndex] || DEFAULT_LEG_CONFIG;
-    const coxaGeom = new THREE.CapsuleGeometry(legCfg.coxaRadius, legCfg.coxaLength, 4, 8);
-    const coxaMat = new THREE.MeshStandardMaterial({color: 0xaa6633, metalness: 0.4, roughness: 0.6});
-    const coxaMesh = new THREE.Mesh(coxaGeom, coxaMat);
-    coxaMesh.rotation.x = Math.PI / 2;
-    coxaMesh.position.z = legCfg.coxaLength / 2;
-    coxaMesh.castShadow = true;
-    coxaMesh.receiveShadow = true;
-    coxaJoint.add(coxaMesh);
-
-    const coxaJointSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(legCfg.jointRadius, 8, 8),
-      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
-    );
-    coxaJointSphere.position.z = legCfg.coxaLength;
-    coxaJointSphere.castShadow = true;
-    coxaJoint.add(coxaJointSphere);
-
-    // Femur
-    const femurJoint = new THREE.Group();
-    femurJoint.position.z = legCfg.coxaLength;
-    const femurGeom = new THREE.CapsuleGeometry(legCfg.femurRadius, legCfg.femurLength, 4, 8);
-    const femurMat = new THREE.MeshStandardMaterial({color: 0xbb88ff, metalness: 0.3, roughness: 0.7});
-    const femurMesh = new THREE.Mesh(femurGeom, femurMat);
-    femurMesh.position.y = -legCfg.femurLength / 2;
-    femurMesh.castShadow = true;
-    femurMesh.receiveShadow = true;
-    femurJoint.add(femurMesh);
-
-    const femurJointSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(legCfg.jointRadius, 8, 8),
-      new THREE.MeshStandardMaterial({color: 0x666666, metalness: 0.6, roughness: 0.4})
-    );
-    femurJointSphere.position.y = -legCfg.femurLength;
-    femurJointSphere.castShadow = true;
-    femurJoint.add(femurJointSphere);
-
-    // Tibia
-    const tibiaJoint = new THREE.Group();
-    tibiaJoint.position.y = -legCfg.femurLength;
-    const tibiaGeom = new THREE.CapsuleGeometry(legCfg.tibiaRadius, legCfg.tibiaLength, 4, 8);
-    const tibiaMat = new THREE.MeshStandardMaterial({color: 0x44dd88, metalness: 0.3, roughness: 0.7});
-    const tibiaMesh = new THREE.Mesh(tibiaGeom, tibiaMat);
-    tibiaMesh.position.y = -legCfg.tibiaLength / 2;
-    tibiaMesh.castShadow = true;
-    tibiaMesh.receiveShadow = true;
-    tibiaJoint.add(tibiaMesh);
-
-    const footGeom = new THREE.SphereGeometry(legCfg.footRadius, 8, 8);
-    const footMat = new THREE.MeshStandardMaterial({color: 0x333333, metalness: 0.8, roughness: 0.3});
-    const footMesh = new THREE.Mesh(footGeom, footMat);
-    footMesh.position.y = -legCfg.tibiaLength;
-    footMesh.castShadow = true;
-    tibiaJoint.add(footMesh);
-
-    // Build hierarchy
-    femurJoint.add(tibiaJoint);
-    coxaJoint.add(femurJoint);
-    legGroup.add(coxaJoint);
-
-    // Position and orient
-    legGroup.position.x = legPos[0];
-    legGroup.position.z = legPos[1];
-    legGroup.position.y = defaultBodyY;
-    let angle = Math.atan2(legPos[1], legPos[0]);
-    legGroup.rotation.y = Math.PI / 2 - angle;
-
-    // Keep femur/tibia bending in vertical plane
-    femurJoint.rotation.z = 0;
-
-    // Restore rotation state
-    coxaJoint.rotation.y = oldLeg.coxaJoint.rotation.y;
-    femurJoint.rotation.x = oldLeg.femurJoint.rotation.x;
-    tibiaJoint.rotation.x = oldLeg.tibiaJoint.rotation.x;
-
-    scene.add(legGroup);
-
-    // Update legs array
-    legs[legIndex] = {
-      group: legGroup,
-      coxaJoint: coxaJoint,
-      femurJoint: femurJoint,
-      tibiaJoint: tibiaJoint,
-      isRightSide: isRightSide
-    };
+  function rebuildLeg() {
+    rebuildHexapodModel();
   }
 
   // Initialize leg previews
@@ -2178,8 +1973,8 @@
     // Coxa
     const coxaJoint = new THREE.Group();
     const coxaMesh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(legCfg.coxaRadius, legCfg.coxaLength, 4, 8),
-      new THREE.MeshStandardMaterial({color: 0xaa6633, metalness: 0.4, roughness: 0.6})
+      new THREE.CylinderGeometry(legCfg.coxaRadius, legCfg.coxaRadius, legCfg.coxaLength, 12),
+      new THREE.MeshLambertMaterial({color: 0x44dd88})
     );
     coxaMesh.rotation.x = Math.PI / 2;
     coxaMesh.position.z = legCfg.coxaLength / 2;
@@ -2189,8 +1984,8 @@
     const femurJoint = new THREE.Group();
     femurJoint.position.z = legCfg.coxaLength;
     const femurMesh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(legCfg.femurRadius, legCfg.femurLength, 4, 8),
-      new THREE.MeshStandardMaterial({color: 0xbb88ff, metalness: 0.3, roughness: 0.7})
+      new THREE.CylinderGeometry(legCfg.femurRadius, legCfg.femurRadius, legCfg.femurLength, 12),
+      new THREE.MeshLambertMaterial({color: 0x44dd88})
     );
     femurMesh.position.y = -legCfg.femurLength / 2;
     femurJoint.add(femurMesh);
@@ -2200,8 +1995,8 @@
     const tibiaJoint = new THREE.Group();
     tibiaJoint.position.y = -legCfg.femurLength;
     const tibiaMesh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(legCfg.tibiaRadius, legCfg.tibiaLength, 4, 8),
-      new THREE.MeshStandardMaterial({color: 0x44dd88, metalness: 0.3, roughness: 0.7})
+      new THREE.CylinderGeometry(legCfg.tibiaRadius, legCfg.tibiaRadius, legCfg.tibiaLength, 12),
+      new THREE.MeshLambertMaterial({color: 0x44dd88})
     );
     tibiaMesh.position.y = -legCfg.tibiaLength / 2;
     tibiaJoint.add(tibiaMesh);
