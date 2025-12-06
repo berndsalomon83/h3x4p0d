@@ -1,5 +1,13 @@
 # Changelog
 
+## 2025-12-12
+
+### Controller Input Test Coverage
+
+- Added async keyboard fallback test coverage to validate move, gait, stop, and quit commands emit correctly without physical gamepads. (tests/test_controller.py)
+- Simulated a bleak discovery session to ensure BLE scanner callbacks store device metadata and return discovered devices. (tests/test_controller.py)
+- Adjusted the keyboard fallback loop to honor the spacebar stop command instead of stripping it away before processing. (src/hexapod/controller_bluetooth.py)
+
 ## 2025-02-07
 
 ### Frontend Configuration Wiring

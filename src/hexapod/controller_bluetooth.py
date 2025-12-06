@@ -115,7 +115,7 @@ class GenericController:
                 line = await loop.run_in_executor(None, input, ">")
             except Exception:
                 break
-            line = line.strip().lower()
+            line = line.lower()
             if line == "q":
                 self._emit(MotionCommand("quit"))
                 self.running = False
