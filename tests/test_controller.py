@@ -1,11 +1,14 @@
 """Unit tests for controller and Bluetooth input handling."""
+import asyncio
 import pytest
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import hexapod.controller_bluetooth as controller_bluetooth
 from hexapod.controller_bluetooth import MotionCommand, GenericController, BLEDeviceScanner
 
 
@@ -218,6 +221,64 @@ class TestBLEDeviceScanner:
 
         # Good callback should still be called
         assert len(received) == 1
+
+
+@pytest.mark.asyncio
+class TestGenericControllerKeyboardFallback:
+    """Tests for the GenericController keyboard fallback loop."""
+
+    async def test_keyboard_loop_emits_commands(self, monkeypatch):
+        """Keyboard loop should emit move, gait, stop, and quit commands."""
+        controller = GenericController()
+        emitted = []
+
+        controller.on_event(lambda cmd: emitted.append(cmd))
+
+        commands = iter(["w", "2", " ", "q"])
+
+        def fake_input(prompt: str = ""):
+            _ = prompt
+            try:
+                return next(commands)
+            except StopIteration:
+                raise EOFError
+
+        monkeypatch.setattr("builtins.input", fake_input)
+
+        await controller._keyboard_loop()
+
+        assert [cmd.type for cmd in emitted] == ["move", "gait", "stop", "quit"]
+        assert emitted[0].data == {"x": 0, "y": 1.0}
+        assert emitted[1].data == {"mode": "wave"}
+        assert controller.running is False
+
+
+@pytest.mark.asyncio
+class TestBLEDeviceScannerScan:
+    """Tests for BLEDeviceScanner.scan behavior when bleak is available."""
+
+    async def test_scan_collects_and_emits_devices(self, monkeypatch):
+        """Scanner should store devices and emit callbacks using Bleak results."""
+        scanner = BLEDeviceScanner()
+        received = []
+        scanner.on_device(lambda info: received.append(info))
+
+        async def fake_discover(timeout: float, return_adv: bool):
+            _ = timeout
+            _ = return_adv
+            device = SimpleNamespace(name="Demo Device")
+            advertisement = SimpleNamespace(rssi=-42)
+            return {"AA:BB:CC:DD:EE:FF": (device, advertisement)}
+
+        monkeypatch.setattr(controller_bluetooth, "_HAS_BLEAK", True)
+        monkeypatch.setattr(controller_bluetooth, "BleakScanner", SimpleNamespace(discover=fake_discover))
+
+        devices = await scanner.scan(timeout=0.1)
+
+        assert len(devices) == 1
+        assert scanner.devices["AA:BB:CC:DD:EE:FF"]["name"] == "Demo Device"
+        assert scanner.devices["AA:BB:CC:DD:EE:FF"]["rssi"] == -42
+        assert received[0]["address"] == "AA:BB:CC:DD:EE:FF"
 
     def test_scan_without_bleak(self):
         """Test scan gracefully handles missing bleak library."""
