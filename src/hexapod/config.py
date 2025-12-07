@@ -168,9 +168,14 @@ class HexapodConfig:
                 "enabled": True,
                 "position": "front",
                 "source_type": "local",
-                "source_url": ""
+                "source_url": "",
+                "hardware_camera_id": "",
+                "display_mode": "pane"
             }
         ],
+
+        # Hardware cameras (detected or manually configured)
+        "hardware_cameras": [],
 
         # Safety limits
         "safety_max_translation_speed": 0.3,  # m/s

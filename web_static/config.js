@@ -154,46 +154,54 @@ function deleteConfigFromStorage(profileName) {
 
 // ========== API Functions ==========
 async function loadConfig() {
-  // First try localStorage for the current profile
+  // Load from localStorage first (for quick initial render)
   const savedConfig = loadConfigFromStorage(state.currentProfile);
   if (savedConfig) {
     state.config = savedConfig;
     applyConfigToUI();
     updatePreview();
     updateSummaryCards();
-    logEvent('INFO', `Loaded config for "${state.currentProfile}" from localStorage`);
-    return;
   }
 
-  // Then try the server
+  // Always try to fetch from server to get new keys/defaults
   try {
     const response = await fetch('/api/config');
     if (response.ok) {
-      state.config = await response.json();
+      const serverConfig = await response.json();
+      // Merge: server defaults first, then localStorage overrides, then server values
+      // This ensures new backend keys are added while preserving user changes
+      state.config = { ...serverConfig, ...savedConfig, ...serverConfig };
+      // But prefer localStorage for user-edited values (camera_views, hardware_cameras, etc)
+      if (savedConfig) {
+        if (savedConfig.camera_views) state.config.camera_views = savedConfig.camera_views;
+        if (savedConfig.hardware_cameras) state.config.hardware_cameras = savedConfig.hardware_cameras;
+      }
       applyConfigToUI();
       updatePreview();
       updateSummaryCards();
-      saveConfigToStorage(state.currentProfile, state.config); // Cache it
-      logEvent('INFO', 'Configuration loaded from server');
+      saveConfigToStorage(state.currentProfile, state.config); // Update cache with merged config
+      logEvent('INFO', savedConfig ? 'Configuration synced with server' : 'Configuration loaded from server');
     }
   } catch (e) {
-    // Use demo config for offline mode
-    state.config = {
-      body_radius: 80,
-      body_height_geo: 30,
-      body_height: 120,
-      leg_coxa_length: 30,
-      leg_femur_length: 50,
-      leg_tibia_length: 80,
-      step_length: 60,
-      step_height: 30,
-      cycle_time: 1.2,
-      servo_type: 'DS3218'
-    };
-    applyConfigToUI();
-    updateSummaryCards();
-    saveConfigToStorage(state.currentProfile, state.config); // Save default config
-    logEvent('WARN', 'Using demo config (offline mode)');
+    if (!savedConfig) {
+      // Use demo config for offline mode only if no localStorage
+      state.config = {
+        body_radius: 80,
+        body_height_geo: 30,
+        body_height: 120,
+        leg_coxa_length: 30,
+        leg_femur_length: 50,
+        leg_tibia_length: 80,
+        step_length: 60,
+        step_height: 30,
+        cycle_time: 1.2,
+        servo_type: 'DS3218'
+      };
+      applyConfigToUI();
+      updateSummaryCards();
+      saveConfigToStorage(state.currentProfile, state.config); // Save default config
+      logEvent('WARN', 'Using demo config (offline mode)');
+    }
   }
 }
 
@@ -419,47 +427,12 @@ async function handleProfileAction(action, profileName) {
       break;
 
     case 'duplicate':
-      const newName = prompt('Enter name for the new profile:', profileName + '_copy');
-      if (newName && newName.trim()) {
-        const trimmedName = newName.trim().toLowerCase().replace(/\s+/g, '_');
-        if (state.profiles.includes(trimmedName) || state.profilesData[trimmedName]) {
-          alert('A profile with this name already exists.');
-          return;
-        }
-        // Create new profile with copied data
-        state.profiles.push(trimmedName);
-        state.profilesData[trimmedName] = {
-          name: trimmedName,
-          description: `Copy of ${profileName}`,
-          lastModified: new Date().toISOString(),
-          isDefault: false
-        };
-
-        // Copy the config from source profile
-        const sourceConfig = loadConfigFromStorage(profileName) || state.config;
-        saveConfigToStorage(trimmedName, { ...sourceConfig });
-
-        // Save profiles to localStorage
-        saveProfilesToStorage();
-
-        // Try to save to backend too
-        try {
-          await fetch('/api/profiles', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'create',
-              name: trimmedName,
-              copyFrom: profileName
-            })
-          });
-        } catch (e) {
-          console.log('Backend profile save failed, continuing locally');
-        }
-        updateProfileSelector();
-        renderProfileTable();
-        logEvent('INFO', `Profile duplicated: ${trimmedName}`);
-      }
+      showProfileModal({
+        mode: 'duplicate',
+        existingName: profileName + '_copy',
+        existingDescription: `Copy of ${profileName}`,
+        copyFrom: profileName
+      });
       break;
 
     case 'delete':
@@ -1044,11 +1017,17 @@ document.querySelectorAll('.config-toggle').forEach(toggle => {
   });
 });
 
-// Config inputs (with data-config-key) - debounced
+// Config inputs (with data-config-key) - debounced with validation
 document.querySelectorAll('.config-input').forEach(input => {
   input.addEventListener('input', () => {
     clearTimeout(input._saveTimeout);
+
+    // Validate the input
+    const isValid = validateConfigInput(input);
+
     input._saveTimeout = setTimeout(() => {
+      if (!isValid) return; // Don't save invalid values
+
       const key = input.dataset.configKey;
       if (key) {
         const update = {};
@@ -1056,10 +1035,111 @@ document.querySelectorAll('.config-input').forEach(input => {
         const val = input.value;
         update[key] = isNaN(val) || val === '' ? val : parseFloat(val);
         saveConfig(update);
+        // Show success feedback briefly
+        showInputFeedback(input, 'success');
       }
     }, 500);
   });
 });
+
+// Validate config input and show feedback
+function validateConfigInput(input) {
+  const key = input.dataset.configKey;
+  const val = input.value;
+  let isValid = true;
+  let errorMsg = '';
+
+  // Define validation rules for specific keys
+  const validationRules = {
+    imu_sample_rate: { min: 10, max: 500, msg: 'Sample rate must be 10-500 Hz' },
+    imu_roll_offset: { min: -180, max: 180, msg: 'Offset must be -180° to 180°' },
+    imu_pitch_offset: { min: -180, max: 180, msg: 'Offset must be -180° to 180°' },
+    imu_yaw_offset: { min: -180, max: 180, msg: 'Offset must be -180° to 180°' },
+    foot_sensor_threshold: { min: 50, max: 500, msg: 'Threshold must be 50-500 mA' }
+  };
+
+  // Check if we have validation rules for this key
+  if (validationRules[key]) {
+    const rule = validationRules[key];
+    const numVal = parseFloat(val);
+
+    if (isNaN(numVal)) {
+      isValid = false;
+      errorMsg = 'Please enter a valid number';
+    } else if (numVal < rule.min || numVal > rule.max) {
+      isValid = false;
+      errorMsg = rule.msg;
+    }
+  }
+
+  // Also check HTML5 min/max attributes
+  if (input.type === 'number') {
+    const numVal = parseFloat(val);
+    const min = input.hasAttribute('min') ? parseFloat(input.min) : null;
+    const max = input.hasAttribute('max') ? parseFloat(input.max) : null;
+
+    if (min !== null && numVal < min) {
+      isValid = false;
+      errorMsg = errorMsg || `Value must be at least ${min}`;
+    }
+    if (max !== null && numVal > max) {
+      isValid = false;
+      errorMsg = errorMsg || `Value must be at most ${max}`;
+    }
+  }
+
+  // Apply visual feedback
+  if (!isValid) {
+    showInputFeedback(input, 'error', errorMsg);
+  } else {
+    clearInputFeedback(input);
+  }
+
+  return isValid;
+}
+
+// Show visual feedback on input
+function showInputFeedback(input, type, message) {
+  clearInputFeedback(input);
+
+  if (type === 'error') {
+    input.style.borderColor = 'var(--danger)';
+    input.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.2)';
+
+    // Add error message tooltip
+    if (message) {
+      const tooltip = document.createElement('div');
+      tooltip.className = 'input-error-tooltip';
+      tooltip.textContent = message;
+      tooltip.style.cssText = `
+        position: absolute;
+        background: var(--danger);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        white-space: nowrap;
+        z-index: 1000;
+        margin-top: 2px;
+      `;
+      input.parentElement.style.position = 'relative';
+      input.parentElement.appendChild(tooltip);
+    }
+  } else if (type === 'success') {
+    input.style.borderColor = 'var(--success)';
+    input.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.2)';
+    // Clear success state after brief delay
+    setTimeout(() => clearInputFeedback(input), 1500);
+  }
+}
+
+// Clear visual feedback from input
+function clearInputFeedback(input) {
+  input.style.borderColor = '';
+  input.style.boxShadow = '';
+  const tooltip = input.parentElement?.querySelector('.input-error-tooltip');
+  if (tooltip) tooltip.remove();
+}
 
 // Control mode radio buttons
 document.querySelectorAll('input[name="controlMode"]').forEach(radio => {
@@ -1929,7 +2009,8 @@ const wizardSteps = [
   { title: 'Save & Finish', instructions: 'Calibration complete! Save your settings to persist them.' }
 ];
 
-document.querySelector('#tab-servo-wizard .btn-primary')?.addEventListener('click', () => {
+// Handler for "Start Calibration Wizard" button in the wizard tab
+document.getElementById('startCalibrationWizardBtn')?.addEventListener('click', () => {
   startCalibrationWizard();
 });
 
@@ -2481,36 +2562,36 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   });
 }
 
-// Preview view buttons with smooth camera transitions
+// Preview view dropdown with smooth camera transitions
+function getCameraViewAngles(view) {
+  switch (view) {
+    case 'front':
+      return { theta: Math.PI / 2, phi: Math.PI / 3 };  // Camera on +Z axis, looking at front of hexapod
+    case 'side':
+      return { theta: 0, phi: Math.PI / 3 };  // Camera on +X axis, looking at right side of hexapod
+    case 'left':
+      return { theta: Math.PI, phi: Math.PI / 3 };  // Camera on -X axis, looking at left side of hexapod
+    case 'right':
+      return { theta: 0, phi: Math.PI / 3 };  // Camera on +X axis, looking at right side of hexapod
+    case 'top':
+      return { theta: 0, phi: 0.05 };  // Nearly straight down
+    default: // iso
+      return { theta: Math.PI / 4, phi: Math.PI / 4 };
+  }
+}
+
+document.getElementById('cameraViewSelect')?.addEventListener('change', (e) => {
+  const { theta, phi } = getCameraViewAngles(e.target.value);
+  animateCameraTo(theta, phi, 1500);
+});
+
+// Also keep button support for backwards compatibility
 document.querySelectorAll('.preview-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
-    const view = btn.dataset.view;
-    let targetTheta, targetPhi;
-
-    switch (view) {
-      case 'front':
-        targetTheta = Math.PI / 2;  // Camera on +Z axis, looking at front of hexapod
-        targetPhi = Math.PI / 3;
-        break;
-      case 'side':
-        targetTheta = 0;  // Camera on +X axis, looking at side of hexapod
-        targetPhi = Math.PI / 3;
-        break;
-      case 'top':
-        targetTheta = 0;
-        targetPhi = 0.05;  // Nearly straight down
-        break;
-      default: // iso
-        targetTheta = Math.PI / 4;
-        targetPhi = Math.PI / 4;
-        break;
-    }
-
-    // Smooth transition over 1.5 seconds
-    animateCameraTo(targetTheta, targetPhi, 1500);
+    const { theta, phi } = getCameraViewAngles(btn.dataset.view);
+    animateCameraTo(theta, phi, 1500);
   });
 });
 
@@ -3269,39 +3350,60 @@ window.deleteLegacyPose = function(index) {
 };
 
 // ========== Self-Test Routines ==========
-document.querySelectorAll('#tab-log-selftest .btn').forEach(btn => {
+document.querySelectorAll('#tab-log-selftest button[data-test]').forEach(btn => {
   btn.addEventListener('click', async () => {
-    const text = btn.textContent.toLowerCase();
+    const testType = btn.dataset.test;
+    if (!testType) return;
+
     btn.disabled = true;
     btn.classList.add('testing');
 
-    if (text.includes('single leg')) {
-      const leg = state.selectedLeg ?? 0;
-      sendCommand('test_leg', { leg });
-      logEvent('INFO', `Testing leg ${leg}`);
-    } else if (text.includes('walk')) {
-      sendCommand('test_walk', { steps: 2 });
-      logEvent('INFO', 'Walking forward 2 steps');
-    } else if (text.includes('symmetry')) {
-      sendCommand('test_symmetry', {});
-      logEvent('INFO', 'Checking symmetry');
-    } else if (text.includes('camera')) {
-      sendCommand('test_camera', {});
-      logEvent('INFO', 'Testing cameras');
-    } else if (text.includes('imu')) {
-      sendCommand('calibrate_imu', {});
-      logEvent('INFO', 'Calibrating IMU');
-    } else if (text.includes('battery')) {
-      sendCommand('check_battery', {});
-      logEvent('INFO', 'Checking battery');
+    // Build command parameters based on test type
+    let params = {};
+    if (testType === 'test_leg') {
+      params = { leg: state.selectedLeg ?? 0 };
+    } else if (testType === 'test_walk') {
+      params = { steps: 2 };
     }
 
+    sendCommand(testType, params);
+    logEvent('INFO', `Starting test: ${testType.replace('_', ' ')}`);
+    addTestResult('INFO', `Started: ${testType.replace('_', ' ')}`);
+
+    // Re-enable button after timeout
     setTimeout(() => {
       btn.disabled = false;
       btn.classList.remove('testing');
-    }, 3000);
+    }, 5000);
   });
 });
+
+// Clear test results button
+document.getElementById('clearTestResults')?.addEventListener('click', () => {
+  const panel = document.getElementById('testResultsLog');
+  if (panel) panel.innerHTML = '';
+});
+
+// Add test result to the test results panel
+function addTestResult(level, message) {
+  const panel = document.getElementById('testResultsLog');
+  if (!panel) return;
+
+  const time = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `
+    <span class="log-time">${time}</span>
+    <span class="log-level ${level.toLowerCase()}">${level}</span>
+    <span class="log-message">${message}</span>
+  `;
+  panel.insertBefore(entry, panel.firstChild);
+
+  // Keep only last 50 entries
+  while (panel.children.length > 50) {
+    panel.removeChild(panel.lastChild);
+  }
+}
 
 // ========== Event Logging ==========
 function logEvent(level, message) {
@@ -3372,10 +3474,42 @@ function updateLiveStatus() {
   if (liveTemp) liveTemp.textContent = t.temperature.toFixed(0) + '°C';
   if (liveBattery) liveBattery.textContent = t.battery.toFixed(1) + 'V';
 
-  // Update sparklines
+  // Update header battery display
+  const headerBattery = document.getElementById('headerBattery');
+  const headerBatteryDot = document.getElementById('headerBatteryDot');
+  if (headerBattery) {
+    headerBattery.textContent = `Battery: ${t.battery.toFixed(1)}V`;
+  }
+  if (headerBatteryDot) {
+    // Set dot color based on battery level (warning < 11V, critical < 10V)
+    if (t.battery < 10) {
+      headerBatteryDot.className = 'status-dot danger';
+    } else if (t.battery < 11) {
+      headerBatteryDot.className = 'status-dot warning';
+    } else {
+      headerBatteryDot.className = 'status-dot connected';
+    }
+  }
+
+  // Update body pose sparklines and values
   updateSparkline('spark-roll', t.roll);
   updateSparkline('spark-pitch', t.pitch);
   updateSparkline('spark-yaw', t.yaw);
+  updateSparklineValue('val-roll', t.roll);
+  updateSparklineValue('val-pitch', t.pitch);
+  updateSparklineValue('val-yaw', t.yaw);
+
+  // Update L0 leg angle sparklines and values (selected or default to leg 0)
+  const leg = state.selectedLeg ?? 0;
+  const angles = state.legAngles[leg];
+  if (angles) {
+    updateSparkline('spark-l0-coxa', angles.coxa);
+    updateSparkline('spark-l0-femur', angles.femur);
+    updateSparkline('spark-l0-tibia', angles.tibia);
+    updateSparklineValue('val-l0-coxa', angles.coxa);
+    updateSparklineValue('val-l0-femur', angles.femur);
+    updateSparklineValue('val-l0-tibia', angles.tibia);
+  }
 
   // Update foot contact indicators
   const footIndicators = document.querySelectorAll('[data-foot]');
@@ -3384,6 +3518,19 @@ function updateLiveStatus() {
       el.style.background = state.footContacts[i] ? 'var(--success)' : 'var(--danger)';
     }
   });
+
+  // Record telemetry if session recording is active
+  if (typeof recordTelemetrySample === 'function') {
+    recordTelemetrySample();
+  }
+}
+
+// Update sparkline value display
+function updateSparklineValue(id, value) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = (typeof value === 'number' ? value.toFixed(1) : '--') + '°';
+  }
 }
 
 // ========== WebSocket Connection ==========
@@ -3493,21 +3640,9 @@ function connectWebSocket() {
             'error': 'ERROR'
           };
           const level = levelMap[data.status] || 'INFO';
-          logEvent(level, data.message || `Test ${data.test}: ${data.status}`);
-
-          // Add to test results panel
-          const testResultsPanel = document.querySelector('#tab-log-selftest .log-panel');
-          if (testResultsPanel) {
-            const time = new Date().toLocaleTimeString();
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            entry.innerHTML = `
-              <span class="log-time">${time}</span>
-              <span class="log-level ${level.toLowerCase()}">${level}</span>
-              <span class="log-message">${data.message}</span>
-            `;
-            testResultsPanel.insertBefore(entry, testResultsPanel.firstChild);
-          }
+          const message = data.message || `Test ${data.test}: ${data.status}`;
+          logEvent(level, message);
+          addTestResult(level, message);
         }
       } catch (e) {
         console.error('Message parse error:', e);
@@ -3520,51 +3655,109 @@ function connectWebSocket() {
 }
 
 // ========== Target Selector ==========
-document.getElementById('targetSelect')?.addEventListener('change', (e) => {
-  const target = e.target.value;
-  logEvent('INFO', `Target changed to: ${target}`);
-  // Would configure simulation vs real robot connection here
-});
+function initTargetSelector() {
+  const targetSelect = document.getElementById('targetSelect');
+  if (!targetSelect) return;
+
+  // Set initial value from config
+  if (state.config.target_mode) {
+    targetSelect.value = state.config.target_mode;
+  }
+
+  targetSelect.addEventListener('change', (e) => {
+    const target = e.target.value;
+    state.targetMode = target;
+    saveConfig({ target_mode: target });
+
+    // Update UI based on target mode
+    updateTargetModeUI(target);
+
+    logEvent('INFO', `Target changed to: ${target}`);
+
+    // Notify server of target change if connected
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      state.ws.send(JSON.stringify({
+        type: 'set_target_mode',
+        mode: target
+      }));
+    }
+  });
+
+  // Apply initial target mode UI
+  const initialTarget = targetSelect.value;
+  state.targetMode = initialTarget;
+  updateTargetModeUI(initialTarget);
+}
+
+function updateTargetModeUI(mode) {
+  // Show/hide real robot warnings or indicators
+  const realRobotWarnings = document.querySelectorAll('.real-robot-warning');
+  const simulationOnly = document.querySelectorAll('.simulation-only');
+
+  realRobotWarnings.forEach(el => {
+    el.style.display = (mode === 'real' || mode === 'both') ? 'block' : 'none';
+  });
+
+  simulationOnly.forEach(el => {
+    el.style.display = (mode === 'simulation') ? 'block' : 'none';
+  });
+
+  // Update connection status text
+  const connectionText = document.getElementById('connectionText');
+  if (connectionText) {
+    if (mode === 'simulation') {
+      connectionText.textContent = state.connected ? 'Simulation' : 'Disconnected';
+    } else if (mode === 'real') {
+      connectionText.textContent = state.connected ? 'Real Robot' : 'Disconnected';
+    } else {
+      connectionText.textContent = state.connected ? 'Sim + Real' : 'Disconnected';
+    }
+  }
+}
+
+// Initialize target selector after DOM ready
+setTimeout(initTargetSelector, 100);
 
 // ========== Summary Cards ==========
 function updateSummaryCards() {
   const c = state.config;
 
-  // Geometry card
-  const bodyRadius = c.body_radius || 80;
+  // Geometry card - use body_width and body_length
+  const bodyWidth = c.body_width || 250;
+  const bodyLength = c.body_length || 300;
   const summaryGeometry = document.getElementById('summaryGeometry');
   if (summaryGeometry) {
-    summaryGeometry.textContent = `R${bodyRadius}mm (octagonal)`;
+    summaryGeometry.textContent = `${bodyLength} x ${bodyWidth}mm`;
   }
   const summaryGeometryMeta = document.getElementById('summaryGeometryMeta');
   if (summaryGeometryMeta) {
-    const coxaLen = c.leg_coxa_length || 30;
+    const coxaLen = c.leg_coxa_length || 15;
     const femurLen = c.leg_femur_length || 50;
-    const tibiaLen = c.leg_tibia_length || 80;
+    const tibiaLen = c.leg_tibia_length || 55;
     summaryGeometryMeta.textContent = `Leg: ${coxaLen}+${femurLen}+${tibiaLen}mm`;
   }
 
-  // Servos card
+  // Servos card - count configured offsets
   const summaryServos = document.getElementById('summaryServos');
   if (summaryServos) {
     summaryServos.textContent = '18 servos';
   }
   const summaryServosMeta = document.getElementById('summaryServosMeta');
   if (summaryServosMeta) {
-    const servoType = c.servo_type || 'DS3218';
-    summaryServosMeta.textContent = `Type: ${servoType}`;
+    const freq = c.servo_frequency || 50;
+    summaryServosMeta.textContent = `${freq}Hz PWM`;
   }
 
   // Gait card
   const summaryGait = document.getElementById('summaryGait');
   if (summaryGait) {
-    const gaitName = state.activeGait.charAt(0).toUpperCase() + state.activeGait.slice(1);
-    summaryGait.textContent = gaitName;
+    const gaitName = (state.activeGait || c.default_gait || 'tripod');
+    summaryGait.textContent = gaitName.charAt(0).toUpperCase() + gaitName.slice(1);
   }
   const summaryGaitMeta = document.getElementById('summaryGaitMeta');
   if (summaryGaitMeta) {
-    const stepLen = c.step_length ?? c.gait_step_length ?? 60;
-    const stepHeight = c.step_height ?? c.gait_step_height ?? 30;
+    const stepLen = c.step_length || 40;
+    const stepHeight = c.step_height || 25;
     summaryGaitMeta.textContent = `Step: ${stepLen}mm, Height: ${stepHeight}mm`;
   }
 
@@ -3576,9 +3769,9 @@ function updateSummaryCards() {
   }
   const summaryPoseMeta = document.getElementById('summaryPoseMeta');
   if (summaryPoseMeta) {
-    const roll = c.body_roll || state.telemetry.roll || 0;
-    const pitch = c.body_pitch || state.telemetry.pitch || 0;
-    const yaw = c.body_yaw || state.telemetry.yaw || 0;
+    const roll = state.telemetry.roll || 0;
+    const pitch = state.telemetry.pitch || 0;
+    const yaw = state.telemetry.yaw || 0;
     summaryPoseMeta.textContent = `R: ${roll.toFixed(1)}° P: ${pitch.toFixed(1)}° Y: ${yaw.toFixed(1)}°`;
   }
 }
@@ -3595,60 +3788,168 @@ document.querySelectorAll('.summary-card[data-nav]').forEach(card => {
   });
 });
 
-// ========== New Profile Button ==========
-document.getElementById('btnNewProfile')?.addEventListener('click', () => {
-  const name = prompt('Enter name for the new profile:');
-  if (name && name.trim()) {
-    const trimmedName = name.trim().toLowerCase().replace(/\s+/g, '_');
+// ========== Profile Modal ==========
+function showProfileModal(options = {}) {
+  const { mode = 'create', existingName = '', existingDescription = '', copyFrom = null } = options;
 
-    // Check if profile already exists
-    const exists = state.profiles.some(p => {
-      const pName = typeof p === 'string' ? p : p.name;
-      return pName === trimmedName;
-    });
+  const isEdit = mode === 'edit';
+  const isDuplicate = mode === 'duplicate';
+  const title = isEdit ? 'Edit Profile' : isDuplicate ? 'Duplicate Profile' : 'Create New Profile';
+  const submitText = isEdit ? 'Save Changes' : isDuplicate ? 'Create Copy' : 'Create Profile';
 
-    if (exists) {
-      alert('A profile with this name already exists.');
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3>${title}</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label">Profile Name</label>
+          <input type="text" class="form-input" id="profileModalName" value="${existingName}"
+            placeholder="e.g., outdoor_rough" style="width: 100%;">
+          <div id="profileNameError" style="color: var(--danger); font-size: 12px; margin-top: 4px; display: none;"></div>
+          <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
+            Use lowercase letters, numbers, and underscores only
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label">Description (optional)</label>
+          <textarea class="form-input" id="profileModalDesc" rows="2"
+            placeholder="Brief description of this profile" style="width: 100%; resize: vertical;">${existingDescription}</textarea>
+        </div>
+        ${!isEdit ? `
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="profileModalCopy" ${copyFrom ? 'checked' : ''}>
+            <span>Copy settings from current profile (${state.currentProfile})</span>
+          </label>
+        </div>
+        ` : ''}
+      </div>
+      <div class="modal-footer" style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button class="btn btn-secondary" id="profileModalCancel">Cancel</button>
+        <button class="btn btn-primary" id="profileModalSubmit">${submitText}</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const nameInput = modal.querySelector('#profileModalName');
+  const descInput = modal.querySelector('#profileModalDesc');
+  const errorDiv = modal.querySelector('#profileNameError');
+  const copyCheckbox = modal.querySelector('#profileModalCopy');
+  const submitBtn = modal.querySelector('#profileModalSubmit');
+
+  // Focus name input
+  setTimeout(() => nameInput.focus(), 100);
+
+  // Validate name on input
+  nameInput.addEventListener('input', () => {
+    const value = nameInput.value.trim().toLowerCase().replace(/\s+/g, '_');
+    const sanitized = value.replace(/[^a-z0-9_]/g, '');
+
+    if (value !== sanitized) {
+      errorDiv.textContent = 'Only lowercase letters, numbers, and underscores allowed';
+      errorDiv.style.display = 'block';
       return;
     }
 
-    const description = prompt('Enter description (optional):', '');
+    if (!isEdit && value && state.profiles.some(p => (typeof p === 'string' ? p : p.name) === sanitized)) {
+      errorDiv.textContent = 'A profile with this name already exists';
+      errorDiv.style.display = 'block';
+      return;
+    }
 
-    // Add to state
-    state.profiles.push(trimmedName);
-    state.profilesData[trimmedName] = {
-      name: trimmedName,
-      description: description || '',
-      lastModified: new Date().toISOString(),
-      isDefault: false
-    };
+    errorDiv.style.display = 'none';
+  });
 
-    // Copy current config to new profile and save to localStorage
-    const sourceConfig = loadConfigFromStorage(state.currentProfile) || state.config;
-    saveConfigToStorage(trimmedName, { ...sourceConfig });
-    saveProfilesToStorage();
+  // Close handlers
+  const closeModal = () => modal.remove();
+  modal.querySelector('.modal-close').addEventListener('click', closeModal);
+  modal.querySelector('#profileModalCancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
-    // Try to save to backend too
-    fetch('/api/profiles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create',
+  // Submit handler
+  submitBtn.addEventListener('click', () => {
+    const rawName = nameInput.value.trim();
+    const trimmedName = rawName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const description = descInput.value.trim();
+    const shouldCopy = copyCheckbox?.checked ?? false;
+
+    if (!trimmedName) {
+      errorDiv.textContent = 'Profile name is required';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    if (!isEdit && state.profiles.some(p => (typeof p === 'string' ? p : p.name) === trimmedName)) {
+      errorDiv.textContent = 'A profile with this name already exists';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    if (isEdit) {
+      // Update existing profile
+      state.profilesData[existingName] = {
+        ...state.profilesData[existingName],
+        description: description,
+        lastModified: new Date().toISOString()
+      };
+      saveProfilesToStorage();
+      renderProfileTable();
+      logEvent('INFO', `Profile "${existingName}" updated`);
+    } else {
+      // Create new profile
+      state.profiles.push(trimmedName);
+      state.profilesData[trimmedName] = {
         name: trimmedName,
-        description: description || '',
-        copyFrom: state.currentProfile
-      })
-    }).catch(e => console.log('Backend save failed:', e));
+        description: description,
+        lastModified: new Date().toISOString(),
+        isDefault: false
+      };
 
-    // Update UI
-    updateProfileSelector();
-    renderProfileTable();
+      // Copy config if requested
+      if (shouldCopy || copyFrom) {
+        const sourceProfile = copyFrom || state.currentProfile;
+        const sourceConfig = loadConfigFromStorage(sourceProfile) || state.config;
+        saveConfigToStorage(trimmedName, { ...sourceConfig });
+      }
 
-    // Switch to the new profile
-    selectProfile(trimmedName);
+      saveProfilesToStorage();
 
-    logEvent('INFO', `Created new profile: ${trimmedName}`);
-  }
+      // Try to save to backend
+      fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          name: trimmedName,
+          description: description,
+          copyFrom: shouldCopy || copyFrom ? (copyFrom || state.currentProfile) : null
+        })
+      }).catch(e => console.log('Backend save failed:', e));
+
+      updateProfileSelector();
+      renderProfileTable();
+      selectProfile(trimmedName);
+      logEvent('INFO', `Created new profile: ${trimmedName}`);
+    }
+
+    closeModal();
+  });
+
+  // Enter key submits
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitBtn.click(); });
+  descInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBtn.click(); } });
+}
+
+// ========== New Profile Button ==========
+document.getElementById('btnNewProfile')?.addEventListener('click', () => {
+  showProfileModal({ mode: 'create' });
 });
 
 // ========== Import Profile Button ==========
@@ -3772,6 +4073,22 @@ function initGeometrySection() {
       if (confirm('Reset body geometry to defaults?')) {
         resetGeometryToDefaults();
       }
+    });
+  }
+
+  // Body origin selector
+  const bodyOriginSelect = document.getElementById('bodyOrigin');
+  if (bodyOriginSelect) {
+    // Set initial value from config
+    if (state.config.body_origin) {
+      bodyOriginSelect.value = state.config.body_origin;
+    }
+    bodyOriginSelect.addEventListener('change', () => {
+      const value = bodyOriginSelect.value;
+      saveConfig({ body_origin: value });
+      logEvent('INFO', `Body origin set to: ${value}`);
+      // Update 3D preview to reflect origin change
+      updateGeometryPreview('body_origin', value);
     });
   }
 
@@ -4487,12 +4804,82 @@ function showCameraPreview(cameraId) {
   modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 
-  modal.querySelector('#preview-snapshot').addEventListener('click', () => {
+  const previewArea = modal.querySelector('[style*="aspect-ratio"]');
+  const previewContent = previewArea?.querySelector('div');
+
+  modal.querySelector('#preview-snapshot').addEventListener('click', async () => {
     logEvent('INFO', `Snapshot requested for ${cam.id}`);
+    try {
+      // Request snapshot from backend
+      const response = await fetch(`/api/camera/${cam.id}/snapshot`, { method: 'POST' });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${cam.id}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+        link.click();
+        URL.revokeObjectURL(url);
+        logEvent('INFO', `Snapshot saved: ${link.download}`);
+      } else {
+        // Fallback: create placeholder image
+        const canvas = document.createElement('canvas');
+        canvas.width = cam.width || 640;
+        canvas.height = cam.height || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#8b5cf6';
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${cam.name} - Snapshot`, canvas.width/2, canvas.height/2 - 20);
+        ctx.fillStyle = '#666';
+        ctx.font = '14px sans-serif';
+        ctx.fillText(new Date().toLocaleString(), canvas.width/2, canvas.height/2 + 20);
+        canvas.toBlob(blob => {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${cam.id}_${Date.now()}.png`;
+          link.click();
+          URL.revokeObjectURL(url);
+        });
+        logEvent('INFO', `Placeholder snapshot created for ${cam.id}`);
+      }
+    } catch (e) {
+      logEvent('WARN', `Snapshot failed: ${e.message}`);
+    }
+  });
+
+  modal.querySelector('#preview-fullscreen').addEventListener('click', () => {
+    if (previewArea) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        previewArea.requestFullscreen().catch(err => {
+          logEvent('WARN', `Fullscreen failed: ${err.message}`);
+        });
+      }
+    }
   });
 
   modal.querySelector('#preview-test-pattern').addEventListener('click', () => {
     logEvent('INFO', `Test pattern requested for ${cam.id}`);
+    if (previewContent) {
+      // Generate test pattern
+      const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff'];
+      const barWidth = 100 / colors.length;
+      const gradient = colors.map((c, i) => `${c} ${i * barWidth}%, ${c} ${(i + 1) * barWidth}%`).join(', ');
+      previewContent.innerHTML = `
+        <div style="width: 100%; height: 100%; display: flex; flex-direction: column;">
+          <div style="flex: 1; background: linear-gradient(to right, ${gradient});"></div>
+          <div style="flex: 1; background: linear-gradient(to bottom, #000 0%, #fff 100%);"></div>
+          <div style="padding: 8px; background: #000; text-align: center; color: #fff; font-family: monospace;">
+            Test Pattern - ${cam.name} (${cam.width}x${cam.height})
+          </div>
+        </div>
+      `;
+    }
   });
 }
 
@@ -5086,6 +5473,955 @@ function initSensorsSection() {
 
 // Call initialization after DOM ready
 setTimeout(initSensorsSection, 200);
+
+// ========== Session Recording & Log Download ==========
+const sessionRecording = {
+  active: false,
+  startTime: null,
+  data: []
+};
+
+document.getElementById('recordBtn')?.addEventListener('click', function() {
+  if (sessionRecording.active) {
+    // Stop recording
+    sessionRecording.active = false;
+    this.textContent = 'Record Session';
+    this.classList.remove('btn-danger');
+    this.classList.add('btn-success');
+
+    // Export recorded data
+    if (sessionRecording.data.length > 0) {
+      const blob = new Blob([JSON.stringify({
+        startTime: sessionRecording.startTime,
+        endTime: new Date().toISOString(),
+        duration: Date.now() - new Date(sessionRecording.startTime).getTime(),
+        samples: sessionRecording.data.length,
+        data: sessionRecording.data
+      }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `hexapod_session_${sessionRecording.startTime.replace(/[:.]/g, '-')}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      logEvent('INFO', `Session recording saved: ${sessionRecording.data.length} samples`);
+    }
+    sessionRecording.data = [];
+  } else {
+    // Start recording
+    sessionRecording.active = true;
+    sessionRecording.startTime = new Date().toISOString();
+    sessionRecording.data = [];
+    this.textContent = 'Stop Recording';
+    this.classList.remove('btn-success');
+    this.classList.add('btn-danger');
+    logEvent('INFO', 'Session recording started');
+  }
+  state.isRecording = sessionRecording.active;
+});
+
+// Capture telemetry for recording
+function recordTelemetrySample() {
+  if (sessionRecording.active) {
+    sessionRecording.data.push({
+      timestamp: Date.now(),
+      telemetry: { ...state.telemetry },
+      legAngles: state.legAngles.map(a => ({ ...a })),
+      footContacts: [...state.footContacts]
+    });
+  }
+}
+
+document.getElementById('downloadLogsBtn')?.addEventListener('click', () => {
+  // Collect all log entries from the event log
+  const eventLog = document.getElementById('eventLog');
+  const entries = [];
+
+  if (eventLog) {
+    eventLog.querySelectorAll('.log-entry').forEach(entry => {
+      const time = entry.querySelector('.log-time')?.textContent || '';
+      const level = entry.querySelector('.log-level')?.textContent || '';
+      const message = entry.querySelector('.log-message')?.textContent || '';
+      entries.push({ time, level, message });
+    });
+  }
+
+  // Create downloadable log file
+  const logContent = {
+    exportTime: new Date().toISOString(),
+    profile: state.currentProfile,
+    config: state.config,
+    telemetry: state.telemetry,
+    entries: entries
+  };
+
+  const blob = new Blob([JSON.stringify(logContent, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `hexapod_logs_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  logEvent('INFO', `Downloaded ${entries.length} log entries`);
+});
+
+// ========== Motion Smoothing Sliders ==========
+function initMotionSmoothingSliders() {
+  // Max Linear Acceleration slider
+  const linearAccelSlider = document.getElementById('maxLinearAccel');
+  const linearAccelValue = document.getElementById('maxLinearAccelValue');
+  if (linearAccelSlider && linearAccelValue) {
+    linearAccelSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      linearAccelValue.textContent = val.toFixed(1) + ' m/s²';
+    });
+    linearAccelSlider.addEventListener('change', (e) => {
+      const val = parseFloat(e.target.value);
+      saveConfigValue('max_linear_accel', val);
+      logEvent('INFO', `Max linear acceleration set to ${val.toFixed(1)} m/s²`);
+    });
+  }
+
+  // Max Angular Acceleration slider
+  const angularAccelSlider = document.getElementById('maxAngularAccel');
+  const angularAccelValue = document.getElementById('maxAngularAccelValue');
+  if (angularAccelSlider && angularAccelValue) {
+    angularAccelSlider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      angularAccelValue.textContent = val + ' °/s²';
+    });
+    angularAccelSlider.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value);
+      saveConfigValue('max_angular_accel', val);
+      logEvent('INFO', `Max angular acceleration set to ${val} °/s²`);
+    });
+  }
+
+  // Input Smoothing Factor slider
+  const smoothingSlider = document.getElementById('inputSmoothingFactor');
+  const smoothingValue = document.getElementById('inputSmoothingFactorValue');
+  if (smoothingSlider && smoothingValue) {
+    smoothingSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      smoothingValue.textContent = val.toFixed(2);
+    });
+    smoothingSlider.addEventListener('change', (e) => {
+      const val = parseFloat(e.target.value);
+      saveConfigValue('input_smoothing_factor', val);
+      logEvent('INFO', `Input smoothing factor set to ${val.toFixed(2)}`);
+    });
+  }
+
+  // Input Smoothing Enabled checkbox
+  const smoothingEnabled = document.getElementById('inputSmoothingEnabled');
+  if (smoothingEnabled) {
+    smoothingEnabled.addEventListener('change', (e) => {
+      saveConfigValue('input_smoothing_enabled', e.target.checked);
+      logEvent('INFO', `Input smoothing ${e.target.checked ? 'enabled' : 'disabled'}`);
+    });
+  }
+}
+
+// Initialize motion smoothing sliders after DOM ready
+setTimeout(initMotionSmoothingSliders, 150);
+
+// ========== Gamepad Status Detection ==========
+function initGamepadDetection() {
+  const gamepadStatus = document.getElementById('gamepad-status');
+
+  function updateGamepadStatus() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const connected = Array.from(gamepads).filter(gp => gp !== null);
+
+    if (gamepadStatus) {
+      if (connected.length > 0) {
+        const gp = connected[0];
+        gamepadStatus.textContent = `${gp.id.substring(0, 30)}...`;
+        gamepadStatus.style.color = 'var(--success)';
+      } else {
+        gamepadStatus.textContent = 'Not connected';
+        gamepadStatus.style.color = 'var(--text-muted)';
+      }
+    }
+  }
+
+  // Listen for gamepad connections
+  window.addEventListener('gamepadconnected', (e) => {
+    logEvent('INFO', `Gamepad connected: ${e.gamepad.id}`);
+    updateGamepadStatus();
+  });
+
+  window.addEventListener('gamepaddisconnected', (e) => {
+    logEvent('INFO', `Gamepad disconnected: ${e.gamepad.id}`);
+    updateGamepadStatus();
+  });
+
+  // Initial check
+  updateGamepadStatus();
+
+  // Poll for gamepad status (some browsers need this)
+  setInterval(updateGamepadStatus, 1000);
+}
+
+// Initialize gamepad detection after DOM ready
+setTimeout(initGamepadDetection, 200);
+
+// ========== Body Posture & Gait Settings ==========
+function initPostureAndGaitSettings() {
+  // Keep body level checkbox
+  const keepBodyLevel = document.getElementById('keepBodyLevel');
+  if (keepBodyLevel) {
+    // Set initial value from config
+    if (state.config.keep_body_level !== undefined) {
+      keepBodyLevel.checked = state.config.keep_body_level;
+    }
+    keepBodyLevel.addEventListener('change', () => {
+      const enabled = keepBodyLevel.checked;
+      saveConfig({ keep_body_level: enabled });
+      logEvent('INFO', `Keep body level (IMU): ${enabled ? 'enabled' : 'disabled'}`);
+    });
+  }
+
+  // Turn mode selector
+  const turnMode = document.getElementById('turnMode');
+  if (turnMode) {
+    // Set initial value from config
+    if (state.config.turn_mode) {
+      turnMode.value = state.config.turn_mode;
+    }
+    turnMode.addEventListener('change', () => {
+      const mode = turnMode.value;
+      saveConfig({ turn_mode: mode });
+      logEvent('INFO', `Turn mode set to: ${mode}`);
+    });
+  }
+
+  // Max yaw rate slider
+  const maxYawRate = document.getElementById('maxYawRate');
+  const maxYawRateValue = document.getElementById('maxYawRateValue');
+  if (maxYawRate && maxYawRateValue) {
+    // Set initial value from config
+    const initialValue = state.config.max_yaw_rate ?? 60;
+    maxYawRate.value = initialValue;
+    maxYawRateValue.textContent = `${initialValue} °/s`;
+
+    maxYawRate.addEventListener('input', () => {
+      const value = parseInt(maxYawRate.value);
+      maxYawRateValue.textContent = `${value} °/s`;
+    });
+
+    maxYawRate.addEventListener('change', () => {
+      const value = parseInt(maxYawRate.value);
+      saveConfig({ max_yaw_rate: value });
+      logEvent('INFO', `Max yaw rate set to: ${value}°/s`);
+    });
+  }
+}
+
+// Initialize posture and gait settings after DOM ready
+setTimeout(initPostureAndGaitSettings, 150);
+
+// ========== Hardware Cameras Configuration ==========
+// Hardware camera state
+let hardwareCameras = [];
+let detectedCameras = []; // Cameras found during detection
+
+// Default hardware camera
+const DEFAULT_HARDWARE_CAMERAS = [];
+
+function initHardwareCamerasSection() {
+  // Load hardware cameras from config
+  loadHardwareCameras();
+
+  // Detect cameras button
+  document.getElementById('detectCamerasBtn')?.addEventListener('click', async () => {
+    await detectHardwareCameras();
+  });
+
+  // Add camera button
+  document.getElementById('addHardwareCameraBtn')?.addEventListener('click', () => {
+    addHardwareCamera();
+  });
+
+  // Save hardware cameras button
+  document.getElementById('saveHardwareCamerasBtn')?.addEventListener('click', async () => {
+    await saveHardwareCameras();
+  });
+
+  // Camera transform select
+  document.getElementById('transformCameraSelect')?.addEventListener('change', (e) => {
+    loadCameraTransform(e.target.value);
+  });
+
+  // Camera transform inputs
+  document.querySelectorAll('#cameraTransformEditor .transform-axis-input').forEach(input => {
+    input.addEventListener('change', () => {
+      saveCameraTransform();
+    });
+  });
+}
+
+function loadHardwareCameras() {
+  const configCameras = state.config.hardware_cameras;
+  if (configCameras && Array.isArray(configCameras) && configCameras.length > 0) {
+    hardwareCameras = configCameras.map((c, i) => normalizeHardwareCamera(c, i));
+  } else {
+    hardwareCameras = [...DEFAULT_HARDWARE_CAMERAS];
+  }
+  renderHardwareCameraList();
+  updateTransformCameraSelect();
+  updateCameraLayoutSourceOptions();
+}
+
+function normalizeHardwareCamera(camera, index = 0) {
+  return {
+    id: camera?.id || `hw-cam-${index}`,
+    name: camera?.name || `Camera ${index + 1}`,
+    address: camera?.address || '',
+    type: camera?.type || 'usb', // usb, csi, ip, rtsp
+    resolution: camera?.resolution || '1280x720',
+    fps: camera?.fps || 30,
+    role: camera?.role || 'general',
+    enabled: camera?.enabled !== undefined ? !!camera.enabled : true,
+    transform: camera?.transform || { x: 0, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0 }
+  };
+}
+
+async function detectHardwareCameras() {
+  const btn = document.getElementById('detectCamerasBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Detecting...';
+  }
+
+  logEvent('INFO', 'Scanning for attached cameras...');
+
+  try {
+    // Try to get cameras from backend API
+    const response = await fetch('/api/cameras/detect');
+    if (response.ok) {
+      const data = await response.json();
+      detectedCameras = data.cameras || [];
+      logEvent('INFO', `Found ${detectedCameras.length} camera(s) from hardware`);
+    } else {
+      // Fallback: enumerate browser media devices
+      detectedCameras = await detectBrowserCameras();
+    }
+  } catch (err) {
+    // Fallback: enumerate browser media devices
+    logEvent('WARN', 'Backend camera detection unavailable, using browser detection');
+    detectedCameras = await detectBrowserCameras();
+  }
+
+  // Show detected cameras that aren't already configured
+  if (detectedCameras.length > 0) {
+    showDetectedCamerasDialog(detectedCameras);
+  } else {
+    logEvent('INFO', 'No new cameras detected');
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Detect';
+  }
+}
+
+async function detectBrowserCameras() {
+  try {
+    // Request camera permission first - this is needed to get device labels
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // Stop the stream immediately - we just needed it for permission
+      stream.getTracks().forEach(track => track.stop());
+    } catch (permErr) {
+      logEvent('WARN', 'Camera permission denied or unavailable');
+    }
+
+    // Now enumerate devices - labels should be available if permission was granted
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+    if (videoDevices.length === 0) {
+      logEvent('INFO', 'No video devices found');
+      return [];
+    }
+
+    logEvent('INFO', `Found ${videoDevices.length} browser camera(s)`);
+
+    return videoDevices.map((d, i) => ({
+      id: d.deviceId || `browser-cam-${i}`,
+      name: d.label || `Camera ${i + 1}`,
+      address: d.deviceId,
+      type: 'browser'
+    }));
+  } catch (err) {
+    logEvent('WARN', 'Browser camera detection failed: ' + err.message);
+    return [];
+  }
+}
+
+function showDetectedCamerasDialog(cameras) {
+  // Filter out cameras already in our list
+  const existingAddresses = hardwareCameras.map(c => c.address);
+  const newCameras = cameras.filter(c => !existingAddresses.includes(c.address));
+
+  if (newCameras.length === 0) {
+    logEvent('INFO', 'All detected cameras are already configured');
+    return;
+  }
+
+  // Remove any existing modal first (prevents duplicates)
+  document.querySelector('.detected-cameras-modal')?.remove();
+
+  // Create a simple modal to select which cameras to add
+  const modal = document.createElement('div');
+  modal.className = 'modal detected-cameras-modal';
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+
+  modal.innerHTML = `
+    <div style="background: var(--panel-bg); border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;">
+      <h3 style="margin: 0 0 16px 0; font-size: 18px;">Detected Cameras</h3>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+        Select cameras to add to your configuration:
+      </p>
+      <div id="detectedCamerasList" style="max-height: 300px; overflow-y: auto;">
+        ${newCameras.map((c, i) => `
+          <label style="display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--control-bg); border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
+            <input type="checkbox" class="detected-cam-checkbox" data-index="${i}" checked>
+            <div>
+              <div style="font-weight: 500;">${c.name}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${c.address} (${c.type})</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+        <button class="btn btn-secondary" id="cancelDetectedBtn">Cancel</button>
+        <button class="btn btn-primary" id="addDetectedBtn">Add Selected</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Event handlers
+  modal.querySelector('#cancelDetectedBtn').addEventListener('click', () => {
+    modal.remove();
+  });
+
+  modal.querySelector('#addDetectedBtn').addEventListener('click', () => {
+    const checkboxes = modal.querySelectorAll('.detected-cam-checkbox:checked');
+    checkboxes.forEach(cb => {
+      const idx = parseInt(cb.dataset.index);
+      const cam = newCameras[idx];
+      hardwareCameras.push(normalizeHardwareCamera({
+        id: `hw-cam-${Date.now()}-${idx}`,
+        name: cam.name,
+        address: cam.address,
+        type: cam.type
+      }, hardwareCameras.length));
+    });
+    renderHardwareCameraList();
+    updateTransformCameraSelect();
+    updateCameraLayoutSourceOptions();
+    logEvent('INFO', `Added ${checkboxes.length} camera(s)`);
+    modal.remove();
+  });
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+}
+
+function addHardwareCamera() {
+  const newCam = normalizeHardwareCamera({
+    id: `hw-cam-${Date.now()}`,
+    name: `Camera ${hardwareCameras.length + 1}`,
+    address: '',
+    type: 'usb'
+  }, hardwareCameras.length);
+
+  hardwareCameras.push(newCam);
+  renderHardwareCameraList();
+  updateTransformCameraSelect();
+  updateCameraLayoutSourceOptions();
+  logEvent('INFO', 'Added new camera entry');
+}
+
+function updateHardwareCamera(id, field, value) {
+  const cam = hardwareCameras.find(c => c.id === id);
+  if (cam) {
+    cam[field] = value;
+  }
+}
+
+function removeHardwareCamera(id) {
+  hardwareCameras = hardwareCameras.filter(c => c.id !== id);
+  renderHardwareCameraList();
+  updateTransformCameraSelect();
+  updateCameraLayoutSourceOptions();
+  logEvent('INFO', 'Removed camera');
+}
+
+async function saveHardwareCameras() {
+  const payload = {
+    hardware_cameras: hardwareCameras.map(cam => ({
+      id: cam.id,
+      name: cam.name,
+      address: cam.address,
+      type: cam.type,
+      resolution: cam.resolution,
+      fps: cam.fps,
+      role: cam.role,
+      enabled: cam.enabled,
+      transform: cam.transform
+    }))
+  };
+  await saveConfig(payload);
+  logEvent('INFO', 'Hardware cameras configuration saved');
+}
+
+function renderHardwareCameraList() {
+  const container = document.getElementById('hardwareCameraList');
+  const noHardware = document.getElementById('noHardwareCameras');
+  const transformCard = document.getElementById('cameraTransformCard');
+
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (hardwareCameras.length === 0) {
+    if (noHardware) noHardware.style.display = 'block';
+    if (transformCard) transformCard.style.display = 'none';
+    return;
+  }
+
+  if (noHardware) noHardware.style.display = 'none';
+  if (transformCard) transformCard.style.display = 'block';
+
+  hardwareCameras.forEach((cam) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'background: var(--control-bg); border-radius: 8px; padding: 12px; margin-bottom: 10px;';
+
+    row.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="text" class="form-input cam-name" value="${cam.name}" style="width: 140px;" placeholder="Camera name">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);">
+            <input type="checkbox" class="cam-enabled" ${cam.enabled ? 'checked' : ''}>
+            Enabled
+          </label>
+        </div>
+        <button class="btn btn-danger btn-sm cam-remove">Remove</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">
+        <div>
+          <label class="form-label" style="font-size: 11px;">Type</label>
+          <select class="form-select cam-type">
+            <option value="usb" ${cam.type === 'usb' ? 'selected' : ''}>USB / V4L2</option>
+            <option value="csi" ${cam.type === 'csi' ? 'selected' : ''}>CSI (Pi Camera)</option>
+            <option value="ip" ${cam.type === 'ip' ? 'selected' : ''}>IP Camera (HTTP)</option>
+            <option value="rtsp" ${cam.type === 'rtsp' ? 'selected' : ''}>RTSP Stream</option>
+            <option value="browser" ${cam.type === 'browser' ? 'selected' : ''}>Browser Webcam</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px;">Address / Device</label>
+          <input type="text" class="form-input cam-address" value="${cam.address}" placeholder="${getAddressPlaceholder(cam.type)}">
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px;">Resolution</label>
+          <select class="form-select cam-resolution">
+            <option value="640x480" ${cam.resolution === '640x480' ? 'selected' : ''}>640x480</option>
+            <option value="1280x720" ${cam.resolution === '1280x720' ? 'selected' : ''}>1280x720 (HD)</option>
+            <option value="1920x1080" ${cam.resolution === '1920x1080' ? 'selected' : ''}>1920x1080 (FHD)</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px;">FPS</label>
+          <select class="form-select cam-fps">
+            <option value="15" ${cam.fps === 15 ? 'selected' : ''}>15</option>
+            <option value="30" ${cam.fps === 30 ? 'selected' : ''}>30</option>
+            <option value="60" ${cam.fps === 60 ? 'selected' : ''}>60</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px;">Role</label>
+          <select class="form-select cam-role">
+            <option value="general" ${cam.role === 'general' ? 'selected' : ''}>General</option>
+            <option value="front" ${cam.role === 'front' ? 'selected' : ''}>Front</option>
+            <option value="navigation" ${cam.role === 'navigation' ? 'selected' : ''}>Navigation</option>
+            <option value="rear" ${cam.role === 'rear' ? 'selected' : ''}>Rear View</option>
+            <option value="ground" ${cam.role === 'ground' ? 'selected' : ''}>Ground</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    // Event listeners
+    row.querySelector('.cam-name').addEventListener('input', (e) => {
+      updateHardwareCamera(cam.id, 'name', e.target.value);
+      updateTransformCameraSelect();
+      updateCameraLayoutSourceOptions();
+    });
+
+    row.querySelector('.cam-enabled').addEventListener('change', (e) => {
+      updateHardwareCamera(cam.id, 'enabled', e.target.checked);
+    });
+
+    row.querySelector('.cam-type').addEventListener('change', (e) => {
+      updateHardwareCamera(cam.id, 'type', e.target.value);
+      const addrInput = row.querySelector('.cam-address');
+      addrInput.placeholder = getAddressPlaceholder(e.target.value);
+    });
+
+    row.querySelector('.cam-address').addEventListener('input', (e) => {
+      updateHardwareCamera(cam.id, 'address', e.target.value);
+    });
+
+    row.querySelector('.cam-resolution').addEventListener('change', (e) => {
+      updateHardwareCamera(cam.id, 'resolution', e.target.value);
+    });
+
+    row.querySelector('.cam-fps').addEventListener('change', (e) => {
+      updateHardwareCamera(cam.id, 'fps', parseInt(e.target.value));
+    });
+
+    row.querySelector('.cam-role').addEventListener('change', (e) => {
+      updateHardwareCamera(cam.id, 'role', e.target.value);
+    });
+
+    row.querySelector('.cam-remove').addEventListener('click', () => {
+      removeHardwareCamera(cam.id);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+function getAddressPlaceholder(type) {
+  switch (type) {
+    case 'usb': return '/dev/video0';
+    case 'csi': return '0 (CSI port)';
+    case 'ip': return 'http://192.168.1.100:8080/video';
+    case 'rtsp': return 'rtsp://192.168.1.100:554/stream';
+    case 'browser': return 'Browser device ID';
+    default: return 'Device address';
+  }
+}
+
+function updateTransformCameraSelect() {
+  const select = document.getElementById('transformCameraSelect');
+  if (!select) return;
+
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">Select a camera...</option>';
+
+  hardwareCameras.forEach(cam => {
+    const option = document.createElement('option');
+    option.value = cam.id;
+    option.textContent = cam.name;
+    select.appendChild(option);
+  });
+
+  // Restore selection if valid
+  if (currentValue && hardwareCameras.some(c => c.id === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function loadCameraTransform(cameraId) {
+  const cam = hardwareCameras.find(c => c.id === cameraId);
+  if (!cam) return;
+
+  const transform = cam.transform || { x: 0, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0 };
+  document.getElementById('camTransformX').value = transform.x;
+  document.getElementById('camTransformY').value = transform.y;
+  document.getElementById('camTransformZ').value = transform.z;
+  document.getElementById('camTransformRoll').value = transform.roll;
+  document.getElementById('camTransformPitch').value = transform.pitch;
+  document.getElementById('camTransformYaw').value = transform.yaw;
+}
+
+function saveCameraTransform() {
+  const select = document.getElementById('transformCameraSelect');
+  if (!select || !select.value) return;
+
+  const cam = hardwareCameras.find(c => c.id === select.value);
+  if (!cam) return;
+
+  cam.transform = {
+    x: parseFloat(document.getElementById('camTransformX').value) || 0,
+    y: parseFloat(document.getElementById('camTransformY').value) || 0,
+    z: parseFloat(document.getElementById('camTransformZ').value) || 0,
+    roll: parseFloat(document.getElementById('camTransformRoll').value) || 0,
+    pitch: parseFloat(document.getElementById('camTransformPitch').value) || 0,
+    yaw: parseFloat(document.getElementById('camTransformYaw').value) || 0
+  };
+}
+
+// Update camera layout source options to use hardware cameras
+function updateCameraLayoutSourceOptions() {
+  // This will be called to refresh the source dropdowns in the camera layout section
+  // when hardware cameras change
+  if (typeof renderCameraLayoutList === 'function') {
+    renderCameraLayoutList();
+  }
+}
+
+// Initialize hardware cameras section after DOM ready
+setTimeout(initHardwareCamerasSection, 180);
+
+// ========== Camera Layout Configuration ==========
+// Default camera view configuration
+const DEFAULT_CAMERA_VIEWS = [
+  {
+    id: 'front_cam',
+    label: 'Front Camera',
+    enabled: true,
+    position: 'front',
+    sourceType: 'local',
+    sourceUrl: '',
+    displayMode: 'pane'
+  }
+];
+
+// Camera layout state
+let cameraLayoutViews = [];
+
+function initCameraLayoutSection() {
+  // Load camera views from config
+  loadCameraLayoutViews();
+
+  // Add camera view button
+  document.getElementById('addCameraLayoutBtn')?.addEventListener('click', () => {
+    addCameraLayoutView();
+  });
+
+  // Save camera layout button
+  document.getElementById('saveCameraLayoutBtn')?.addEventListener('click', async () => {
+    await saveCameraLayoutViews();
+  });
+}
+
+function loadCameraLayoutViews() {
+  // Try to load from config, otherwise use defaults
+  const configViews = state.config.camera_views;
+  if (configViews && Array.isArray(configViews) && configViews.length > 0) {
+    cameraLayoutViews = configViews.map((v, i) => normalizeCameraLayoutView(v, i));
+  } else {
+    cameraLayoutViews = DEFAULT_CAMERA_VIEWS.map((v, i) => normalizeCameraLayoutView(v, i));
+  }
+  renderCameraLayoutList();
+}
+
+function normalizeCameraLayoutView(view, index = 0) {
+  const fallback = DEFAULT_CAMERA_VIEWS[0];
+  return {
+    id: view?.id || `camera-${index}`,
+    label: view?.label || `Camera ${index + 1}`,
+    enabled: view?.enabled !== undefined ? !!view.enabled : fallback.enabled,
+    position: view?.position || fallback.position,
+    sourceType: view?.source_type || view?.sourceType || fallback.sourceType,
+    sourceUrl: view?.source_url || view?.sourceUrl || fallback.sourceUrl,
+    hardwareCameraId: view?.hardware_camera_id || view?.hardwareCameraId || '',
+    displayMode: view?.display_mode || view?.displayMode || fallback.displayMode
+  };
+}
+
+function addCameraLayoutView() {
+  const newId = `camera-${Date.now()}`;
+  // Default to hardware camera if any are configured
+  const defaultSourceType = hardwareCameras.length > 0 ? 'hardware' : 'local';
+  const defaultHwCamId = hardwareCameras.length > 0 ? hardwareCameras[0].id : '';
+
+  cameraLayoutViews.push({
+    id: newId,
+    label: `Camera View ${cameraLayoutViews.length + 1}`,
+    enabled: true,
+    position: 'floating',
+    sourceType: defaultSourceType,
+    sourceUrl: '',
+    hardwareCameraId: defaultHwCamId,
+    displayMode: 'pane'
+  });
+  renderCameraLayoutList();
+  logEvent('INFO', 'Added new camera view');
+}
+
+function updateCameraLayoutView(id, field, value) {
+  const view = cameraLayoutViews.find(v => v.id === id);
+  if (view) {
+    view[field] = value;
+  }
+}
+
+function removeCameraLayoutView(id) {
+  cameraLayoutViews = cameraLayoutViews.filter(v => v.id !== id);
+  renderCameraLayoutList();
+  logEvent('INFO', 'Removed camera view');
+}
+
+async function saveCameraLayoutViews() {
+  const payload = {
+    camera_views: cameraLayoutViews.map(view => ({
+      id: view.id,
+      label: view.label,
+      enabled: view.enabled,
+      position: view.position,
+      source_type: view.sourceType,
+      source_url: view.sourceUrl,
+      hardware_camera_id: view.hardwareCameraId,
+      display_mode: view.displayMode
+    }))
+  };
+  await saveConfig(payload);
+  logEvent('INFO', 'Camera layout saved');
+}
+
+function renderCameraLayoutList() {
+  const container = document.getElementById('cameraLayoutList');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  if (cameraLayoutViews.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">No camera views configured. Add one to get started.</p>';
+    return;
+  }
+
+  // Build hardware camera options
+  const hwCamOptions = hardwareCameras.map(cam =>
+    `<option value="${cam.id}">${cam.name}</option>`
+  ).join('');
+
+  cameraLayoutViews.forEach((view) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'background: var(--control-bg); border-radius: 8px; padding: 12px; margin-bottom: 12px;';
+
+    const showHardwareSelect = view.sourceType === 'hardware';
+    const showUrlInput = view.sourceType === 'url';
+
+    row.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="text" class="form-input camera-label" value="${view.label}" style="width: 150px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);">
+            <input type="checkbox" class="camera-enabled" ${view.enabled ? 'checked' : ''}>
+            Enabled
+          </label>
+        </div>
+        <button class="btn btn-danger btn-sm camera-remove">Remove</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+        <div>
+          <label class="form-label" style="font-size: 11px;">Source</label>
+          <select class="form-select camera-source-type">
+            <option value="hardware" ${view.sourceType === 'hardware' ? 'selected' : ''}>Hardware Camera</option>
+            <option value="local" ${view.sourceType === 'local' ? 'selected' : ''}>Browser Webcam</option>
+            <option value="url" ${view.sourceType === 'url' ? 'selected' : ''}>Stream URL</option>
+          </select>
+        </div>
+        <div class="hw-camera-select-container" style="${showHardwareSelect ? '' : 'display: none;'}">
+          <label class="form-label" style="font-size: 11px;">Hardware Camera</label>
+          ${hardwareCameras.length > 0 ? `
+            <select class="form-select camera-hw-select">
+              <option value="">-- Select Camera --</option>
+              ${hwCamOptions}
+            </select>
+          ` : `
+            <div style="font-size: 11px; color: var(--warning); padding: 6px; background: rgba(255,165,0,0.1); border-radius: 4px;">
+              No hardware cameras configured. Use the "Hardware Cameras" section above to detect or add cameras first.
+            </div>
+          `}
+        </div>
+        <div class="url-input-container" style="${showUrlInput ? '' : 'display: none;'}">
+          <label class="form-label" style="font-size: 11px;">Stream URL</label>
+          <input type="text" class="form-input camera-source-url" value="${view.sourceUrl || ''}" placeholder="rtsp/http URL">
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px;">Display Mode</label>
+          <select class="form-select camera-display-mode">
+            <option value="pane" ${view.displayMode === 'pane' ? 'selected' : ''}>Floating Pane</option>
+            <option value="overlay" ${view.displayMode === 'overlay' ? 'selected' : ''}>3D Overlay</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 11px;">Position</label>
+          <select class="form-select camera-position" ${view.displayMode === 'overlay' ? 'disabled' : ''}>
+            <option value="front" ${view.position === 'front' ? 'selected' : ''}>Front</option>
+            <option value="left" ${view.position === 'left' ? 'selected' : ''}>Left</option>
+            <option value="right" ${view.position === 'right' ? 'selected' : ''}>Right</option>
+            <option value="rear" ${view.position === 'rear' ? 'selected' : ''}>Rear</option>
+            <option value="floating" ${view.position === 'floating' ? 'selected' : ''}>Floating</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    // Set initial hardware camera selection
+    const hwSelect = row.querySelector('.camera-hw-select');
+    if (hwSelect && view.hardwareCameraId) {
+      hwSelect.value = view.hardwareCameraId;
+    }
+
+    // Add event listeners
+    row.querySelector('.camera-label').addEventListener('input', (e) => {
+      updateCameraLayoutView(view.id, 'label', e.target.value);
+    });
+
+    row.querySelector('.camera-enabled').addEventListener('change', (e) => {
+      updateCameraLayoutView(view.id, 'enabled', e.target.checked);
+    });
+
+    row.querySelector('.camera-source-type').addEventListener('change', (e) => {
+      const sourceType = e.target.value;
+      updateCameraLayoutView(view.id, 'sourceType', sourceType);
+
+      // Show/hide appropriate inputs
+      const hwContainer = row.querySelector('.hw-camera-select-container');
+      const urlContainer = row.querySelector('.url-input-container');
+
+      hwContainer.style.display = sourceType === 'hardware' ? '' : 'none';
+      urlContainer.style.display = sourceType === 'url' ? '' : 'none';
+    });
+
+    row.querySelector('.camera-hw-select')?.addEventListener('change', (e) => {
+      updateCameraLayoutView(view.id, 'hardwareCameraId', e.target.value);
+      // Auto-update label to match camera name if label is generic
+      const cam = hardwareCameras.find(c => c.id === e.target.value);
+      if (cam && view.label.startsWith('Camera View')) {
+        const labelInput = row.querySelector('.camera-label');
+        labelInput.value = cam.name;
+        updateCameraLayoutView(view.id, 'label', cam.name);
+      }
+    });
+
+    row.querySelector('.camera-source-url')?.addEventListener('input', (e) => {
+      updateCameraLayoutView(view.id, 'sourceUrl', e.target.value);
+    });
+
+    row.querySelector('.camera-display-mode').addEventListener('change', (e) => {
+      updateCameraLayoutView(view.id, 'displayMode', e.target.value);
+      // Disable position selector for overlay mode
+      const positionSelect = row.querySelector('.camera-position');
+      positionSelect.disabled = e.target.value === 'overlay';
+    });
+
+    row.querySelector('.camera-position').addEventListener('change', (e) => {
+      updateCameraLayoutView(view.id, 'position', e.target.value);
+    });
+
+    row.querySelector('.camera-remove').addEventListener('click', () => {
+      removeCameraLayoutView(view.id);
+    });
+
+    container.appendChild(row);
+  });
+}
+
+// Initialize camera layout section after DOM ready
+setTimeout(initCameraLayoutSection, 200);
 
 // ========== Initialize ==========
 connectWebSocket();

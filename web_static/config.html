@@ -49,8 +49,8 @@
         <span id="connectionText">Connected</span>
       </div>
       <div class="status-indicator">
-        <span class="status-dot warning"></span>
-        <span>Battery: 11.4V</span>
+        <span class="status-dot" id="headerBatteryDot"></span>
+        <span id="headerBattery">Battery: --V</span>
       </div>
       <button class="estop-btn" id="estopBtn">E-STOP</button>
     </div>
@@ -244,7 +244,7 @@
           </div>
           <div class="form-group" style="margin-top: 16px;">
             <label class="form-label">Body Origin</label>
-            <select class="form-select" style="max-width: 300px;">
+            <select class="form-select" id="bodyOrigin" data-config="body_origin" style="max-width: 300px;">
               <option value="center">Center</option>
               <option value="front-center">Front Center</option>
               <option value="rear-center">Rear Center</option>
@@ -590,7 +590,7 @@
                 <li>Press "Set as neutral" to compute and save offset</li>
               </ol>
             </div>
-            <button class="btn btn-primary" style="margin-top: 24px;">Start Calibration Wizard</button>
+            <button class="btn btn-primary" id="startCalibrationWizardBtn" style="margin-top: 24px;">Start Calibration Wizard</button>
           </div>
         </div>
       </div>
@@ -975,80 +975,78 @@
       <div class="tab-content active" id="tab-sensor-cameras">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Camera Configuration</span>
-            <button class="btn btn-primary btn-sm">+ Add Camera</button>
+            <span class="card-title">Hardware Cameras</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" id="detectCamerasBtn">🔍 Detect</button>
+              <button class="btn btn-primary btn-sm" id="addHardwareCameraBtn">+ Add Camera</button>
+            </div>
           </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Interface</th>
-                <th>Role</th>
-                <th>Resolution</th>
-                <th>FPS</th>
-                <th>Stream</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>front_cam</strong></td>
-                <td>/dev/video0</td>
-                <td><span class="tag tag-success">Main Navigation</span></td>
-                <td>1280x720</td>
-                <td>30</td>
-                <td>/api/stream/front</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                </td>
-              </tr>
-              <tr>
-                <td><strong>rear_cam</strong></td>
-                <td>/dev/video1</td>
-                <td><span class="tag tag-primary">Rear View</span></td>
-                <td>640x480</td>
-                <td>15</td>
-                <td>/api/stream/rear</td>
-                <td>
-                  <button class="btn btn-secondary btn-sm">Edit</button>
-                  <button class="btn btn-secondary btn-sm">Preview</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+            Configure hardware cameras attached to the system. These can then be used in Live Camera Layout.
+          </p>
+          <div id="hardwareCameraList" style="margin-bottom: 12px;"></div>
+          <div id="noHardwareCameras" style="display: none; padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
+            No cameras configured. Click "Detect" to scan for attached cameras or "Add Camera" to add manually.
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn-secondary btn-sm" id="saveHardwareCamerasBtn">Save Camera Config</button>
+          </div>
+        </div>
+
+        <div class="card" id="cameraTransformCard" style="display: none;">
+          <div class="card-header">
+            <span class="card-title">Camera Transform</span>
+            <select class="form-select" id="transformCameraSelect" style="width: 160px; font-size: 12px;">
+              <option value="">Select a camera...</option>
+            </select>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+            Configure the physical position and orientation of the selected camera on the robot.
+          </p>
+          <div class="transform-editor" id="cameraTransformEditor">
+            <div class="transform-axis">
+              <div class="transform-axis-label">Position X (mm)</div>
+              <input type="number" class="transform-axis-input" id="camTransformX" value="0" data-field="x">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Position Y (mm)</div>
+              <input type="number" class="transform-axis-input" id="camTransformY" value="0" data-field="y">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Position Z (mm)</div>
+              <input type="number" class="transform-axis-input" id="camTransformZ" value="0" data-field="z">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Roll (deg)</div>
+              <input type="number" class="transform-axis-input" id="camTransformRoll" value="0" data-field="roll">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Pitch (deg)</div>
+              <input type="number" class="transform-axis-input" id="camTransformPitch" value="0" data-field="pitch">
+            </div>
+            <div class="transform-axis">
+              <div class="transform-axis-label">Yaw (deg)</div>
+              <input type="number" class="transform-axis-input" id="camTransformYaw" value="0" data-field="yaw">
+            </div>
+          </div>
         </div>
 
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Camera Transform: front_cam</span>
+            <span class="card-title">Live Camera Layout</span>
+            <span class="card-badge">Main UI</span>
           </div>
-          <div class="transform-editor">
-            <div class="transform-axis">
-              <div class="transform-axis-label">Position X</div>
-              <input type="number" class="transform-axis-input" value="100">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Position Y</div>
-              <input type="number" class="transform-axis-input" value="0">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Position Z</div>
-              <input type="number" class="transform-axis-input" value="50">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Roll</div>
-              <input type="number" class="transform-axis-input" value="0">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Pitch</div>
-              <input type="number" class="transform-axis-input" value="-10">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Yaw</div>
-              <input type="number" class="transform-axis-input" value="0">
-            </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+            Configure how camera feeds are displayed in the main control interface. These views will be available as a dropdown selection in the main UI.
+          </p>
+          <div id="cameraLayoutList" style="margin-bottom: 16px;"></div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-primary btn-sm" id="addCameraLayoutBtn">+ Add Camera View</button>
+            <button class="btn btn-secondary btn-sm" id="saveCameraLayoutBtn">Save Layout</button>
           </div>
+          <p style="font-size: 11px; color: var(--text-muted); margin-top: 12px;">
+            <strong>Display Modes:</strong> "Floating Pane" shows camera as a draggable window. "3D Overlay" projects the video onto the 3D scene background.
+          </p>
         </div>
       </div>
 
@@ -1774,22 +1772,22 @@
             <span class="card-title">Real-Time Status</span>
             <div class="card-actions">
               <button class="btn btn-success btn-sm" id="recordBtn">Record Session</button>
-              <button class="btn btn-secondary btn-sm">Download Logs</button>
+              <button class="btn btn-secondary btn-sm" id="downloadLogsBtn">Download Logs</button>
             </div>
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
             <div>
               <h4 style="color: var(--text-muted); font-size: 11px; margin-bottom: 12px;">JOINT ANGLES</h4>
-              <div class="sparkline-container"><span class="sparkline-label">L0 Coxa</span><div class="sparkline" id="spark-l0-coxa"></div><span class="sparkline-value">12.5&deg;</span></div>
-              <div class="sparkline-container"><span class="sparkline-label">L0 Femur</span><div class="sparkline" id="spark-l0-femur"></div><span class="sparkline-value">45.2&deg;</span></div>
-              <div class="sparkline-container"><span class="sparkline-label">L0 Tibia</span><div class="sparkline" id="spark-l0-tibia"></div><span class="sparkline-value">-92.1&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">L0 Coxa</span><div class="sparkline" id="spark-l0-coxa"></div><span class="sparkline-value" id="val-l0-coxa">--&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">L0 Femur</span><div class="sparkline" id="spark-l0-femur"></div><span class="sparkline-value" id="val-l0-femur">--&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">L0 Tibia</span><div class="sparkline" id="spark-l0-tibia"></div><span class="sparkline-value" id="val-l0-tibia">--&deg;</span></div>
             </div>
             <div>
               <h4 style="color: var(--text-muted); font-size: 11px; margin-bottom: 12px;">BODY POSE</h4>
-              <div class="sparkline-container"><span class="sparkline-label">Roll</span><div class="sparkline" id="spark-roll"></div><span class="sparkline-value">0.3&deg;</span></div>
-              <div class="sparkline-container"><span class="sparkline-label">Pitch</span><div class="sparkline" id="spark-pitch"></div><span class="sparkline-value">-1.2&deg;</span></div>
-              <div class="sparkline-container"><span class="sparkline-label">Yaw</span><div class="sparkline" id="spark-yaw"></div><span class="sparkline-value">45.0&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">Roll</span><div class="sparkline" id="spark-roll"></div><span class="sparkline-value" id="val-roll">--&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">Pitch</span><div class="sparkline" id="spark-pitch"></div><span class="sparkline-value" id="val-pitch">--&deg;</span></div>
+              <div class="sparkline-container"><span class="sparkline-label">Yaw</span><div class="sparkline" id="spark-yaw"></div><span class="sparkline-value" id="val-yaw">--&deg;</span></div>
             </div>
           </div>
 
@@ -1813,11 +1811,7 @@
             <span class="card-title">Event Log</span>
           </div>
           <div class="log-panel" id="eventLog">
-            <div class="log-entry"><span class="log-time">10:30:45</span><span class="log-level info">INFO</span><span class="log-message">Gait changed to tripod</span></div>
-            <div class="log-entry"><span class="log-time">10:30:42</span><span class="log-level debug">DEBUG</span><span class="log-message">Telemetry rate set to 50Hz</span></div>
-            <div class="log-entry"><span class="log-time">10:30:40</span><span class="log-level info">INFO</span><span class="log-message">WebSocket client connected</span></div>
-            <div class="log-entry"><span class="log-time">10:30:35</span><span class="log-level warn">WARN</span><span class="log-message">Battery voltage: 11.4V (low)</span></div>
-            <div class="log-entry"><span class="log-time">10:30:30</span><span class="log-level info">INFO</span><span class="log-message">System initialized successfully</span></div>
+            <!-- Log entries added dynamically by JavaScript -->
           </div>
         </div>
       </div>
@@ -1832,23 +1826,22 @@
             Run diagnostic tests to verify hardware functionality. Place robot on a stand before running leg tests.
           </p>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-            <button class="btn btn-secondary btn-icon">&#x1F9BF; Test Single Leg</button>
-            <button class="btn btn-secondary btn-icon">&#x1F6B6; Walk Forward 2 Steps</button>
-            <button class="btn btn-secondary btn-icon">&#x2696; Check Symmetry</button>
-            <button class="btn btn-secondary btn-icon">&#x1F4F7; Camera Test</button>
-            <button class="btn btn-secondary btn-icon">&#x1F9ED; IMU Calibration</button>
-            <button class="btn btn-secondary btn-icon">&#x1F50B; Battery Check</button>
+            <button class="btn btn-secondary btn-icon" id="test-leg" data-test="test_leg">&#x1F9BF; Test Single Leg</button>
+            <button class="btn btn-secondary btn-icon" id="test-walk" data-test="test_walk">&#x1F6B6; Walk Forward 2 Steps</button>
+            <button class="btn btn-secondary btn-icon" id="test-symmetry" data-test="test_symmetry">&#x2696; Check Symmetry</button>
+            <button class="btn btn-secondary btn-icon" id="test-camera" data-test="test_camera">&#x1F4F7; Camera Test</button>
+            <button class="btn btn-secondary btn-icon" id="test-imu" data-test="calibrate_imu">&#x1F9ED; IMU Calibration</button>
+            <button class="btn btn-secondary btn-icon" id="test-battery" data-test="check_battery">&#x1F50B; Battery Check</button>
           </div>
         </div>
 
         <div class="card">
           <div class="card-header">
             <span class="card-title">Test Results</span>
+            <button class="btn btn-secondary btn-sm" id="clearTestResults">Clear</button>
           </div>
-          <div class="log-panel">
-            <div class="log-entry"><span class="log-time">10:28:15</span><span class="log-level info">INFO</span><span class="log-message">Battery check: 11.4V (83%)</span></div>
-            <div class="log-entry"><span class="log-time">10:28:10</span><span class="log-level info">INFO</span><span class="log-message">IMU calibration complete - offset applied</span></div>
-            <div class="log-entry"><span class="log-time">10:28:05</span><span class="log-level info">INFO</span><span class="log-message">Camera test: front_cam OK, rear_cam OK</span></div>
+          <div class="log-panel" id="testResultsLog">
+            <!-- Test results added dynamically by JavaScript -->
           </div>
         </div>
       </div>
@@ -1860,10 +1853,14 @@
     <div class="preview-container">
       <canvas class="preview-canvas" id="previewCanvas"></canvas>
       <div class="preview-controls">
-        <button class="preview-btn active" data-view="iso">Iso</button>
-        <button class="preview-btn" data-view="front">Front</button>
-        <button class="preview-btn" data-view="side">Side</button>
-        <button class="preview-btn" data-view="top">Top</button>
+        <select class="form-select" id="cameraViewSelect" style="width: auto; min-width: 120px;">
+          <option value="iso" selected>Isometric</option>
+          <option value="front">Front</option>
+          <option value="side">Side</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="top">Top</option>
+        </select>
       </div>
     </div>
     <div class="status-panel">

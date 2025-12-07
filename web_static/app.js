@@ -128,6 +128,7 @@
       position: 'front',
       sourceType: 'local',
       sourceUrl: '',
+      hardwareCameraId: '',
       displayMode: 'pane'  // 'pane' = floating window, 'overlay' = 3D scene overlay
     }
   ];
@@ -136,6 +137,9 @@
   let legConfigs = Array(6).fill(null).map(() => ({...DEFAULT_LEG_CONFIG}));
 
   let cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
+
+  // Hardware cameras from configuration
+  let hardwareCameras = [];
 
   // ============================================================================
   // ARCHITECTURE NOTE: All IK (Inverse Kinematics) calculations are performed
@@ -165,156 +169,216 @@
       position: view?.position || fallback.position,
       sourceType: view?.source_type || view?.sourceType || fallback.sourceType,
       sourceUrl: view?.source_url || view?.sourceUrl || fallback.sourceUrl,
+      hardwareCameraId: view?.hardware_camera_id || view?.hardwareCameraId || fallback.hardwareCameraId,
       displayMode: view?.display_mode || view?.displayMode || fallback.displayMode,
     };
   }
 
-  function renderCameraList() {
-    const list = document.getElementById('cameraList');
-    if (!list) return;
+  // Resolve hardware camera details for a camera view
+  function getResolvedCameraSource(view) {
+    if (view.sourceType === 'hardware' && view.hardwareCameraId) {
+      const hwCam = hardwareCameras.find(c => c.id === view.hardwareCameraId);
+      if (hwCam) {
+        // Return resolved source info based on hardware camera type
+        return {
+          type: hwCam.type,
+          address: hwCam.address,
+          resolution: hwCam.resolution,
+          fps: hwCam.fps,
+          name: hwCam.name
+        };
+      } else {
+        // Hardware camera not found - log warning
+        console.warn(`Hardware camera not found: ${view.hardwareCameraId}. Available:`, hardwareCameras.map(c => c.id));
+        return {
+          type: 'not_found',
+          address: '',
+          resolution: null,
+          fps: null,
+          name: view.label,
+          error: `Hardware camera "${view.hardwareCameraId}" not configured`
+        };
+      }
+    }
+    // Return view's own source info
+    return {
+      type: view.sourceType,
+      address: view.sourceUrl,
+      resolution: null,
+      fps: null,
+      name: view.label
+    };
+  }
 
-    list.innerHTML = '';
+  // Populate the camera select dropdown with configured camera views
+  function populateCameraSelect() {
+    const select = document.getElementById('activeCameraSelect');
+    if (!select) return;
 
-    if (!cameraViews.length) {
-      const emptyState = document.createElement('div');
-      emptyState.className = 'camera-note';
-      emptyState.textContent = 'No cameras configured yet. Add one to place a live pane.';
-      list.appendChild(emptyState);
+    // Store current selection
+    const currentValue = select.value;
+
+    // Clear and rebuild options
+    select.innerHTML = '<option value="">-- None --</option>';
+
+    let firstEnabledId = null;
+    cameraViews.forEach(view => {
+      const option = document.createElement('option');
+      option.value = view.id;
+      option.textContent = view.label;
+      if (view.enabled && !firstEnabledId) {
+        firstEnabledId = view.id;
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+
+    // Restore selection if still valid, otherwise use first enabled
+    let selectedId = null;
+    if (currentValue && cameraViews.some(v => v.id === currentValue)) {
+      select.value = currentValue;
+      selectedId = currentValue;
+    } else if (firstEnabledId) {
+      select.value = firstEnabledId;
+      selectedId = firstEnabledId;
+    }
+
+    // Set activeCameraId to match dropdown selection (without stopping any camera)
+    if (selectedId && activeCameraId !== selectedId) {
+      activeCameraId = selectedId;
+    }
+  }
+
+  // Track active camera for display
+  let activeCameraId = null;
+  let activeCameraStream = null; // Track current camera stream
+
+  // Handle camera selection change
+  function handleCameraSelect(selectedId) {
+    // Stop current camera if switching
+    if (activeCameraId && activeCameraId !== selectedId && activeCameraStream) {
+      stopActiveCamera();
+    }
+
+    activeCameraId = selectedId;
+
+    // Update which camera views are shown
+    cameraViews.forEach(view => {
+      view.enabled = (view.id === selectedId);
+    });
+
+    // Update UI based on selection
+    updateCameraControlUI();
+
+    renderCameraDock();
+    renderCameraOverlays();
+  }
+
+  // Update camera control UI based on current state
+  function updateCameraControlUI() {
+    const cameraInfo = document.getElementById('cameraInfo');
+    const cameraTypeLabel = document.getElementById('cameraTypeLabel');
+    const cameraStatus = document.getElementById('cameraStatus');
+    const startBtn = document.getElementById('startWebcam');
+    const stopBtn = document.getElementById('stopWebcam');
+
+    if (!activeCameraId) {
+      if (cameraInfo) cameraInfo.style.display = 'none';
+      if (cameraStatus) cameraStatus.textContent = 'Select a camera above to start streaming';
+      if (startBtn) startBtn.disabled = true;
+      if (stopBtn) stopBtn.disabled = true;
       return;
     }
 
-    cameraViews.forEach((view, idx) => {
-      const row = document.createElement('div');
-      row.className = 'camera-config-row';
-      row.dataset.cameraId = view.id;
+    const view = cameraViews.find(v => v.id === activeCameraId);
+    if (!view) {
+      if (cameraInfo) cameraInfo.style.display = 'none';
+      if (cameraStatus) cameraStatus.textContent = 'Camera not found';
+      return;
+    }
 
-      const header = document.createElement('div');
-      header.style.display = 'flex';
-      header.style.justifyContent = 'space-between';
-      header.style.alignItems = 'center';
+    // Get resolved source info
+    const source = getResolvedCameraSource(view);
 
-      const title = document.createElement('div');
-      title.style.display = 'flex';
-      title.style.gap = '8px';
-      title.style.alignItems = 'center';
+    // Show camera type info
+    if (cameraInfo && cameraTypeLabel) {
+      cameraInfo.style.display = 'block';
+      let typeText = '';
+      let hasError = false;
+      switch (source.type) {
+        case 'browser':
+        case 'local':
+          typeText = 'Browser Webcam';
+          break;
+        case 'hardware':
+          typeText = `Hardware: ${source.name || 'Unknown'}`;
+          break;
+        case 'usb':
+          typeText = `USB Camera: ${source.address || 'Unknown'}`;
+          break;
+        case 'csi':
+          typeText = `CSI Camera: ${source.address || 'Default'}`;
+          break;
+        case 'ip':
+        case 'rtsp':
+          typeText = `Stream: ${source.address || 'URL'}`;
+          break;
+        case 'url':
+          typeText = `Stream URL: ${view.sourceUrl || 'Not set'}`;
+          break;
+        case 'not_found':
+          typeText = `⚠️ ${source.error || 'Hardware camera not configured'}`;
+          hasError = true;
+          break;
+        default:
+          typeText = `Type: ${source.type}`;
+      }
+      cameraTypeLabel.textContent = typeText;
+      cameraTypeLabel.style.color = hasError ? 'var(--warning)' : '';
+    }
 
-      const nameInput = document.createElement('input');
-      nameInput.type = 'text';
-      nameInput.value = view.label;
-      nameInput.className = 'config-input';
-      nameInput.style.width = '140px';
-      nameInput.addEventListener('input', (e) => {
-        updateCameraView(view.id, 'label', e.target.value);
-      });
+    // Enable buttons (disabled if camera config has error)
+    const hasConfigError = source.type === 'not_found';
+    if (startBtn) startBtn.disabled = hasConfigError;
+    if (stopBtn) stopBtn.disabled = !activeCameraStream;
 
-      const enabledToggle = document.createElement('label');
-      enabledToggle.style.display = 'flex';
-      enabledToggle.style.alignItems = 'center';
-      enabledToggle.style.gap = '6px';
-      enabledToggle.style.color = 'var(--text-muted)';
-      enabledToggle.style.fontSize = '11px';
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = view.enabled;
-      checkbox.addEventListener('change', (e) => {
-        updateCameraView(view.id, 'enabled', e.target.checked);
-      });
-      enabledToggle.appendChild(checkbox);
-      const enabledLabel = document.createElement('span');
-      enabledLabel.textContent = 'Enabled';
-      enabledToggle.appendChild(enabledLabel);
+    // Update status
+    if (cameraStatus) {
+      if (activeCameraStream) {
+        cameraStatus.textContent = `Streaming: ${view.label}`;
+        cameraStatus.style.color = 'var(--success)';
+      } else {
+        cameraStatus.textContent = `Ready: ${view.label}`;
+        cameraStatus.style.color = 'var(--text-muted)';
+      }
+    }
+  }
 
-      title.appendChild(nameInput);
-      title.appendChild(enabledToggle);
+  // Stop the active camera
+  function stopActiveCamera() {
+    if (activeCameraStream) {
+      activeCameraStream.getTracks().forEach(track => track.stop());
+      activeCameraStream = null;
+    }
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => track.stop());
+      webcamStream = null;
+    }
 
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'webcam-btn';
-      removeBtn.style.flex = 'none';
-      removeBtn.style.width = 'auto';
-      removeBtn.style.background = '#7a1f1f';
-      removeBtn.textContent = 'Remove';
-      removeBtn.addEventListener('click', () => {
-        cameraViews = cameraViews.filter(c => c.id !== view.id);
-        renderCameraList();
-        renderCameraDock();
-        renderCameraOverlays();
-      });
+    const videoElement = document.getElementById('webcamFeed');
+    if (videoElement) videoElement.srcObject = null;
 
-      header.appendChild(title);
-      header.appendChild(removeBtn);
+    const startBtn = document.getElementById('startWebcam');
+    if (startBtn) startBtn.classList.remove('active');
 
-      const grid = document.createElement('div');
-      grid.className = 'camera-config-grid';
+    if (webcamOverlay) {
+      webcamOverlay.visible = false;
+    }
 
-      const sourceLabel = document.createElement('label');
-      sourceLabel.textContent = 'Source Type';
-      const sourceSelect = document.createElement('select');
-      sourceSelect.innerHTML = `
-        <option value="local">Local webcam</option>
-        <option value="url">Stream URL</option>
-      `;
-      sourceSelect.value = view.sourceType;
-      sourceSelect.addEventListener('change', (e) => {
-        updateCameraView(view.id, 'sourceType', e.target.value);
-      });
-      sourceLabel.appendChild(sourceSelect);
-
-      const urlLabel = document.createElement('label');
-      urlLabel.textContent = 'Stream / Device URL';
-      const urlInput = document.createElement('input');
-      urlInput.type = 'text';
-      urlInput.value = view.sourceUrl;
-      urlInput.placeholder = 'rtsp/http URL or leave blank for local';
-      urlInput.className = 'config-input';
-      urlInput.addEventListener('input', (e) => {
-        updateCameraView(view.id, 'sourceUrl', e.target.value);
-      });
-      urlLabel.appendChild(urlInput);
-
-      const displayModeLabel = document.createElement('label');
-      displayModeLabel.textContent = 'Display Mode';
-      displayModeLabel.title = 'Pane = floating window, Overlay = projected onto 3D scene';
-      const displayModeSelect = document.createElement('select');
-      displayModeSelect.innerHTML = `
-        <option value="pane">Floating Pane</option>
-        <option value="overlay">3D Overlay</option>
-      `;
-      displayModeSelect.value = view.displayMode || 'pane';
-      displayModeSelect.addEventListener('change', (e) => {
-        updateCameraView(view.id, 'displayMode', e.target.value);
-        // Re-render both dock and overlays when mode changes
-        renderCameraDock();
-        renderCameraOverlays();
-      });
-      displayModeLabel.appendChild(displayModeSelect);
-
-      const positionLabel = document.createElement('label');
-      positionLabel.textContent = 'Pane Position';
-      positionLabel.title = 'Only applies when Display Mode is "Floating Pane"';
-      const positionSelect = document.createElement('select');
-      positionSelect.innerHTML = `
-        <option value="front">Front</option>
-        <option value="left">Left</option>
-        <option value="right">Right</option>
-        <option value="rear">Rear</option>
-        <option value="floating">Floating</option>
-      `;
-      positionSelect.value = view.position;
-      positionSelect.disabled = view.displayMode === 'overlay';
-      positionSelect.addEventListener('change', (e) => {
-        updateCameraView(view.id, 'position', e.target.value);
-      });
-      positionLabel.appendChild(positionSelect);
-
-      grid.appendChild(sourceLabel);
-      grid.appendChild(urlLabel);
-      grid.appendChild(displayModeLabel);
-      grid.appendChild(positionLabel);
-
-      row.appendChild(header);
-      row.appendChild(grid);
-      list.appendChild(row);
-    });
+    refreshLocalCameraVideos();
+    renderCameraDock();
+    renderCameraOverlays();
+    updateCameraControlUI();
   }
 
   // Store floating camera positions
@@ -330,10 +394,17 @@
       if (!v.enabled) return false;
       // Only show cameras in 'pane' mode (floating windows)
       if (v.displayMode === 'overlay') return false;
-      // Only show local camera panes when webcam stream is active
-      if (v.sourceType === 'local' && !webcamStream) return false;
-      // Only show URL cameras when they have a source URL
-      if (v.sourceType !== 'local' && !v.sourceUrl) return false;
+
+      // Resolve hardware cameras to get their actual type
+      const source = getResolvedCameraSource(v);
+
+      // Show browser/local cameras when webcam stream is active
+      if ((source.type === 'browser' || source.type === 'local' || v.sourceType === 'local') && !webcamStream) return false;
+      // Show URL cameras when they have a source URL
+      if ((source.type === 'url' || source.type === 'ip' || source.type === 'rtsp') && !source.address) return false;
+      // Hide cameras with broken hardware references
+      if (source.type === 'not_found') return false;
+
       return true;
     });
     dock.style.display = enabledViews.length ? 'grid' : 'none';
@@ -348,8 +419,12 @@
       header.innerHTML = `<span>${view.label}</span><span style="font-size: 10px; color: #666;">${view.position}</span>`;
       pane.appendChild(header);
 
+      // Resolve hardware camera to get actual source type
+      const source = getResolvedCameraSource(view);
+
       let hasVideo = false;
-      if (view.sourceType === 'local') {
+      if (source.type === 'browser' || source.type === 'local' || view.sourceType === 'local') {
+        // Browser webcam - use webcamStream
         const video = document.createElement('video');
         video.autoplay = true;
         video.muted = true;
@@ -362,25 +437,40 @@
           hasVideo = true;
         }
         pane.appendChild(video);
-      } else if (view.sourceUrl) {
+      } else if (source.type === 'url' || source.type === 'ip' || source.type === 'rtsp') {
+        // URL-based stream
         const video = document.createElement('video');
         video.autoplay = true;
         video.muted = true;
         video.playsInline = true;
         video.loop = true;
-        video.src = view.sourceUrl;
+        video.src = source.address || view.sourceUrl;
         video.dataset.sourceType = 'url';
         video.dataset.cameraId = view.id;
         pane.appendChild(video);
         hasVideo = true;
+      } else if (source.type === 'usb' || source.type === 'csi') {
+        // Hardware camera via backend stream
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.loop = true;
+        if (source.address) {
+          video.src = `/api/stream/${encodeURIComponent(source.address)}`;
+          hasVideo = true;
+        }
+        video.dataset.sourceType = 'hardware';
+        video.dataset.cameraId = view.id;
+        pane.appendChild(video);
       }
 
       if (!hasVideo) {
         const placeholder = document.createElement('div');
         placeholder.className = 'camera-placeholder';
-        placeholder.textContent = view.sourceType === 'local'
-          ? 'Start the webcam to view this feed.'
-          : 'Add a stream URL to preview this camera.';
+        placeholder.textContent = (source.type === 'browser' || source.type === 'local' || view.sourceType === 'local')
+          ? 'Click "Start Camera" to view this feed.'
+          : 'Configure camera address to preview.';
         pane.appendChild(placeholder);
       }
 
@@ -478,20 +568,6 @@
     }
   }
 
-  function updateCameraView(id, field, value) {
-    cameraViews = cameraViews.map((view, idx) => {
-      if (view.id !== id) return view;
-      const updated = { ...view, [field]: value };
-      if (field === 'sourceType' && value === 'local' && !updated.label) {
-        updated.label = `Camera ${idx + 1}`;
-      }
-      return updated;
-    });
-    renderCameraList();
-    renderCameraDock();
-    renderCameraOverlays();
-  }
-
   // Load config from backend API
   async function loadConfigFromBackend() {
     try {
@@ -524,13 +600,34 @@
       }));
       console.log('Loaded per-leg config from backend:', legConfigs);
 
-      // Camera layout persistence
+      // Load hardware cameras from config
+      if (Array.isArray(config.hardware_cameras)) {
+        hardwareCameras = config.hardware_cameras.map(cam => ({
+          id: cam.id || '',
+          name: cam.name || 'Camera',
+          address: cam.address || '',
+          type: cam.type || 'usb',
+          resolution: cam.resolution || '1280x720',
+          fps: cam.fps || 30,
+          enabled: cam.enabled !== false
+        }));
+        console.log('Loaded hardware cameras:', hardwareCameras);
+      } else {
+        hardwareCameras = [];
+        console.log('No hardware cameras in config');
+      }
+
+      // Camera layout persistence - load from config
       if (Array.isArray(config.camera_views)) {
         cameraViews = config.camera_views.map((view, idx) => normalizeCameraView(view, idx));
+        console.log('Loaded camera views:', cameraViews);
       } else {
         cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
+        console.log('Using default camera views');
       }
-      renderCameraList();
+      populateCameraSelect();
+      console.log('Active camera ID after populateCameraSelect:', activeCameraId);
+      updateCameraControlUI(); // Initialize camera control state
       renderCameraDock();
       renderCameraOverlays();
 
@@ -2204,7 +2301,6 @@
   }
 
   // Initialize camera UI with defaults before backend config loads
-  renderCameraList();
   renderCameraDock();
 
   // ========== Webcam Settings ==========
@@ -2220,20 +2316,74 @@
     });
   }
 
+  // Start camera button - works with currently selected camera
   document.getElementById('startWebcam').addEventListener('click', async () => {
-    try {
-      // Request webcam access
-      webcamStream = await navigator.mediaDevices.getUserMedia({
-        video: {facingMode: 'user'},
-        audio: false
-      });
+    console.log('Start camera clicked, activeCameraId:', activeCameraId);
+    if (!activeCameraId) {
+      logMsg('No camera selected');
+      return;
+    }
 
+    const view = cameraViews.find(v => v.id === activeCameraId);
+    console.log('Found camera view:', view);
+    if (!view) {
+      logMsg('Camera not found');
+      return;
+    }
+
+    try {
+      const source = getResolvedCameraSource(view);
+      console.log('Resolved camera source:', source);
       const videoElement = document.getElementById('webcamFeed');
       if (!videoElement) {
         throw new Error('Video element not found');
       }
 
-      videoElement.srcObject = webcamStream;
+      // Handle different camera types
+      if (source.type === 'browser' || source.type === 'local') {
+        // Browser webcam - request access
+        const constraints = {
+          video: source.address ? { deviceId: { exact: source.address } } : { facingMode: 'user' },
+          audio: false
+        };
+        activeCameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        webcamStream = activeCameraStream; // Keep compatibility with existing code
+        videoElement.srcObject = activeCameraStream;
+
+      } else if (source.type === 'usb' || source.type === 'csi') {
+        // Hardware camera via backend stream
+        const streamUrl = source.address ? `/api/stream/${encodeURIComponent(source.address)}` : null;
+        if (streamUrl) {
+          videoElement.src = streamUrl;
+          activeCameraStream = { getTracks: () => [] }; // Placeholder
+        } else {
+          throw new Error('No camera address configured');
+        }
+
+      } else if (source.type === 'url' || source.type === 'ip' || source.type === 'rtsp') {
+        // URL-based stream
+        const streamUrl = source.address || view.sourceUrl;
+        if (streamUrl) {
+          videoElement.src = streamUrl;
+          activeCameraStream = { getTracks: () => [] }; // Placeholder
+        } else {
+          throw new Error('No stream URL configured');
+        }
+
+      } else if (source.type === 'not_found') {
+        // Hardware camera reference is broken
+        throw new Error(source.error || 'Hardware camera not found. Please check configuration.');
+
+      } else if (source.type === 'hardware') {
+        // Hardware camera type not resolved - fallback to local
+        console.warn('Hardware camera type not resolved, falling back to local webcam');
+        activeCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        webcamStream = activeCameraStream;
+        videoElement.srcObject = activeCameraStream;
+
+      } else {
+        throw new Error(`Unsupported camera type: ${source.type}`);
+      }
 
       // Wait for video to be ready before playing
       await new Promise((resolve, reject) => {
@@ -2243,6 +2393,8 @@
             .catch(reject);
         };
         videoElement.onerror = reject;
+        // Timeout for streams that don't fire loadedmetadata
+        setTimeout(resolve, 3000);
       });
 
       document.getElementById('startWebcam').classList.add('active');
@@ -2250,23 +2402,19 @@
       // If overlay checkbox is checked, recreate the overlay with new stream
       if (document.getElementById('overlayWebcam').checked) {
         if (webcamOverlay) {
-          // Remove old overlay
           scene.remove(webcamOverlay);
         }
 
-        // Create new overlay with updated video element
         const videoTexture = new THREE.VideoTexture(videoElement);
         const overlayGeom = new THREE.PlaneGeometry(200, 150);
         const sliderVal = parseFloat(document.getElementById('webcamOpacity').value);
         const overlayMat = new THREE.MeshBasicMaterial({
           map: videoTexture,
           transparent: true,
-          opacity: 1.0 - (sliderVal / 100), // Inverted: 0% slider = opaque
+          opacity: 1.0 - (sliderVal / 100),
           side: THREE.DoubleSide
         });
         webcamOverlay = new THREE.Mesh(overlayGeom, overlayMat);
-        // Position in front of hexapod in 3D space (positive Z)
-        // When viewing from behind (camera at negative Z), overlay appears in background
         webcamOverlay.position.set(0, 80, 150);
         scene.add(webcamOverlay);
         webcamOverlay.visible = true;
@@ -2275,28 +2423,24 @@
       refreshLocalCameraVideos();
       renderCameraDock();
       renderCameraOverlays();
+      updateCameraControlUI();
 
-      logMsg('Webcam started');
+      logMsg(`Camera started: ${view.label}`);
     } catch(err) {
       const errorMsg = err && err.message ? err.message : String(err);
-      logMsg('Webcam error: ' + errorMsg);
-      console.error('Webcam error:', err);
+      logMsg('Camera error: ' + errorMsg);
+      console.error('Camera error:', err);
+      activeCameraStream = null;
+      updateCameraControlUI();
     }
   });
 
+  // Stop camera button
   document.getElementById('stopWebcam').addEventListener('click', () => {
-    if (webcamStream) {
-      webcamStream.getTracks().forEach(track => track.stop());
-      document.getElementById('webcamFeed').srcObject = null;
-      document.getElementById('startWebcam').classList.remove('active');
-      if (webcamOverlay) {
-        webcamOverlay.visible = false;
-      }
-      webcamStream = null;
-      refreshLocalCameraVideos();
-      renderCameraDock();
-      renderCameraOverlays();
-      logMsg('Webcam stopped');
+    if (activeCameraStream || webcamStream) {
+      const view = cameraViews.find(v => v.id === activeCameraId);
+      stopActiveCamera();
+      logMsg(`Camera stopped${view ? ': ' + view.label : ''}`);
     }
   });
 
@@ -2345,37 +2489,16 @@
     });
   });
 
-  document.getElementById('addCameraView').addEventListener('click', () => {
-    const nextIndex = cameraViews.length;
-    const newView = normalizeCameraView({
-      id: `camera-${Date.now()}`,
-      label: `Camera ${nextIndex + 1}`,
-      enabled: true,
-      position: 'floating',
-      sourceType: 'local',
-      sourceUrl: '',
-      displayMode: 'pane'
-    }, nextIndex);
-    cameraViews.push(newView);
-    renderCameraList();
-    renderCameraDock();
-    renderCameraOverlays();
-  });
-
-  document.getElementById('saveCameraViews').addEventListener('click', async () => {
-    const payload = {
-      camera_views: cameraViews.map(view => ({
-        id: view.id,
-        label: view.label,
-        enabled: view.enabled,
-        position: view.position,
-        source_type: view.sourceType,
-        source_url: view.sourceUrl,
-        display_mode: view.displayMode,
-      }))
-    };
-    await saveConfigToBackend(payload);
-    logMsg('Camera layout saved');
+  // Camera view selector - choose which configured camera to display
+  document.getElementById('activeCameraSelect')?.addEventListener('change', (e) => {
+    const selectedId = e.target.value;
+    handleCameraSelect(selectedId);
+    if (selectedId) {
+      const view = cameraViews.find(v => v.id === selectedId);
+      logMsg(`Camera: ${view?.label || selectedId}`);
+    } else {
+      logMsg('Camera: None');
+    }
   });
 
   // ========== Advanced Settings ==========

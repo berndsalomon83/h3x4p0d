@@ -1535,37 +1535,46 @@
       <!-- Camera Tab -->
       <div class="settings-content" id="tab-camera">
         <div class="settings-group">
-          <div class="settings-group-title">Webcam Feed</div>
+          <div class="settings-group-title">Camera Selection</div>
+          <div class="setting-row">
+            <span class="setting-label">Active Camera</span>
+            <select id="activeCameraSelect" class="setting-select" style="width: 160px;">
+              <option value="">-- None --</option>
+            </select>
+          </div>
+          <div id="cameraInfo" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: none;">
+            <span id="cameraTypeLabel"></span>
+          </div>
+          <p class="camera-note" style="margin-top: 8px; font-size: 11px;">
+            Configure cameras in <a href="config.html" target="_blank" style="color: var(--accent);">Configuration</a> &rarr; Sensors &amp; Cameras
+          </p>
+        </div>
+
+        <div class="settings-group" id="cameraControlGroup">
+          <div class="settings-group-title">Camera Feed</div>
           <video id="webcamFeed" autoplay playsinline muted></video>
           <div class="webcam-controls">
-            <button class="webcam-btn" id="startWebcam">Start</button>
-            <button class="webcam-btn" id="stopWebcam">Stop</button>
+            <button class="webcam-btn" id="startWebcam">Start Camera</button>
+            <button class="webcam-btn" id="stopWebcam">Stop Camera</button>
+          </div>
+          <div id="cameraStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;">
+            Select a camera above to start streaming
           </div>
         </div>
 
         <div class="settings-group">
-          <div class="settings-group-title">3D Overlay</div>
+          <div class="settings-group-title">Display Options</div>
           <div class="setting-row">
-            <span class="setting-label">Enable Overlay</span>
+            <span class="setting-label">Show as 3D Overlay</span>
             <input type="checkbox" id="overlayWebcam">
           </div>
           <div class="setting-row">
-            <span class="setting-label">Transparency</span>
+            <span class="setting-label">Overlay Transparency</span>
             <div class="setting-control">
               <input type="range" id="webcamOpacity" class="setting-slider" min="0" max="100" value="30">
               <span class="setting-value" id="webcamOpacityValue">30%</span>
             </div>
           </div>
-        </div>
-
-        <div class="settings-group">
-          <div class="settings-group-title">Live Camera Layout</div>
-          <div id="cameraList" class="camera-config-list"></div>
-          <div class="camera-config-actions">
-            <button class="webcam-btn" id="addCameraView" style="flex: none; width: auto;">Add Camera</button>
-            <button class="webcam-btn" id="saveCameraViews" style="flex: none; width: auto;">Save Layout</button>
-          </div>
-          <p class="camera-note"><strong>Display Mode:</strong> "Floating Pane" shows camera as a draggable window. "3D Overlay" projects the video onto the 3D scene background. Use the Transparency slider above to control overlay opacity.</p>
         </div>
       </div>
 
