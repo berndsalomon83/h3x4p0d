@@ -90,8 +90,8 @@ class HexapodConfig:
         "input_smoothing_factor": 0.15,  # 0.05-0.5
 
         # Default posture
-        "body_height": 120.0,     # standing height in mm
-        "leg_spread": 100.0,      # percentage (50-150%)
+        "body_height": 90.0,      # standing height in mm (comfortable hexapod crouch)
+        "leg_spread": 110.0,      # percentage (50-150%)
         "keep_body_level": False,  # auto-compensate using IMU
 
         # Gait definitions - each gait has phase offsets for legs 0-5
@@ -249,51 +249,51 @@ class HexapodConfig:
             "default_stance": {
                 "name": "Default Stance",
                 "category": "operation",
-                "height": 120.0,
+                "height": 90.0,
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
-                "leg_spread": 100.0,
+                "leg_spread": 110.0,
                 "builtin": True
             },
             "low_stance": {
                 "name": "Low Stance",
                 "category": "operation",
-                "height": 80.0,
+                "height": 70.0,
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
-                "leg_spread": 100.0,
+                "leg_spread": 115.0,
                 "builtin": False
             },
             "high_stance": {
                 "name": "High Stance",
                 "category": "operation",
-                "height": 160.0,
+                "height": 120.0,
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
-                "leg_spread": 100.0,
+                "leg_spread": 105.0,
                 "builtin": False
             },
             "rest_pose": {
                 "name": "Rest Pose",
                 "category": "rest",
-                "height": 40.0,
+                "height": 50.0,
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
-                "leg_spread": 120.0,
+                "leg_spread": 130.0,
                 "builtin": False
             },
             "power_off": {
                 "name": "Power Off",
                 "category": "rest",
-                "height": 30.0,
+                "height": 40.0,
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
-                "leg_spread": 100.0,
+                "leg_spread": 110.0,
                 "builtin": False
             }
         },

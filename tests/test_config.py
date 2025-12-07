@@ -205,7 +205,7 @@ class TestHexapodConfigPoses:
 
         assert pose is not None
         assert pose["name"] == "Default Stance"
-        assert pose["height"] == 120.0
+        assert pose["height"] == 90.0
         assert pose["builtin"] is True
 
     def test_get_pose_nonexistent(self):
@@ -397,25 +397,25 @@ class TestHexapodConfigPoses:
 
         # Check default_stance
         default = config.get_pose("default_stance")
-        assert default["height"] == 120.0
+        assert default["height"] == 90.0
         assert default["roll"] == 0.0
         assert default["pitch"] == 0.0
         assert default["yaw"] == 0.0
-        assert default["leg_spread"] == 100.0
+        assert default["leg_spread"] == 110.0
 
         # Check low_stance
         low = config.get_pose("low_stance")
-        assert low["height"] == 80.0
+        assert low["height"] == 70.0
 
         # Check high_stance
         high = config.get_pose("high_stance")
-        assert high["height"] == 160.0
+        assert high["height"] == 120.0
 
         # Check rest_pose
         rest = config.get_pose("rest_pose")
-        assert rest["height"] == 40.0
-        assert rest["leg_spread"] == 120.0
+        assert rest["height"] == 50.0
+        assert rest["leg_spread"] == 130.0
 
         # Check power_off
         power_off = config.get_pose("power_off")
-        assert power_off["height"] == 30.0
+        assert power_off["height"] == 40.0

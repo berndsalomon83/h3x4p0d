@@ -37,12 +37,18 @@
   }
 
   function computeGroundingAngles(bodyHeight, legGeometry, groundY) {
-    // Spider stance: femur spreads outward at 45° to ground, tibia nearly vertical
-    // Negative femur rotation = spread outward from body
-    // Positive tibia rotation = bend knee toward vertical
+    // Hexapod stance: legs drop mostly downward with a gentle knee bend so the feet
+    // sit directly under the body instead of splaying outward like a spider.
+    //  - Femur aims ~15° forward from vertical (servo ≈ 75°)
+    //  - Tibia bends forward ~30° (servo ≈ 120°)
+    // Returning radians keeps the 3D rig in sync with backend telemetry mapping
+    // (90° servo = 0 rad rotation).
+    const femurServoDeg = 75;   // 15° down from neutral horizontal → mostly vertical
+    const tibiaServoDeg = 120;  // 30° of knee bend toward the ground
+
     return {
-      femur: -Math.PI / 4,       // -45° = femur spreads outward, 45° down from horizontal
-      tibia: Math.PI / 180 * 35  // +35° = tibia bends 35° more toward vertical
+      femur: (femurServoDeg - 90) * Math.PI / 180,
+      tibia: (tibiaServoDeg - 90) * Math.PI / 180
     };
   }
 
