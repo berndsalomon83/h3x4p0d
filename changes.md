@@ -234,3 +234,9 @@
 - Refreshed the calibration page with a color-themed configuration assistant that highlights unmapped joints, available channels, and provides an auto-assign action plus updated quick-test styling. (web_static/calibrate.html)
 - Expanded calibration tests to assert coverage metadata in status responses and mapping endpoints, ensuring the helper data remains available to the UI. (tests/test_calibrate_web.py)
 
+## 2025-12-11
+
+### Realistic Standing Stance
+
+- Updated the UI and hexapod configuration defaults to a downward, knee-bent stance (90mm height, 110% spread) so the robot stands like a real hexapod on both the main controller view and the configuration page. (web_static/app.js, web_static/hexapod-3d.js, web_static/config.js, web_static/config.html, src/hexapod/config.py, src/hexapod/web.py, tests/test_config.py, tests/test_web.py)
+

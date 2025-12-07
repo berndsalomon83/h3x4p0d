@@ -25,11 +25,11 @@ const state = {
     roll: 0,
     pitch: 0,
     yaw: 0,
-    bodyHeight: 80,
-    legSpread: 100,  // percentage: 100 = normal, >100 = spread out, <100 = tucked in
+    bodyHeight: 90,
+    legSpread: 110,  // percentage: 100 = normal, >100 = spread out, <100 = tucked in
     speed: 0
   },
-  legAngles: Array(6).fill(null).map(() => ({ coxa: 90, femur: 45, tibia: -90 })),
+  legAngles: Array(6).fill(null).map(() => ({ coxa: 90, femur: 75, tibia: 120 })),
   footContacts: [true, false, true, true, false, true],
   selectedLeg: null,
   recordedPoses: [],
@@ -188,7 +188,7 @@ async function loadConfig() {
       state.config = {
         body_radius: 80,
         body_height_geo: 30,
-        body_height: 120,
+        body_height: 90,
         leg_coxa_length: 30,
         leg_femur_length: 50,
         leg_tibia_length: 80,
@@ -867,7 +867,7 @@ function applyConfigToUI() {
   setSliderValue('cycle_time', cycleTime);
 
   // Body pose
-  setSliderValue('body_height', c.body_height || state.telemetry.bodyHeight || 120);
+  setSliderValue('body_height', c.body_height || state.telemetry.bodyHeight || 90);
   setSliderValue('bodyRoll', c.body_roll || 0);
   setSliderValue('bodyPitch', c.body_pitch || 0);
   setSliderValue('bodyYaw', c.body_yaw || 0);
@@ -2229,7 +2229,7 @@ const defaultGeometry = {
   ],
   frames: [
     { name: 'world', parent: null, position: [0, 0, 0], orientation: [0, 0, 0], fixed: true },
-    { name: 'body', parent: 'world', position: [0, 0, 120], orientation: [0, 0, 0], fixed: false },
+    { name: 'body', parent: 'world', position: [0, 0, 90], orientation: [0, 0, 0], fixed: false },
     { name: 'camera_front', parent: 'body', position: [100, 0, 50], orientation: [0, -10, 0], fixed: false },
     { name: 'camera_rear', parent: 'body', position: [-100, 0, 50], orientation: [0, -10, 180], fixed: false },
     { name: 'imu', parent: 'body', position: [0, 0, 10], orientation: [0, 0, 0], fixed: false }
@@ -2903,11 +2903,11 @@ async function loadPoses() {
 function loadDefaultPoses() {
   // Set default poses for offline mode
   state.poses = {
-    'default_stance': { name: 'Default Stance', category: 'operation', height: 120, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: true },
-    'low_stance': { name: 'Low Stance', category: 'operation', height: 80, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: false },
-    'high_stance': { name: 'High Stance', category: 'operation', height: 160, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: false },
-    'rest_pose': { name: 'Rest Pose', category: 'rest', height: 40, roll: 0, pitch: 0, yaw: 0, leg_spread: 120, builtin: false },
-    'power_off': { name: 'Power Off', category: 'rest', height: 30, roll: 0, pitch: 0, yaw: 0, leg_spread: 100, builtin: false }
+    'default_stance': { name: 'Default Stance', category: 'operation', height: 90, roll: 0, pitch: 0, yaw: 0, leg_spread: 110, builtin: true },
+    'low_stance': { name: 'Low Stance', category: 'operation', height: 70, roll: 0, pitch: 0, yaw: 0, leg_spread: 115, builtin: false },
+    'high_stance': { name: 'High Stance', category: 'operation', height: 120, roll: 0, pitch: 0, yaw: 0, leg_spread: 105, builtin: false },
+    'rest_pose': { name: 'Rest Pose', category: 'rest', height: 50, roll: 0, pitch: 0, yaw: 0, leg_spread: 130, builtin: false },
+    'power_off': { name: 'Power Off', category: 'rest', height: 40, roll: 0, pitch: 0, yaw: 0, leg_spread: 110, builtin: false }
   };
   renderPosesTable();
   logEvent('INFO', 'Using default poses (offline mode)');
@@ -2991,7 +2991,7 @@ function handlePoseAction(action, poseId) {
     case 'preview':
       // Animate to pose in 3D preview only (don't send to robot)
       animatePoseTransition(
-        Number(pose.height) || 120,
+        Number(pose.height) || 90,
         Number(pose.roll) || 0,
         Number(pose.pitch) || 0,
         Number(pose.yaw) || 0
@@ -3019,7 +3019,7 @@ async function applyPose(poseId) {
   if (!pose) return;
 
   // Ensure numeric values
-  const height = Number(pose.height) || 120;
+  const height = Number(pose.height) || 90;
   const roll = Number(pose.roll) || 0;
   const pitch = Number(pose.pitch) || 0;
   const yaw = Number(pose.yaw) || 0;
@@ -3078,7 +3078,7 @@ function openPoseEditor(poseId = null) {
     titleEl.textContent = 'Edit Pose';
     nameInput.value = pose.name || '';
     categorySelect.value = pose.category || 'operation';
-    heightSlider.value = Number(pose.height) || 120;
+    heightSlider.value = Number(pose.height) || 90;
     legSpreadSlider.value = Number(pose.leg_spread) || 100;
     rollSlider.value = Number(pose.roll) || 0;
     pitchSlider.value = Number(pose.pitch) || 0;
@@ -3089,7 +3089,7 @@ function openPoseEditor(poseId = null) {
     titleEl.textContent = 'Create New Pose';
     nameInput.value = '';
     categorySelect.value = 'operation';
-    heightSlider.value = state.telemetry.bodyHeight || 120;
+    heightSlider.value = state.telemetry.bodyHeight || 90;
     legSpreadSlider.value = state.telemetry.legSpread || 100;
     rollSlider.value = state.telemetry.roll || 0;
     pitchSlider.value = state.telemetry.pitch || 0;
@@ -3769,7 +3769,7 @@ function updateSummaryCards() {
   // Body Pose card
   const summaryPose = document.getElementById('summaryPose');
   if (summaryPose) {
-    const height = c.body_height || state.telemetry.bodyHeight || 120;
+    const height = c.body_height || state.telemetry.bodyHeight || 90;
     summaryPose.textContent = `Height: ${height}mm`;
   }
   const summaryPoseMeta = document.getElementById('summaryPoseMeta');

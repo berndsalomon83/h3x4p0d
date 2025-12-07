@@ -98,7 +98,7 @@
   scene.add(gridHelper);
   
   // Hexapod preview configuration shared with the configuration UI
-  let defaultBodyY = 80;
+  let defaultBodyY = 90;
   // Spider-like leg arrangement: 6 legs evenly distributed around body
   const ATTACH_POINTS = [
     { x: 55, y: 65, z: 0, angle: 30 },    // Front right - forward, slight right
@@ -153,11 +153,11 @@
   // ============================================================================
 
   // Default visual pose for legs before backend telemetry arrives
-  // Spider stance: femur spreads outward at 45° to ground, tibia nearly vertical
+  // Hexapod stance: legs drop mostly downward with a gentle knee bend so feet sit under the body
   const DEFAULT_VISUAL_POSE = {
-    coxa: 0,                    // Neutral (pointing straight out)
-    femur: -Math.PI / 4,        // -45° = femur spreads outward, 45° down from horizontal
-    tibia: Math.PI / 180 * 35   // +35° = tibia bends 35° more toward vertical
+    coxa: 0,                           // Neutral (pointing straight out)
+    femur: (75 - 90) * Math.PI / 180,  // Femur aims ~15° forward from vertical
+    tibia: (120 - 90) * Math.PI / 180  // Knee bends ~30° toward the ground
   };
 
   function normalizeCameraView(view, index = 0) {

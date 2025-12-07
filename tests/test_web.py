@@ -285,7 +285,7 @@ class TestWebSocketAPI:
             # Verify body_height changed
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 80.0
+            assert data["body_height"] == 90.0
             assert data["running"] is False
 
     def test_websocket_pose_preset_crouch(self, client):
@@ -295,8 +295,8 @@ class TestWebSocketAPI:
 
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 40.0
-            assert data["leg_spread"] == 120.0
+            assert data["body_height"] == 50.0
+            assert data["leg_spread"] == 130.0
 
     def test_websocket_pose_preset_neutral(self, client):
         """Test neutral pose preset via WebSocket."""
@@ -308,8 +308,8 @@ class TestWebSocketAPI:
 
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 60.0
-            assert data["leg_spread"] == 100.0
+            assert data["body_height"] == 70.0
+            assert data["leg_spread"] == 110.0
 
 
 @pytest.mark.integration
@@ -923,7 +923,7 @@ class TestPosesAPI:
         # Verify body_height was changed
         status = client.get("/api/status")
         status_data = status.json()
-        assert status_data["body_height"] == 80.0
+        assert status_data["body_height"] == 70.0
 
     def test_apply_nonexistent_pose_fails(self, client):
         """Test that applying a nonexistent pose returns 404."""
@@ -1012,7 +1012,7 @@ class TestWebSocketPoses:
             # Verify pose was applied
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 160.0
+            assert data["body_height"] == 120.0
             assert data["running"] is False
 
     def test_websocket_apply_pose_low_stance(self, client):
@@ -1025,7 +1025,7 @@ class TestWebSocketPoses:
 
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 80.0
+            assert data["body_height"] == 70.0
 
     def test_websocket_apply_pose_rest_pose(self, client):
         """Test applying rest_pose via WebSocket."""
@@ -1037,8 +1037,8 @@ class TestWebSocketPoses:
 
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 40.0
-            assert data["leg_spread"] == 120.0
+            assert data["body_height"] == 50.0
+            assert data["leg_spread"] == 130.0
 
     def test_websocket_apply_pose_default_stance(self, client):
         """Test applying default_stance via WebSocket."""
@@ -1056,8 +1056,8 @@ class TestWebSocketPoses:
 
             response = client.get("/api/status")
             data = response.json()
-            assert data["body_height"] == 120.0
-            assert data["leg_spread"] == 100.0
+            assert data["body_height"] == 90.0
+            assert data["leg_spread"] == 110.0
 
     def test_websocket_apply_nonexistent_pose(self, client):
         """Test applying a nonexistent pose via WebSocket (should be ignored)."""

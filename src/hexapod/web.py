@@ -1327,23 +1327,23 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                     preset = data.get("preset", "neutral")
                     controller.running = False  # Stop walking for pose changes
                     if preset == "stand":
-                        controller.body_height = 80.0
+                        controller.body_height = 90.0
                         controller.body_pitch = 0.0
                         controller.body_roll = 0.0
                         controller.body_yaw = 0.0
-                        controller.leg_spread = 100.0
+                        controller.leg_spread = 110.0
                     elif preset == "crouch":
-                        controller.body_height = 40.0
+                        controller.body_height = 50.0
                         controller.body_pitch = 0.0
                         controller.body_roll = 0.0
                         controller.body_yaw = 0.0
-                        controller.leg_spread = 120.0  # Wider stance when crouched
+                        controller.leg_spread = 130.0  # Wider stance when crouched
                     elif preset == "neutral":
-                        controller.body_height = 60.0
+                        controller.body_height = 70.0
                         controller.body_pitch = 0.0
                         controller.body_roll = 0.0
                         controller.body_yaw = 0.0
-                        controller.leg_spread = 100.0
+                        controller.leg_spread = 110.0
                     logger.info(f"Pose preset applied: {preset}")
                 elif typ == "apply_pose":
                     # Apply a saved pose from config
@@ -1354,11 +1354,11 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                         pose = cfg.get_pose(pose_id)
                         if pose:
                             controller.running = False
-                            controller.body_height = pose.get("height", 120.0)
+                            controller.body_height = pose.get("height", 90.0)
                             controller.body_roll = pose.get("roll", 0.0)
                             controller.body_pitch = pose.get("pitch", 0.0)
                             controller.body_yaw = pose.get("yaw", 0.0)
-                            controller.leg_spread = pose.get("leg_spread", 100.0)
+                            controller.leg_spread = pose.get("leg_spread", 110.0)
                             logger.info(f"Saved pose applied: {pose_id}")
                 # ========== Self-Test Commands ==========
                 elif typ == "test_leg":
