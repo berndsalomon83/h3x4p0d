@@ -409,10 +409,12 @@ async function selectProfile(profileName) {
 async function handleProfileAction(action, profileName) {
   switch (action) {
     case 'edit':
-      // Navigate to appropriate section based on what user might want to edit
-      // For now, just select the profile
-      selectProfile(profileName);
-      logEvent('INFO', `Editing profile: ${profileName}`);
+      const profileData = state.profilesData[profileName] || {};
+      showProfileModal({
+        mode: 'edit',
+        existingName: profileName,
+        existingDescription: profileData.description || ''
+      });
       break;
 
     case 'set-default':
@@ -2214,13 +2216,16 @@ const defaultGeometry = {
   femur_axis: 'y',
   tibia_axis: 'y',
   // Spider-like leg arrangement: 6 legs evenly distributed around body
+  // x = forward/backward on body (+ = front), y = left/right on body (+ = right)
+  // In THREE.js: posX = y (left/right), posZ = x (forward/backward)
+  // angle = direction leg points (0° = forward, 90° = right, etc.)
   leg_attach_points: [
-    { leg: 0, name: 'FR', x: 70, y: 40, z: 0, angle: 30 },    // Front right
-    { leg: 1, name: 'MR', x: 80, y: 0, z: 0, angle: 90 },     // Middle right
-    { leg: 2, name: 'RR', x: 70, y: -40, z: 0, angle: 150 },  // Rear right
-    { leg: 3, name: 'RL', x: -70, y: -40, z: 0, angle: 210 }, // Rear left
-    { leg: 4, name: 'ML', x: -80, y: 0, z: 0, angle: 270 },   // Middle left
-    { leg: 5, name: 'FL', x: -70, y: 40, z: 0, angle: 330 }   // Front left
+    { leg: 0, name: 'FR', x: 55, y: 65, z: 0, angle: 30 },    // Front right - forward, slight right
+    { leg: 1, name: 'MR', x: 0, y: 80, z: 0, angle: 50 },     // Middle right - forward, angled right
+    { leg: 2, name: 'RR', x: -55, y: 65, z: 0, angle: 70 },   // Rear right - forward, angled right
+    { leg: 3, name: 'RL', x: -55, y: -65, z: 0, angle: 290 }, // Rear left - forward, angled left
+    { leg: 4, name: 'ML', x: 0, y: -80, z: 0, angle: 310 },   // Middle left - forward, angled left
+    { leg: 5, name: 'FL', x: 55, y: -65, z: 0, angle: 330 }   // Front left - forward, slight left
   ],
   frames: [
     { name: 'world', parent: null, position: [0, 0, 0], orientation: [0, 0, 0], fixed: true },
@@ -3798,7 +3803,7 @@ function showProfileModal(options = {}) {
   const submitText = isEdit ? 'Save Changes' : isDuplicate ? 'Create Copy' : 'Create Profile';
 
   const modal = document.createElement('div');
-  modal.className = 'modal';
+  modal.className = 'modal-overlay';
   modal.innerHTML = `
     <div class="modal-content" style="max-width: 450px;">
       <div class="modal-header">
@@ -3809,11 +3814,11 @@ function showProfileModal(options = {}) {
         <div class="form-group" style="margin-bottom: 16px;">
           <label class="form-label">Profile Name</label>
           <input type="text" class="form-input" id="profileModalName" value="${existingName}"
-            placeholder="e.g., outdoor_rough" style="width: 100%;">
+            placeholder="e.g., outdoor_rough" style="width: 100%;" ${isEdit ? 'disabled' : ''}>
           <div id="profileNameError" style="color: var(--danger); font-size: 12px; margin-top: 4px; display: none;"></div>
-          <div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
+          ${isEdit ? '' : `<div style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">
             Use lowercase letters, numbers, and underscores only
-          </div>
+          </div>`}
         </div>
         <div class="form-group" style="margin-bottom: 16px;">
           <label class="form-label">Description (optional)</label>
@@ -4138,10 +4143,12 @@ function setupLegAttachTable() {
       const fields = ['x', 'y', 'z', 'angle'];
       const field = fields[fieldIndex];
 
-      // Load value from config if available
+      // Load value from config, falling back to JS defaults
       const configKey = `leg_${legIndex}_attach_${field}`;
-      if (state.config[configKey] !== undefined) {
-        input.value = state.config[configKey];
+      const defaultValue = defaultGeometry.leg_attach_points[legIndex]?.[field];
+      const value = state.config[configKey] ?? defaultValue;
+      if (value !== undefined) {
+        input.value = value;
       }
 
       // Handle both 'change' (on blur) and 'input' (real-time) events

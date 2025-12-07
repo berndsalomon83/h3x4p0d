@@ -6,14 +6,16 @@
     leg_femur_length: 80,
     leg_tibia_length: 100,
     // Spider-like leg arrangement: 6 legs evenly distributed around body
-    // Front pair angled forward, middle pair sideways, rear pair angled back
+    // x = forward/backward on body (+ = front), y = left/right on body (+ = right)
+    // In THREE.js: posX = y (left/right), posZ = x (forward/backward)
+    // angle = direction leg points (0° = forward, 90° = right, etc.)
     leg_attach_points: [
-      { x: 70, y: 40, z: 0, angle: 30 },    // Front right
-      { x: 80, y: 0, z: 0, angle: 90 },     // Middle right
-      { x: 70, y: -40, z: 0, angle: 150 },  // Rear right
-      { x: -70, y: -40, z: 0, angle: 210 }, // Rear left
-      { x: -80, y: 0, z: 0, angle: 270 },   // Middle left
-      { x: -70, y: 40, z: 0, angle: 330 }   // Front left
+      { x: 55, y: 65, z: 0, angle: 30 },    // Front right - forward, slight right
+      { x: 0, y: 80, z: 0, angle: 50 },     // Middle right - forward, angled right
+      { x: -55, y: 65, z: 0, angle: 70 },   // Rear right - forward, angled right
+      { x: -55, y: -65, z: 0, angle: 290 }, // Rear left - forward, angled left
+      { x: 0, y: -80, z: 0, angle: 310 },   // Middle left - forward, angled left
+      { x: 55, y: -65, z: 0, angle: 330 }   // Front left - forward, slight left
     ]
   };
 
@@ -35,17 +37,12 @@
   }
 
   function computeGroundingAngles(bodyHeight, legGeometry, groundY) {
-    const femur = legGeometry.leg_femur_length;
-    const tibia = legGeometry.leg_tibia_length;
-    const target = Math.max(20, bodyHeight - groundY);
-    const reach = clamp(target, 10, femur + tibia - 5);
-    const cosKnee = clamp((femur ** 2 + tibia ** 2 - reach ** 2) / (2 * femur * tibia), -1, 1);
-    const kneeAngle = Math.acos(cosKnee);
-    const cosHip = clamp((femur ** 2 + reach ** 2 - tibia ** 2) / (2 * femur * reach), -1, 1);
-    const hipAngle = Math.PI / 2 - Math.acos(cosHip);
+    // Spider stance: femur spreads outward at 45° to ground, tibia nearly vertical
+    // Negative femur rotation = spread outward from body
+    // Positive tibia rotation = bend knee toward vertical
     return {
-      femur: hipAngle * -1,
-      tibia: -(Math.PI - kneeAngle)
+      femur: -Math.PI / 4,       // -45° = femur spreads outward, 45° down from horizontal
+      tibia: Math.PI / 180 * 35  // +35° = tibia bends 35° more toward vertical
     };
   }
 

@@ -101,12 +101,12 @@
   let defaultBodyY = 80;
   // Spider-like leg arrangement: 6 legs evenly distributed around body
   const ATTACH_POINTS = [
-    { x: 70, y: 40, z: 0, angle: 30 },    // Front right
-    { x: 80, y: 0, z: 0, angle: 90 },     // Middle right
-    { x: 70, y: -40, z: 0, angle: 150 },  // Rear right
-    { x: -70, y: -40, z: 0, angle: 210 }, // Rear left
-    { x: -80, y: 0, z: 0, angle: 270 },   // Middle left
-    { x: -70, y: 40, z: 0, angle: 330 }   // Front left
+    { x: 55, y: 65, z: 0, angle: 30 },    // Front right - forward, slight right
+    { x: 0, y: 80, z: 0, angle: 50 },     // Middle right - forward, angled right
+    { x: -55, y: 65, z: 0, angle: 70 },   // Rear right - forward, angled right
+    { x: -55, y: -65, z: 0, angle: 290 }, // Rear left - forward, angled left
+    { x: 0, y: -80, z: 0, angle: 310 },   // Middle left - forward, angled left
+    { x: 55, y: -65, z: 0, angle: 330 }   // Front left - forward, slight left
   ];
 
   const DEFAULT_LEG_CONFIG = {
@@ -153,11 +153,11 @@
   // ============================================================================
 
   // Default visual pose for legs before backend telemetry arrives
-  // These are approximate values just for initial display - backend will override
+  // Spider stance: femur spreads outward at 45° to ground, tibia nearly vertical
   const DEFAULT_VISUAL_POSE = {
-    coxa: 0,           // Neutral (pointing straight out)
-    femur: -0.5,       // Slight downward angle (radians)
-    tibia: 1.0         // Knee bent outward (radians)
+    coxa: 0,                    // Neutral (pointing straight out)
+    femur: -Math.PI / 4,        // -45° = femur spreads outward, 45° down from horizontal
+    tibia: Math.PI / 180 * 35   // +35° = tibia bends 35° more toward vertical
   };
 
   function normalizeCameraView(view, index = 0) {
@@ -1195,13 +1195,29 @@
     // Movement keys (WASD, arrows, and Q/E for turning)
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D','q','Q','e','E'].includes(e.key)){
       keysPressed[e.key] = true;
-      // Highlight rotation buttons when Q/E pressed
+      // Highlight buttons when keys pressed
       if (e.key === 'q' || e.key === 'Q') {
         const btn = document.getElementById('rotateLeft');
         if (btn) btn.classList.add('active');
       }
       if (e.key === 'e' || e.key === 'E') {
         const btn = document.getElementById('rotateRight');
+        if (btn) btn.classList.add('active');
+      }
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
+        const btn = document.getElementById('btn-up');
+        if (btn) btn.classList.add('active');
+      }
+      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') {
+        const btn = document.getElementById('btn-down');
+        if (btn) btn.classList.add('active');
+      }
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+        const btn = document.getElementById('btn-left');
+        if (btn) btn.classList.add('active');
+      }
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+        const btn = document.getElementById('btn-right');
         if (btn) btn.classList.add('active');
       }
       updateHeading();
@@ -1212,13 +1228,29 @@
     // Movement keys (WASD, arrows, and Q/E for turning)
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','a','A','s','S','d','D','q','Q','e','E'].includes(e.key)){
       keysPressed[e.key] = false;
-      // Remove highlight from rotation buttons when Q/E released
+      // Remove highlight from buttons when keys released
       if (e.key === 'q' || e.key === 'Q') {
         const btn = document.getElementById('rotateLeft');
         if (btn) btn.classList.remove('active');
       }
       if (e.key === 'e' || e.key === 'E') {
         const btn = document.getElementById('rotateRight');
+        if (btn) btn.classList.remove('active');
+      }
+      if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
+        const btn = document.getElementById('btn-up');
+        if (btn) btn.classList.remove('active');
+      }
+      if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') {
+        const btn = document.getElementById('btn-down');
+        if (btn) btn.classList.remove('active');
+      }
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+        const btn = document.getElementById('btn-left');
+        if (btn) btn.classList.remove('active');
+      }
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+        const btn = document.getElementById('btn-right');
         if (btn) btn.classList.remove('active');
       }
       updateHeading();
@@ -1273,6 +1305,8 @@
     if(walking && currentSpeed === 0){
       currentSpeed = parseFloat(speedSlider.value) / 100;
     }
+
+    updateUI();
 
     if(ws && ws.readyState === WebSocket.OPEN){
       ws.send(JSON.stringify({
