@@ -11,6 +11,7 @@ const state = {
   hexapodMarker: null,
   homeMarker: null,
   drawnItems: null,
+  waypointMarkersLayer: null, // Separate layer for waypoint markers (not editable)
   currentDrawType: null,
   satelliteView: false,
   currentDrawHandler: null,
@@ -34,10 +35,15 @@ const state = {
   routes: [],
   selectedRoute: null,
   editingRoute: null,
+  routeSortBy: 'name', // 'name', 'date', 'distance', 'priority'
+  routeSortAsc: true,
 
   // Detections
   detections: [],
   detectionMarkers: [],
+  customTargets: [], // Custom detection targets with YOLO model info
+  editingCustomTarget: null, // Track which custom target is being edited
+  selectedModelFile: null, // Temp storage for model file upload
   detectionCounts: {
     snail: 0,
     person: 0,
@@ -81,7 +87,8 @@ const STORAGE_KEYS = {
   settings: 'hexapod_patrol_settings',
   homePosition: 'hexapod_home_position',
   detections: 'hexapod_detections',
-  satelliteView: 'hexapod_patrol_satellite_view'
+  satelliteView: 'hexapod_patrol_satellite_view',
+  customTargets: 'hexapod_custom_targets'
 };
 
 // ========== Initialization ==========
@@ -114,6 +121,9 @@ function loadFromStorage() {
       state.detectionCounts = parsed.counts || state.detectionCounts;
     }
     if (satelliteView !== null) state.satelliteView = satelliteView === 'true';
+
+    const customTargets = localStorage.getItem(STORAGE_KEYS.customTargets);
+    if (customTargets) state.customTargets = JSON.parse(customTargets);
   } catch (e) {
     console.error('Failed to load from storage:', e);
   }
@@ -163,9 +173,13 @@ function initMap() {
     streetLayer.addTo(state.map);
   }
 
-  // Initialize draw layer
+  // Initialize draw layer (for editable routes/zones)
   state.drawnItems = new L.FeatureGroup();
   state.map.addLayer(state.drawnItems);
+
+  // Initialize waypoint markers layer (non-editable, for display only)
+  state.waypointMarkersLayer = new L.FeatureGroup();
+  state.map.addLayer(state.waypointMarkersLayer);
 
   // Initialize draw control - only show edit/delete buttons
   // (users create routes via "+ Route"/"+Zone" buttons which open the naming modal)
@@ -273,7 +287,9 @@ function initMap() {
       state.editingRoute.type = e.layerType;
       state.drawnItems.addLayer(layer);
       updateRouteOnMap(state.editingRoute);
+      addWaypointMarkersForRoute(state.editingRoute); // Refresh waypoint markers
       saveRoutes();
+      renderRoutesList(); // Update list with new distance/area
     } else if (state.currentDrawType) {
       // New route being created via our buttons
       const route = {
@@ -291,9 +307,11 @@ function initMap() {
       state.routes.push(route);
       state.drawnItems.addLayer(layer);
       updateRouteOnMap(route);
+      addWaypointMarkersForRoute(route); // Add waypoint markers
       saveRoutes();
       renderRoutesList();
       closeRouteModal();
+      addLog(`Created ${route.name}`);
     } else {
       // Fallback: shape created without context (shouldn't happen now that draw buttons are disabled)
       // Create with default name and prompt user to rename
@@ -314,6 +332,7 @@ function initMap() {
       state.routes.push(route);
       state.drawnItems.addLayer(layer);
       updateRouteOnMap(route);
+      addWaypointMarkersForRoute(route); // Add waypoint markers
       saveRoutes();
       renderRoutesList();
       addLog(`Created ${defaultName} - click edit to rename`);
@@ -329,9 +348,13 @@ function initMap() {
       const route = state.routes.find(r => r.layer === layer);
       if (route) {
         route.coordinates = getLayerCoordinates(layer);
+        // Refresh waypoint markers for edited routes
+        addWaypointMarkersForRoute(route);
         saveRoutes();
+        renderRoutesList(); // Update distance/time in list
       }
     });
+    addLog('Route(s) updated');
   });
 
   state.map.on(L.Draw.Event.DELETED, (e) => {
@@ -339,11 +362,15 @@ function initMap() {
     layers.eachLayer((layer) => {
       const routeIndex = state.routes.findIndex(r => r.layer === layer);
       if (routeIndex >= 0) {
+        const route = state.routes[routeIndex];
+        // Clean up waypoint markers
+        removeWaypointMarkersForRoute(route);
         state.routes.splice(routeIndex, 1);
         saveRoutes();
         renderRoutesList();
       }
     });
+    addLog('Route(s) deleted');
   });
 
   // Create hexapod marker
@@ -445,24 +472,44 @@ function loadRoutesOntoMap() {
     route.layer = layer;
     state.drawnItems.addLayer(layer);
 
-    // Add waypoint markers for routes
-    if (route.type === 'polyline') {
-      route.coordinates.forEach((coord, idx) => {
-        const waypointIcon = L.divIcon({
-          className: 'waypoint-marker',
-          html: `<div style="background: ${route.color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: #fff;">${idx + 1}</div>`,
-          iconSize: [20, 20],
-          iconAnchor: [10, 10]
-        });
-
-        L.marker(coord, { icon: waypointIcon }).addTo(state.drawnItems);
-      });
-    }
+    // Add waypoint markers for routes (stored on route for cleanup)
+    addWaypointMarkersForRoute(route);
 
     layer.on('click', () => selectRoute(route.id));
   });
 
   renderRoutesList();
+}
+
+function addWaypointMarkersForRoute(route) {
+  // Clear existing waypoint markers for this route
+  if (route.waypointMarkers) {
+    route.waypointMarkers.forEach(m => state.waypointMarkersLayer.removeLayer(m));
+  }
+  route.waypointMarkers = [];
+
+  // Only add markers for polyline routes (not zones)
+  if (route.type !== 'polyline' || !route.coordinates) return;
+
+  route.coordinates.forEach((coord, idx) => {
+    const waypointIcon = L.divIcon({
+      className: 'waypoint-marker',
+      html: `<div style="background: ${route.color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: #fff;">${idx + 1}</div>`,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+
+    const marker = L.marker(coord, { icon: waypointIcon });
+    marker.addTo(state.waypointMarkersLayer);
+    route.waypointMarkers.push(marker);
+  });
+}
+
+function removeWaypointMarkersForRoute(route) {
+  if (route.waypointMarkers) {
+    route.waypointMarkers.forEach(m => state.waypointMarkersLayer.removeLayer(m));
+    route.waypointMarkers = [];
+  }
 }
 
 function updateRouteOnMap(route) {
@@ -504,6 +551,7 @@ function initEventListeners() {
     state.settings.patrolSpeed = parseInt(e.target.value);
     document.getElementById('speedValue').textContent = e.target.value + '%';
     saveToStorage();
+    renderRoutesList(); // Update time estimates
   });
 
   // Patrol mode
@@ -516,6 +564,7 @@ function initEventListeners() {
   document.getElementById('zonePattern').addEventListener('change', (e) => {
     state.settings.zonePattern = e.target.value;
     saveToStorage();
+    renderRoutesList(); // Update time estimates for zones
   });
 
   // Waypoint pause
@@ -601,10 +650,19 @@ function initEventListeners() {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
-    // Escape to cancel drawing
+    // Don't trigger shortcuts if typing in an input field
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+      // Only allow Escape in inputs
+      if (e.key !== 'Escape') return;
+    }
+
+    // Escape to cancel drawing or close help
     if (e.key === 'Escape') {
       if (state.currentDrawHandler) {
         cancelDrawing();
+        e.preventDefault();
+      } else if (document.getElementById('keyboardHelp').style.display !== 'none') {
+        toggleKeyboardHelp();
         e.preventDefault();
       }
     }
@@ -614,7 +672,50 @@ function initEventListeners() {
       addLog('Routes saved');
       e.preventDefault();
     }
+    // Space to start/pause patrol (without modifiers)
+    if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (state.patrolStatus === 'running') {
+        pausePatrol();
+      } else if (state.patrolStatus === 'paused') {
+        resumePatrol();
+      } else {
+        startPatrol();
+      }
+      e.preventDefault();
+    }
+    // H to return home
+    if (e.key === 'h' && !e.ctrlKey && !e.metaKey) {
+      goHome();
+      e.preventDefault();
+    }
+    // C to center on hexapod
+    if (e.key === 'c' && !e.ctrlKey && !e.metaKey) {
+      centerOnHexapod();
+      e.preventDefault();
+    }
+    // F to fit all routes
+    if (e.key === 'f' && !e.ctrlKey && !e.metaKey) {
+      fitAllRoutes();
+      e.preventDefault();
+    }
+    // S to toggle satellite (without modifiers)
+    if (e.key === 's' && !e.ctrlKey && !e.metaKey) {
+      toggleSatellite();
+      e.preventDefault();
+    }
+    // ? to toggle keyboard help
+    if (e.key === '?') {
+      toggleKeyboardHelp();
+      e.preventDefault();
+    }
   });
+}
+
+function toggleKeyboardHelp() {
+  const helpEl = document.getElementById('keyboardHelp');
+  if (helpEl) {
+    helpEl.style.display = helpEl.style.display === 'none' ? 'block' : 'none';
+  }
 }
 
 // ========== WebSocket Connection ==========
@@ -881,6 +982,22 @@ function startPatrol() {
     return;
   }
 
+  // Confirm if patrol is already running on a different route
+  if (state.patrolStatus === 'running' && state.activeRoute !== state.selectedRoute) {
+    const currentRoute = state.routes.find(r => r.id === state.activeRoute);
+    if (!confirm(`Switch from "${currentRoute?.name || 'current route'}" to "${route.name}"?`)) {
+      return;
+    }
+  }
+
+  // Warn if the route is hidden (unless coming from startPatrolOnRoute which already checks)
+  if (route.visible === false && !state._skipHiddenCheck) {
+    if (!confirm(`"${route.name}" is currently hidden from the map. Do you want to start patrol on this route anyway?`)) {
+      return;
+    }
+  }
+  state._skipHiddenCheck = false;
+
   // Send patrol start command
   sendCommand('patrol_start', {
     route_id: route.id,
@@ -951,7 +1068,83 @@ function emergencyStop() {
 
 function handleWaypointReached(data) {
   state.currentWaypointIndex = data.waypoint_index;
+  updateWaypointProgress();
   addLog(`Waypoint ${data.waypoint_index + 1} reached`);
+}
+
+function updateWaypointProgress() {
+  const progressEl = document.getElementById('waypointProgress');
+  const progressTextEl = document.getElementById('waypointProgressText');
+  const progressFillEl = document.getElementById('waypointProgressFill');
+  const markersEl = document.getElementById('waypointMarkers');
+
+  if (!progressEl) return;
+
+  // Hide if not patrolling or no active route
+  if (state.patrolStatus === 'stopped' || !state.activeRoute) {
+    progressEl.style.display = 'none';
+    return;
+  }
+
+  const route = state.routes.find(r => r.id === state.activeRoute);
+  if (!route || !route.coordinates || route.coordinates.length === 0) {
+    progressEl.style.display = 'none';
+    return;
+  }
+
+  const isZone = route.type === 'polygon' || route.type === 'rectangle';
+
+  // For zones, show a simplified progress (no individual waypoints)
+  if (isZone) {
+    progressEl.style.display = 'block';
+    progressTextEl.textContent = 'Zone coverage';
+    progressFillEl.style.width = '0%'; // Would need actual coverage data from server
+    markersEl.innerHTML = '<span style="font-size: 0.75em; color: #888;">Coverage pattern in progress...</span>';
+    return;
+  }
+
+  progressEl.style.display = 'block';
+
+  const totalWaypoints = route.coordinates.length;
+  const currentIndex = state.currentWaypointIndex;
+
+  // Update text
+  progressTextEl.textContent = `${currentIndex + 1} / ${totalWaypoints}`;
+
+  // Update progress bar
+  const progressPercent = totalWaypoints > 1
+    ? (currentIndex / (totalWaypoints - 1)) * 100
+    : 0;
+  progressFillEl.style.width = `${progressPercent}%`;
+
+  // Update waypoint markers (limit to max 10 for UI clarity)
+  const maxMarkers = 10;
+  let displayWaypoints = [];
+
+  if (totalWaypoints <= maxMarkers) {
+    displayWaypoints = route.coordinates.map((_, i) => i);
+  } else {
+    // Show first, last, current, and evenly distributed others
+    const step = (totalWaypoints - 1) / (maxMarkers - 1);
+    for (let i = 0; i < maxMarkers; i++) {
+      displayWaypoints.push(Math.round(i * step));
+    }
+    // Ensure current waypoint is included
+    if (!displayWaypoints.includes(currentIndex)) {
+      displayWaypoints.push(currentIndex);
+      displayWaypoints.sort((a, b) => a - b);
+    }
+  }
+
+  markersEl.innerHTML = displayWaypoints.map(idx => {
+    let className = 'waypoint-marker-dot';
+    if (idx < currentIndex) {
+      className += ' completed';
+    } else if (idx === currentIndex) {
+      className += ' current';
+    }
+    return `<div class="${className}" title="Waypoint ${idx + 1}">${idx + 1}</div>`;
+  }).join('');
 }
 
 function handlePatrolComplete(data) {
@@ -1040,6 +1233,9 @@ function updatePatrolUI() {
       item.classList.add('active');
     }
   });
+
+  // Update waypoint progress indicator
+  updateWaypointProgress();
 }
 
 // Update patrol time display
@@ -1100,10 +1296,12 @@ function createRoute() {
     return;
   }
 
+  // Save draw type BEFORE closing modal (which resets it to null)
+  const drawType = state.currentDrawType === 'zone' ? 'polygon' : 'polyline';
+
   closeRouteModal();
 
   // Enable drawing mode on map for new routes
-  const drawType = state.currentDrawType === 'zone' ? 'polygon' : 'polyline';
 
   // Disable double-click zoom while drawing (it interferes with finishing shapes)
   state.map.doubleClickZoom.disable();
@@ -1160,12 +1358,7 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-function formatDistance(meters) {
-  if (meters < 1000) {
-    return `${Math.round(meters)}m`;
-  }
-  return `${(meters / 1000).toFixed(2)}km`;
-}
+// formatDistance is defined once in Utility Functions section
 
 function estimatePatrolTime(distanceMeters, speedPercent) {
   // Assume max speed is about 0.5 m/s for the hexapod
@@ -1181,9 +1374,79 @@ function estimatePatrolTime(distanceMeters, speedPercent) {
   return `~${hours}h ${mins}min`;
 }
 
+// Calculate polygon area in square meters using Shoelace formula
+function calculatePolygonArea(coordinates) {
+  if (!coordinates || coordinates.length < 3) return 0;
+
+  // Convert to radians and calculate using spherical excess formula
+  const R = 6371000; // Earth radius in meters
+
+  let total = 0;
+  const n = coordinates.length;
+
+  for (let i = 0; i < n; i++) {
+    const [lat1, lng1] = coordinates[i];
+    const [lat2, lng2] = coordinates[(i + 1) % n];
+
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const lambda1 = lng1 * Math.PI / 180;
+    const lambda2 = lng2 * Math.PI / 180;
+
+    total += (lambda2 - lambda1) * (2 + Math.sin(phi1) + Math.sin(phi2));
+  }
+
+  return Math.abs(total * R * R / 2);
+}
+
+function formatArea(sqMeters) {
+  if (sqMeters < 10000) {
+    return `${Math.round(sqMeters)} m²`;
+  }
+  return `${(sqMeters / 10000).toFixed(2)} ha`;
+}
+
+// Calculate zone perimeter in meters
+function calculatePolygonPerimeter(coordinates) {
+  if (!coordinates || coordinates.length < 2) return 0;
+
+  let totalPerimeter = 0;
+  const n = coordinates.length;
+
+  for (let i = 0; i < n; i++) {
+    const [lat1, lng1] = coordinates[i];
+    const [lat2, lng2] = coordinates[(i + 1) % n]; // Close the loop
+    totalPerimeter += haversineDistance(lat1, lng1, lat2, lng2);
+  }
+
+  return totalPerimeter;
+}
+
+// Estimate zone patrol time based on area and coverage pattern
+function estimateZonePatrolTime(areaSqMeters, speedPercent, pattern) {
+  // Estimate based on lawnmower pattern with ~1m spacing
+  // Coverage distance = area / spacing + perimeter
+  const spacing = 1; // meters between rows
+  const coverageDistance = areaSqMeters / spacing;
+
+  // Adjust for different patterns
+  let patternMultiplier = 1;
+  switch (pattern) {
+    case 'spiral': patternMultiplier = 0.9; break;
+    case 'perimeter': patternMultiplier = 0.2; break; // Much faster, only edges
+    case 'random': patternMultiplier = 1.2; break;
+    default: patternMultiplier = 1; // lawnmower
+  }
+
+  const effectiveDistance = coverageDistance * patternMultiplier;
+  return estimatePatrolTime(effectiveDistance, speedPercent);
+}
+
 function selectRoute(routeId) {
+  const previousSelected = state.selectedRoute;
   state.selectedRoute = routeId;
 
+  // Update sidebar list selection
   document.querySelectorAll('.route-item').forEach(item => {
     item.classList.remove('selected');
     if (item.dataset.id === routeId) {
@@ -1191,10 +1454,54 @@ function selectRoute(routeId) {
     }
   });
 
+  // Remove highlight from previously selected route
+  if (previousSelected && previousSelected !== routeId) {
+    const prevRoute = state.routes.find(r => r.id === previousSelected);
+    if (prevRoute && prevRoute.layer) {
+      const isZone = prevRoute.type === 'polygon' || prevRoute.type === 'rectangle';
+      prevRoute.layer.setStyle({
+        weight: isZone ? 3 : 4,
+        opacity: 1,
+        dashArray: null
+      });
+    }
+  }
+
+  // Highlight newly selected route on map
+  const route = state.routes.find(r => r.id === routeId);
+  if (route && route.layer) {
+    const isZone = route.type === 'polygon' || route.type === 'rectangle';
+    route.layer.setStyle({
+      weight: isZone ? 5 : 6,
+      opacity: 1,
+      dashArray: null
+    });
+    // Bring to front so highlight is visible
+    route.layer.bringToFront();
+  }
+}
+
+function centerOnRoute(routeId) {
   const route = state.routes.find(r => r.id === routeId);
   if (route && route.layer) {
     state.map.fitBounds(route.layer.getBounds(), { padding: [50, 50] });
   }
+}
+
+function startPatrolOnRoute(routeId) {
+  const route = state.routes.find(r => r.id === routeId);
+
+  // Check if route is hidden and warn user
+  if (route && route.visible === false) {
+    if (!confirm(`"${route.name}" is currently hidden from the map. Do you want to start patrol on this route anyway?`)) {
+      return;
+    }
+    // Skip the check in startPatrol since we already confirmed
+    state._skipHiddenCheck = true;
+  }
+
+  state.selectedRoute = routeId;
+  startPatrol();
 }
 
 function editRoute(routeId) {
@@ -1225,6 +1532,9 @@ function deleteRoute(routeId) {
     if (route.layer) {
       state.drawnItems.removeLayer(route.layer);
     }
+    // Clean up waypoint markers
+    removeWaypointMarkersForRoute(route);
+
     state.routes.splice(routeIndex, 1);
 
     if (state.selectedRoute === routeId) {
@@ -1237,43 +1547,147 @@ function deleteRoute(routeId) {
   }
 }
 
+function toggleRouteVisibility(routeId) {
+  const route = state.routes.find(r => r.id === routeId);
+  if (!route) return;
+
+  route.visible = route.visible === false ? true : false; // Default to true if undefined
+
+  if (route.layer) {
+    if (route.visible) {
+      state.drawnItems.addLayer(route.layer);
+      addWaypointMarkersForRoute(route);
+    } else {
+      state.drawnItems.removeLayer(route.layer);
+      removeWaypointMarkersForRoute(route);
+    }
+  }
+
+  saveRoutes();
+  renderRoutesList();
+}
+
+function duplicateRoute(routeId) {
+  const route = state.routes.find(r => r.id === routeId);
+  if (!route) return;
+
+  const newRoute = {
+    ...route,
+    id: 'route_' + Date.now(),
+    name: route.name + ' (copy)',
+    createdAt: new Date().toISOString(),
+    layer: null, // Will be recreated
+    waypointMarkers: [],
+    visible: true
+  };
+
+  // Create new layer
+  const isZone = newRoute.type === 'polygon' || newRoute.type === 'rectangle';
+  if (isZone) {
+    newRoute.layer = L.polygon(newRoute.coordinates, {
+      color: newRoute.color,
+      fill: true,
+      fillColor: newRoute.color,
+      fillOpacity: 0.3,
+      weight: 3
+    });
+  } else {
+    newRoute.layer = L.polyline(newRoute.coordinates, {
+      color: newRoute.color,
+      weight: 4
+    });
+  }
+
+  state.routes.push(newRoute);
+  state.drawnItems.addLayer(newRoute.layer);
+  newRoute.layer.on('click', () => selectRoute(newRoute.id));
+  addWaypointMarkersForRoute(newRoute);
+  updateRouteOnMap(newRoute);
+
+  saveRoutes();
+  renderRoutesList();
+  addLog(`Duplicated route: ${newRoute.name}`);
+}
+
 function renderRoutesList() {
   const container = document.getElementById('routesList');
+
+  // Update route count in header
+  updateRouteCount();
+
+  // Update statistics panel
+  updateRouteStats();
 
   if (state.routes.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="icon">🗺️</div>
-        <div>No routes defined yet</div>
-        <div style="font-size: 0.85em; margin-top: 5px;">Click "+ Route" to create one</div>
+        <div style="font-weight: 500; margin-bottom: 8px;">No patrol routes yet</div>
+        <div style="font-size: 0.85em; color: #888; line-height: 1.5;">
+          <strong>+ Route</strong>: Create a path with waypoints<br>
+          <strong>+ Zone</strong>: Define an area to patrol
+        </div>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = state.routes.map(route => {
+  // Get sorted routes
+  const sortedRoutes = getSortedRoutes();
+
+  container.innerHTML = sortedRoutes.map(route => {
     const isSelected = route.id === state.selectedRoute;
     const isActive = route.id === state.activeRoute;
-    const typeIcon = route.type === 'polygon' || route.type === 'rectangle' ? '🔲' : '📍';
+    const isVisible = route.visible !== false; // Default to true
+    const isZone = route.type === 'polygon' || route.type === 'rectangle';
+    const typeIcon = isZone ? '🔲' : '📍';
     const waypointCount = route.coordinates ? route.coordinates.length : 0;
 
-    // Calculate distance and time for routes (not zones)
-    let distanceInfo = '';
-    if (route.type === 'polyline' && route.coordinates && route.coordinates.length >= 2) {
+    // Priority badge
+    const priorityBadge = route.priority === 'high' ? '<span class="priority-badge high">!</span>' :
+                          route.priority === 'low' ? '<span class="priority-badge low">↓</span>' : '';
+
+    // Calculate distance/time for routes, area and perimeter for zones
+    let sizeInfo = '';
+    let timeInfo = '';
+    if (isZone && route.coordinates && route.coordinates.length >= 3) {
+      const area = calculatePolygonArea(route.coordinates);
+      const perimeter = calculatePolygonPerimeter(route.coordinates);
+      const zoneTime = estimateZonePatrolTime(area, state.settings.patrolSpeed, state.settings.zonePattern);
+      sizeInfo = `${formatArea(area)} • ${formatDistance(perimeter)}`;
+      timeInfo = zoneTime;
+    } else if (route.type === 'polyline' && route.coordinates && route.coordinates.length >= 2) {
       const distance = calculateRouteDistance(route.coordinates);
       const time = estimatePatrolTime(distance, state.settings.patrolSpeed);
-      distanceInfo = ` • ${formatDistance(distance)} • ${time}`;
+      sizeInfo = formatDistance(distance);
+      timeInfo = time;
     }
 
     return `
-      <div class="route-item ${isSelected ? 'selected' : ''} ${isActive ? 'active' : ''}"
-           data-id="${route.id}" onclick="selectRoute('${route.id}')">
+      <div class="route-item ${isSelected ? 'selected' : ''} ${isActive ? 'active' : ''} ${!isVisible ? 'hidden-route' : ''}"
+           data-id="${route.id}" onclick="selectRoute('${route.id}')" ondblclick="startPatrolOnRoute('${route.id}')" title="Click to select, double-click to start patrol">
+        <button class="route-visibility-btn ${isVisible ? 'visible' : ''}" onclick="event.stopPropagation(); toggleRouteVisibility('${route.id}')" title="${isVisible ? 'Hide from map' : 'Show on map'}">
+          ${isVisible ? '👁️' : '👁️‍🗨️'}
+        </button>
         <div class="route-color" style="background: ${route.color};"></div>
         <div class="route-info">
-          <div class="route-name">${typeIcon} ${route.name}</div>
-          <div class="route-meta">${waypointCount} ${route.type === 'polyline' ? 'waypoints' : 'vertices'}${distanceInfo}</div>
+          <div class="route-name">${typeIcon} ${route.name} ${priorityBadge}</div>
+          <div class="route-meta">
+            <span>${waypointCount} ${isZone ? 'vertices' : 'waypoints'}</span>
+            ${sizeInfo ? `<span class="route-size">${sizeInfo}</span>` : ''}
+            ${timeInfo ? `<span class="route-time">⏱️ ${timeInfo}</span>` : ''}
+          </div>
         </div>
         <div class="route-actions">
+          <button class="route-action-btn play" onclick="event.stopPropagation(); startPatrolOnRoute('${route.id}')" title="Start patrol">
+            ▶️
+          </button>
+          <button class="route-action-btn" onclick="event.stopPropagation(); centerOnRoute('${route.id}')" title="Center on map">
+            🎯
+          </button>
+          <button class="route-action-btn" onclick="event.stopPropagation(); duplicateRoute('${route.id}')" title="Duplicate">
+            📋
+          </button>
           <button class="route-action-btn" onclick="event.stopPropagation(); editRoute('${route.id}')" title="Edit">
             ✏️
           </button>
@@ -1291,11 +1705,362 @@ function getSelectedColor() {
   return selected ? selected.dataset.color : '#4fc3f7';
 }
 
+function updateRouteCount() {
+  const countEl = document.getElementById('routeCount');
+  if (countEl && state.routes.length > 0) {
+    const visibleCount = state.routes.filter(r => r.visible !== false).length;
+    countEl.textContent = `(${visibleCount}/${state.routes.length})`;
+  } else if (countEl) {
+    countEl.textContent = '';
+  }
+}
+
+function updateRouteStats() {
+  const statsEl = document.getElementById('routeStats');
+  if (!statsEl) return;
+
+  if (state.routes.length === 0) {
+    statsEl.style.display = 'none';
+    return;
+  }
+
+  statsEl.style.display = 'flex';
+
+  const routes = state.routes.filter(r => r.type === 'polyline');
+  const zones = state.routes.filter(r => r.type === 'polygon' || r.type === 'rectangle');
+
+  let totalRouteDistance = 0;
+  let totalZoneArea = 0;
+  let totalZonePerimeter = 0;
+
+  routes.forEach(route => {
+    if (route.coordinates && route.coordinates.length >= 2) {
+      totalRouteDistance += calculateRouteDistance(route.coordinates);
+    }
+  });
+
+  zones.forEach(zone => {
+    if (zone.coordinates && zone.coordinates.length >= 3) {
+      totalZoneArea += calculatePolygonArea(zone.coordinates);
+      totalZonePerimeter += calculatePolygonPerimeter(zone.coordinates);
+    }
+  });
+
+  // Calculate estimated total patrol time
+  const routeTime = totalRouteDistance > 0 ? estimatePatrolTimeRaw(totalRouteDistance, state.settings.patrolSpeed) : 0;
+  const zoneTime = totalZoneArea > 0 ? estimateZonePatrolTimeRaw(totalZoneArea, state.settings.patrolSpeed, state.settings.zonePattern) : 0;
+  const totalTimeMinutes = Math.round((routeTime + zoneTime) / 60);
+
+  const highPriority = state.routes.filter(r => r.priority === 'high').length;
+
+  // Update stats display
+  document.getElementById('statRouteCount').textContent = routes.length;
+  document.getElementById('statZoneCount').textContent = zones.length;
+  document.getElementById('statTotalDistance').textContent = formatDistance(totalRouteDistance + totalZonePerimeter);
+  document.getElementById('statTotalArea').textContent = formatArea(totalZoneArea);
+  document.getElementById('statEstTime').textContent = totalTimeMinutes > 0 ? `~${totalTimeMinutes}min` : '-';
+  document.getElementById('statHighPriority').textContent = highPriority;
+}
+
+function estimatePatrolTimeRaw(distanceMeters, speedPercent) {
+  const maxSpeed = 0.5; // m/s
+  const actualSpeed = maxSpeed * (speedPercent / 100);
+  return distanceMeters / actualSpeed;
+}
+
+function estimateZonePatrolTimeRaw(areaSqMeters, speedPercent, pattern) {
+  const spacing = 1;
+  let patternMultiplier = 1;
+  switch (pattern) {
+    case 'spiral': patternMultiplier = 0.9; break;
+    case 'perimeter': patternMultiplier = 0.2; break;
+    case 'random': patternMultiplier = 1.2; break;
+    default: patternMultiplier = 1;
+  }
+  const effectiveDistance = (areaSqMeters / spacing) * patternMultiplier;
+  return estimatePatrolTimeRaw(effectiveDistance, speedPercent);
+}
+
+function showAllRoutes() {
+  state.routes.forEach(route => {
+    if (route.visible === false) {
+      route.visible = true;
+      if (route.layer) {
+        state.drawnItems.addLayer(route.layer);
+        addWaypointMarkersForRoute(route);
+      }
+    }
+  });
+  saveRoutes();
+  renderRoutesList();
+  addLog('All routes visible');
+}
+
+function hideAllRoutes() {
+  state.routes.forEach(route => {
+    if (route.visible !== false) {
+      route.visible = false;
+      if (route.layer) {
+        state.drawnItems.removeLayer(route.layer);
+        removeWaypointMarkersForRoute(route);
+      }
+    }
+  });
+  saveRoutes();
+  renderRoutesList();
+  addLog('All routes hidden');
+}
+
+function exportRoutes() {
+  if (state.routes.length === 0) {
+    alert('No routes to export');
+    return;
+  }
+
+  // Prepare routes for export (exclude non-serializable data)
+  const exportData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    routes: state.routes.map(r => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      color: r.color,
+      priority: r.priority,
+      type: r.type,
+      coordinates: r.coordinates,
+      visible: r.visible,
+      createdAt: r.createdAt
+    }))
+  };
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hexapod-routes-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  addLog(`Exported ${state.routes.length} routes`);
+}
+
+function importRoutes(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      if (!data.routes || !Array.isArray(data.routes)) {
+        throw new Error('Invalid routes file format');
+      }
+
+      const importCount = data.routes.length;
+      let addedCount = 0;
+
+      data.routes.forEach(importedRoute => {
+        // Check for duplicate names
+        const existingName = state.routes.find(r => r.name === importedRoute.name);
+        if (existingName) {
+          importedRoute.name = importedRoute.name + ' (imported)';
+        }
+
+        // Generate new ID
+        importedRoute.id = 'route_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        importedRoute.createdAt = new Date().toISOString();
+        importedRoute.visible = true;
+
+        // Create layer
+        const isZone = importedRoute.type === 'polygon' || importedRoute.type === 'rectangle';
+        if (isZone) {
+          importedRoute.layer = L.polygon(importedRoute.coordinates, {
+            color: importedRoute.color,
+            fill: true,
+            fillColor: importedRoute.color,
+            fillOpacity: 0.3,
+            weight: 3
+          });
+        } else {
+          importedRoute.layer = L.polyline(importedRoute.coordinates, {
+            color: importedRoute.color,
+            weight: 4
+          });
+        }
+
+        state.routes.push(importedRoute);
+        state.drawnItems.addLayer(importedRoute.layer);
+        importedRoute.layer.on('click', () => selectRoute(importedRoute.id));
+        addWaypointMarkersForRoute(importedRoute);
+        updateRouteOnMap(importedRoute);
+        addedCount++;
+      });
+
+      saveRoutes();
+      renderRoutesList();
+      addLog(`Imported ${addedCount} of ${importCount} routes`);
+
+      // Fit map to show all routes
+      if (addedCount > 0) {
+        fitAllRoutes();
+      }
+    } catch (err) {
+      alert('Failed to import routes: ' + err.message);
+      console.error('Import error:', err);
+    }
+  };
+
+  reader.readAsText(file);
+  event.target.value = ''; // Reset file input
+}
+
+function sortRoutes(sortBy) {
+  // Toggle direction if clicking same sort option
+  if (state.routeSortBy === sortBy) {
+    state.routeSortAsc = !state.routeSortAsc;
+  } else {
+    state.routeSortBy = sortBy;
+    state.routeSortAsc = true;
+  }
+
+  renderRoutesList();
+  updateSortButtons();
+}
+
+function getSortedRoutes() {
+  const routes = [...state.routes];
+  const direction = state.routeSortAsc ? 1 : -1;
+
+  routes.sort((a, b) => {
+    switch (state.routeSortBy) {
+      case 'name':
+        return direction * a.name.localeCompare(b.name);
+
+      case 'date':
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return direction * (dateB - dateA); // Newest first by default
+
+      case 'distance':
+        const distA = getRouteSize(a);
+        const distB = getRouteSize(b);
+        return direction * (distB - distA); // Largest first by default
+
+      case 'priority':
+        const priorityOrder = { high: 0, normal: 1, low: 2 };
+        const priA = priorityOrder[a.priority] ?? 1;
+        const priB = priorityOrder[b.priority] ?? 1;
+        return direction * (priA - priB); // High priority first by default
+
+      default:
+        return 0;
+    }
+  });
+
+  return routes;
+}
+
+function getRouteSize(route) {
+  const isZone = route.type === 'polygon' || route.type === 'rectangle';
+  if (isZone && route.coordinates && route.coordinates.length >= 3) {
+    return calculatePolygonArea(route.coordinates);
+  } else if (route.type === 'polyline' && route.coordinates && route.coordinates.length >= 2) {
+    return calculateRouteDistance(route.coordinates);
+  }
+  return 0;
+}
+
+function updateSortButtons() {
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    const sortBy = btn.dataset.sort;
+    btn.classList.toggle('active', sortBy === state.routeSortBy);
+
+    // Update arrow indicator
+    const arrow = btn.querySelector('.sort-arrow');
+    if (arrow) {
+      if (sortBy === state.routeSortBy) {
+        arrow.textContent = state.routeSortAsc ? '↑' : '↓';
+        arrow.style.opacity = '1';
+      } else {
+        arrow.textContent = '↕';
+        arrow.style.opacity = '0.4';
+      }
+    }
+  });
+}
+
+function filterRoutes(query) {
+  const searchTerm = query.toLowerCase().trim();
+  const routeItems = document.querySelectorAll('.route-item');
+
+  routeItems.forEach(item => {
+    const routeId = item.dataset.id;
+    const route = state.routes.find(r => r.id === routeId);
+
+    if (!route) {
+      item.style.display = 'none';
+      return;
+    }
+
+    // Search in name, description, and type
+    const matchesName = route.name.toLowerCase().includes(searchTerm);
+    const matchesDescription = (route.description || '').toLowerCase().includes(searchTerm);
+    const matchesType = route.type.toLowerCase().includes(searchTerm);
+    const matchesPriority = (route.priority || '').toLowerCase().includes(searchTerm);
+
+    // Special keywords
+    const isZone = route.type === 'polygon' || route.type === 'rectangle';
+    const matchesZoneKeyword = searchTerm === 'zone' && isZone;
+    const matchesRouteKeyword = searchTerm === 'route' && !isZone;
+    const matchesHiddenKeyword = searchTerm === 'hidden' && route.visible === false;
+    const matchesVisibleKeyword = searchTerm === 'visible' && route.visible !== false;
+
+    if (searchTerm === '' || matchesName || matchesDescription || matchesType ||
+        matchesPriority || matchesZoneKeyword || matchesRouteKeyword ||
+        matchesHiddenKeyword || matchesVisibleKeyword) {
+      item.style.display = 'flex';
+    } else {
+      item.style.display = 'none';
+    }
+  });
+
+  // Show empty state if no results
+  const visibleItems = document.querySelectorAll('.route-item[style*="flex"], .route-item:not([style*="display"])');
+  const container = document.getElementById('routesList');
+  const existingNoResults = container.querySelector('.no-results');
+
+  if (existingNoResults) {
+    existingNoResults.remove();
+  }
+
+  if (searchTerm && visibleItems.length === 0 && state.routes.length > 0) {
+    const noResults = document.createElement('div');
+    noResults.className = 'no-results';
+    noResults.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: #888;">
+        No routes matching "${query}"
+      </div>
+    `;
+    container.appendChild(noResults);
+  }
+}
+
 // ========== Detection Targets ==========
 function toggleDetectionTarget(el) {
+  const target = el.dataset.target;
+
+  // Special handling for "custom" - open the modal
+  if (target === 'custom') {
+    showCustomDetectionModal();
+    return;
+  }
+
   el.classList.toggle('active');
 
-  const target = el.dataset.target;
   const idx = state.settings.detectionTargets.indexOf(target);
 
   if (idx >= 0) {
@@ -1311,6 +2076,408 @@ function toggleDetectionTarget(el) {
     targets: state.settings.detectionTargets,
     sensitivity: state.settings.detectionSensitivity
   });
+}
+
+// ========== Custom Detection Management ==========
+function showCustomDetectionModal() {
+  const modal = document.getElementById('customDetectionModal');
+  modal.classList.add('visible');
+  renderCustomTargetsList();
+  initCustomDetectionForm();
+  initIconPicker();
+}
+
+function closeCustomDetectionModal() {
+  const modal = document.getElementById('customDetectionModal');
+  modal.classList.remove('visible');
+  resetCustomDetectionForm();
+}
+
+function initCustomDetectionForm() {
+  // Source type toggle
+  const sourceSelect = document.getElementById('customTargetSource');
+  sourceSelect.addEventListener('change', () => {
+    const cocoGroup = document.getElementById('cocoClassGroup');
+    const modelGroup = document.getElementById('modelFileGroup');
+
+    if (sourceSelect.value === 'yolo-coco') {
+      cocoGroup.style.display = 'block';
+      modelGroup.style.display = 'none';
+    } else {
+      cocoGroup.style.display = 'none';
+      modelGroup.style.display = 'block';
+    }
+  });
+
+  // Confidence slider
+  const confidenceSlider = document.getElementById('customTargetConfidence');
+  const confidenceValue = document.getElementById('customConfidenceValue');
+  confidenceSlider.addEventListener('input', () => {
+    confidenceValue.textContent = confidenceSlider.value + '%';
+  });
+}
+
+function resetCustomDetectionForm() {
+  document.getElementById('customTargetName').value = '';
+  document.getElementById('customTargetIcon').value = '🎯';
+  document.getElementById('selectedIconDisplay').textContent = '🎯';
+  document.getElementById('customTargetSource').value = 'yolo-coco';
+  document.getElementById('customCocoClass').value = '';
+  document.getElementById('customTargetConfidence').value = 50;
+  document.getElementById('customConfidenceValue').textContent = '50%';
+  document.getElementById('modelFileName').textContent = 'Click to select model file...';
+  document.getElementById('modelFileName').parentElement.classList.remove('has-file');
+  document.getElementById('cocoClassGroup').style.display = 'block';
+  document.getElementById('modelFileGroup').style.display = 'none';
+  document.getElementById('iconPicker').style.display = 'none';
+  state.selectedModelFile = null;
+  state.editingCustomTarget = null;
+
+  // Reset button text
+  const addBtn = document.querySelector('.custom-target-form .btn-primary');
+  if (addBtn) {
+    addBtn.textContent = '+ Add Custom Target';
+  }
+
+  // Hide cancel button
+  const cancelBtn = document.getElementById('cancelEditBtn');
+  if (cancelBtn) {
+    cancelBtn.style.display = 'none';
+  }
+
+  // Reset icon picker selection
+  document.querySelectorAll('#iconPickerGrid .icon-option').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.icon === '🎯');
+  });
+}
+
+// Icon picker for custom detection targets
+const DETECTION_ICONS = [
+  // Animals & Nature
+  '🐌', '🐛', '🐜', '🐝', '🐞', '🦋', '🐛', '🪲', '🪳', '🪰', '🦟', '🦗', '🐾',
+  '🐕', '🐈', '🐁', '🐀', '🦔', '🐇', '🐿️', '🦨', '🦝', '🦊', '🐻', '🐼',
+  '🦁', '🐯', '🐨', '🐮', '🐷', '🐸', '🦎', '🐍', '🦅', '🦆', '🦉', '🐦',
+  // People & Objects
+  '🚶', '🧑', '👤', '👥', '🚗', '🚙', '🚕', '🛻', '🚚', '🏍️', '🚲', '🛴',
+  '📦', '📬', '🎁', '🧳', '👜', '🎒', '💼', '🛒',
+  // Garden & Plants
+  '🌱', '🌿', '🍀', '🌻', '🌹', '🌺', '🌸', '🍄', '🌾', '🥕', '🥬', '🍅',
+  // Tools & Tech
+  '🔧', '🔨', '⚙️', '📷', '📹', '🔦', '💡', '🔔', '🎯', '⚠️', '🚨', '🛡️',
+  // Weather & Time
+  '☀️', '🌙', '⭐', '🌧️', '❄️', '💧', '🔥',
+  // Symbols
+  '✅', '❌', '⚡', '💎', '🏠', '🏢', '🚪', '🪟', '🔑', '🗝️'
+];
+
+function initIconPicker() {
+  const grid = document.getElementById('iconPickerGrid');
+  if (!grid) return;
+
+  grid.innerHTML = DETECTION_ICONS.map(icon => `
+    <button type="button" class="icon-option ${icon === '🎯' ? 'selected' : ''}"
+            data-icon="${icon}" onclick="selectIcon('${icon}')">
+      ${icon}
+    </button>
+  `).join('');
+}
+
+function toggleIconPicker() {
+  const picker = document.getElementById('iconPicker');
+  if (!picker) return;
+
+  const isVisible = picker.style.display !== 'none';
+  picker.style.display = isVisible ? 'none' : 'block';
+
+  // Initialize grid on first open
+  if (!isVisible && picker.querySelector('.icon-option') === null) {
+    initIconPicker();
+  }
+}
+
+function selectIcon(icon) {
+  document.getElementById('customTargetIcon').value = icon;
+  document.getElementById('selectedIconDisplay').textContent = icon;
+
+  // Update selected state in grid
+  document.querySelectorAll('.icon-option').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.icon === icon);
+  });
+
+  // Close picker
+  document.getElementById('iconPicker').style.display = 'none';
+}
+
+// Close icon picker when clicking outside
+document.addEventListener('click', (e) => {
+  const picker = document.getElementById('iconPicker');
+  const btn = document.getElementById('iconSelectorBtn');
+  if (picker && btn && !picker.contains(e.target) && !btn.contains(e.target)) {
+    picker.style.display = 'none';
+  }
+});
+
+function handleModelFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) {
+    state.selectedModelFile = file;
+    const fileNameEl = document.getElementById('modelFileName');
+    fileNameEl.textContent = file.name;
+    fileNameEl.parentElement.classList.add('has-file');
+  }
+}
+
+function addCustomTarget() {
+  const name = document.getElementById('customTargetName').value.trim();
+  const icon = document.getElementById('customTargetIcon').value.trim() || '🎯';
+  const source = document.getElementById('customTargetSource').value;
+  const confidence = parseInt(document.getElementById('customTargetConfidence').value);
+
+  if (!name) {
+    alert('Please enter a target name');
+    return;
+  }
+
+  // Check if we're editing an existing target
+  const isEditing = state.editingCustomTarget !== null;
+  const existingTarget = state.editingCustomTarget;
+
+  let targetConfig = isEditing ? { ...existingTarget } : {
+    id: 'custom_' + Date.now(),
+    enabled: true,
+    createdAt: new Date().toISOString(),
+    detectionCount: 0
+  };
+
+  // Update common fields
+  targetConfig.name = name;
+  targetConfig.icon = icon;
+  targetConfig.source = source;
+  targetConfig.confidence = confidence;
+
+  if (source === 'yolo-coco') {
+    const cocoClass = document.getElementById('customCocoClass').value;
+    if (!cocoClass) {
+      alert('Please select a COCO class');
+      return;
+    }
+    targetConfig.cocoClass = cocoClass;
+    targetConfig.modelType = 'coco';
+    // Clear model file info if switching from custom model
+    delete targetConfig.modelFileName;
+  } else {
+    // For custom model, only require file if creating new or changing model
+    if (!isEditing && !state.selectedModelFile) {
+      alert('Please select a YOLO model file');
+      return;
+    }
+    if (state.selectedModelFile) {
+      targetConfig.modelFileName = state.selectedModelFile.name;
+      targetConfig.modelType = 'custom';
+      // Upload the new model file
+      uploadCustomModel(state.selectedModelFile, targetConfig.id);
+    }
+    // Clear COCO class if switching from coco
+    delete targetConfig.cocoClass;
+  }
+
+  if (isEditing) {
+    // Update existing target in array
+    const index = state.customTargets.findIndex(t => t.id === targetConfig.id);
+    if (index !== -1) {
+      state.customTargets[index] = targetConfig;
+    }
+    // Notify server about updated custom target
+    sendCommand('update_custom_detection_target', targetConfig);
+    showToast(`Custom target "${name}" updated`);
+  } else {
+    state.customTargets.push(targetConfig);
+    // Notify server about new custom target
+    sendCommand('add_custom_detection_target', targetConfig);
+    showToast(`Custom target "${name}" added`);
+  }
+
+  saveCustomTargets();
+  renderCustomTargetsList();
+  resetCustomDetectionForm();
+  updateCustomDetectionCount();
+}
+
+function uploadCustomModel(file, targetId) {
+  // Create FormData for file upload
+  const formData = new FormData();
+  formData.append('model', file);
+  formData.append('target_id', targetId);
+
+  // Upload to server
+  fetch('/api/patrol/upload-model', {
+    method: 'POST',
+    body: formData
+  }).then(response => {
+    if (!response.ok) {
+      console.error('Failed to upload model file');
+    }
+  }).catch(err => {
+    console.error('Error uploading model:', err);
+  });
+}
+
+function toggleCustomTarget(targetId) {
+  const target = state.customTargets.find(t => t.id === targetId);
+  if (target) {
+    target.enabled = !target.enabled;
+    saveCustomTargets();
+    renderCustomTargetsList();
+    updateCustomDetectionCount();
+
+    // Notify server
+    sendCommand('toggle_custom_detection_target', {
+      target_id: targetId,
+      enabled: target.enabled
+    });
+  }
+}
+
+function editCustomTarget(targetId) {
+  const target = state.customTargets.find(t => t.id === targetId);
+  if (!target) return;
+
+  state.editingCustomTarget = target;
+
+  // Populate form with target data
+  document.getElementById('customTargetName').value = target.name;
+  document.getElementById('customTargetIcon').value = target.icon;
+  document.getElementById('selectedIconDisplay').textContent = target.icon;
+  document.getElementById('customTargetSource').value = target.modelType === 'coco' ? 'yolo-coco' : 'custom-model';
+  document.getElementById('customTargetConfidence').value = target.confidence;
+  document.getElementById('customConfidenceValue').textContent = target.confidence + '%';
+
+  // Update icon picker selected state
+  document.querySelectorAll('#iconPickerGrid .icon-option').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.icon === target.icon);
+  });
+
+  // Show/hide source-specific fields
+  const cocoGroup = document.getElementById('cocoClassGroup');
+  const modelGroup = document.getElementById('modelFileGroup');
+
+  if (target.modelType === 'coco') {
+    cocoGroup.style.display = 'block';
+    modelGroup.style.display = 'none';
+    document.getElementById('customCocoClass').value = target.cocoClass || '';
+  } else {
+    cocoGroup.style.display = 'none';
+    modelGroup.style.display = 'block';
+    document.getElementById('modelFileName').textContent = target.modelFileName || 'Click to select model file...';
+    if (target.modelFileName) {
+      document.getElementById('modelFileName').parentElement.classList.add('has-file');
+    }
+  }
+
+  // Update button text to indicate editing
+  const addBtn = document.querySelector('.custom-target-form .btn-primary');
+  if (addBtn) {
+    addBtn.textContent = '💾 Update Target';
+  }
+
+  // Show cancel button
+  const cancelBtn = document.getElementById('cancelEditBtn');
+  if (cancelBtn) {
+    cancelBtn.style.display = 'block';
+  }
+
+  // Scroll form into view
+  document.querySelector('.custom-target-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelEditCustomTarget() {
+  state.editingCustomTarget = null;
+  resetCustomDetectionForm();
+}
+
+function deleteCustomTarget(targetId) {
+  const target = state.customTargets.find(t => t.id === targetId);
+  if (!target) return;
+
+  if (!confirm(`Delete custom target "${target.name}"?`)) {
+    return;
+  }
+
+  state.customTargets = state.customTargets.filter(t => t.id !== targetId);
+  saveCustomTargets();
+  renderCustomTargetsList();
+  updateCustomDetectionCount();
+
+  // Notify server
+  sendCommand('delete_custom_detection_target', { target_id: targetId });
+
+  showToast(`Custom target "${target.name}" deleted`);
+}
+
+function renderCustomTargetsList() {
+  const container = document.getElementById('customTargetsList');
+
+  if (state.customTargets.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding: 15px;">
+        <div style="color: #888; font-size: 0.85em;">No custom targets created yet</div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = state.customTargets.map(target => {
+    const sourceInfo = target.modelType === 'coco'
+      ? `COCO: ${target.cocoClass}`
+      : `Model: ${target.modelFileName}`;
+
+    return `
+      <div class="custom-target-item ${target.enabled ? '' : 'disabled'}" data-id="${target.id}">
+        <div class="custom-target-icon">${target.icon}</div>
+        <div class="custom-target-info">
+          <div class="custom-target-name">${target.name}</div>
+          <div class="custom-target-meta">
+            ${sourceInfo} | ${target.confidence}% confidence | ${target.detectionCount} found
+          </div>
+        </div>
+        <div class="custom-target-actions">
+          <button class="edit"
+                  onclick="editCustomTarget('${target.id}')"
+                  title="Edit">
+            ✏️
+          </button>
+          <button class="toggle ${target.enabled ? 'enabled' : ''}"
+                  onclick="toggleCustomTarget('${target.id}')"
+                  title="${target.enabled ? 'Disable' : 'Enable'}">
+            ${target.enabled ? '✓' : '○'}
+          </button>
+          <button class="delete"
+                  onclick="deleteCustomTarget('${target.id}')"
+                  title="Delete">
+            🗑️
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function saveCustomTargets() {
+  localStorage.setItem(STORAGE_KEYS.customTargets, JSON.stringify(state.customTargets));
+}
+
+function updateCustomDetectionCount() {
+  const customTarget = document.querySelector('.detection-target[data-target="custom"]');
+  if (customTarget) {
+    const enabledCount = state.customTargets.filter(t => t.enabled).length;
+    const countEl = customTarget.querySelector('.count');
+    if (countEl) {
+      countEl.textContent = enabledCount > 0 ? `${enabledCount} active` : 'Configure';
+    }
+
+    // Toggle active state based on whether any custom targets are enabled
+    customTarget.classList.toggle('active', enabledCount > 0);
+  }
 }
 
 function updateDetectionCounts() {
@@ -1332,8 +2499,11 @@ function renderDetectionLog() {
     container.innerHTML = `
       <div class="empty-state">
         <div class="icon">🔍</div>
-        <div>No detections yet</div>
-        <div style="font-size: 0.85em; margin-top: 5px;">Start a patrol to begin scanning</div>
+        <div style="font-weight: 500; margin-bottom: 8px;">No detections recorded</div>
+        <div style="font-size: 0.85em; color: #888; line-height: 1.5;">
+          Detection targets are highlighted when found during patrol.<br>
+          Select targets above and start a patrol to begin.
+        </div>
       </div>
     `;
     return;
@@ -1474,8 +2644,19 @@ function toggleSatellite() {
     state.streetLayer.addTo(state.map);
   }
 
+  // Update button state
+  updateSatelliteButtonState();
+
   // Persist preference
   localStorage.setItem(STORAGE_KEYS.satelliteView, state.satelliteView);
+}
+
+function updateSatelliteButtonState() {
+  const btn = document.querySelector('[onclick="toggleSatellite()"]');
+  if (btn) {
+    btn.classList.toggle('active', state.satelliteView);
+    btn.title = state.satelliteView ? 'Switch to Street View' : 'Switch to Satellite View';
+  }
 }
 
 function fitAllRoutes() {
@@ -1543,8 +2724,10 @@ function updateUI() {
   document.getElementById('scheduleInterval').value = state.settings.schedule.interval;
 
   updateDetectionCounts();
+  updateCustomDetectionCount();
   renderDetectionLog();
   updatePatrolUI();
+  updateSatelliteButtonState();
 }
 
 function addLog(message) {

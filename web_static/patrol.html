@@ -353,6 +353,83 @@
       color: #4fc3f7;
     }
 
+    /* Waypoint progress indicator */
+    .waypoint-progress {
+      margin-top: 12px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 6px;
+    }
+
+    .waypoint-progress-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8em;
+      margin-bottom: 8px;
+    }
+
+    .waypoint-progress-header span:first-child {
+      color: #888;
+    }
+
+    .waypoint-progress-header span:last-child {
+      color: #4fc3f7;
+      font-weight: 600;
+    }
+
+    .waypoint-progress-bar {
+      height: 6px;
+      background: #2a2a4a;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .waypoint-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4fc3f7, #4caf50);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .waypoint-markers {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+
+    .waypoint-marker-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #2a2a4a;
+      border: 2px solid #444;
+      transition: all 0.2s;
+      font-size: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+    }
+
+    .waypoint-marker-dot.completed {
+      background: #4caf50;
+      border-color: #81c784;
+      color: #fff;
+    }
+
+    .waypoint-marker-dot.current {
+      background: #4fc3f7;
+      border-color: #81d4fa;
+      color: #fff;
+      animation: pulse-waypoint 1s infinite;
+    }
+
+    @keyframes pulse-waypoint {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+    }
+
     /* Routes list */
     .routes-list {
       max-height: 200px;
@@ -434,6 +511,227 @@
 
     .route-action-btn.delete:hover {
       color: #f44336;
+    }
+
+    .route-action-btn.play {
+      color: #4caf50;
+    }
+
+    .route-action-btn.play:hover {
+      background: rgba(76, 175, 80, 0.2);
+      color: #81c784;
+    }
+
+    /* Route visibility toggle */
+    .route-visibility-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      opacity: 0.5;
+      transition: opacity 0.2s;
+      padding: 0;
+      margin-right: 6px;
+      flex-shrink: 0;
+    }
+
+    .route-visibility-btn.visible {
+      opacity: 1;
+    }
+
+    .route-visibility-btn:hover {
+      opacity: 1;
+    }
+
+    .route-item.hidden-route {
+      opacity: 0.5;
+    }
+
+    .route-item.hidden-route .route-color {
+      background: #666 !important;
+    }
+
+    /* Priority badges */
+    .priority-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+
+    .priority-badge.high {
+      background: #f44336;
+      color: white;
+    }
+
+    .priority-badge.low {
+      background: #666;
+      color: #ccc;
+    }
+
+    /* Route meta improvements */
+    .route-meta {
+      font-size: 0.8em;
+      color: #888;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+    }
+
+    .route-size {
+      color: #4fc3f7;
+    }
+
+    .route-time {
+      color: #81c784;
+    }
+
+    /* Route search */
+    .route-search input {
+      width: 100%;
+      padding: 8px 12px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 0.85em;
+    }
+
+    .route-search input:focus {
+      outline: none;
+      border-color: #4fc3f7;
+    }
+
+    .route-search input::placeholder {
+      color: #666;
+    }
+
+    /* Section count badge */
+    .section-count {
+      font-size: 0.75em;
+      font-weight: normal;
+      color: #888;
+      margin-left: 5px;
+    }
+
+    /* Icon buttons */
+    .btn-icon {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid #2a2a4a;
+      background: #1a1a2e;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+      background: #2a2a4a;
+      border-color: #4fc3f7;
+    }
+
+    /* Route sort bar */
+    .route-sort-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .sort-label {
+      font-size: 0.75em;
+      color: #888;
+      margin-right: 2px;
+    }
+
+    .sort-btn {
+      padding: 4px 8px;
+      font-size: 0.75em;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      color: #888;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .sort-btn:hover {
+      background: #2a2a4a;
+      color: #e0e0e0;
+    }
+
+    .sort-btn.active {
+      background: rgba(79, 195, 247, 0.15);
+      border-color: #4fc3f7;
+      color: #4fc3f7;
+    }
+
+    .sort-arrow {
+      font-size: 0.9em;
+      opacity: 0.4;
+    }
+
+    .sort-btn.active .sort-arrow {
+      opacity: 1;
+    }
+
+    /* Route stats panel */
+    .route-stats-panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 6px;
+    }
+
+    .route-stats-panel .stat-item {
+      flex: 1;
+      min-width: 50px;
+      text-align: center;
+      padding: 6px 4px;
+      background: #1a1a2e;
+      border-radius: 4px;
+    }
+
+    .route-stats-panel .stat-item.highlight {
+      background: rgba(244, 67, 54, 0.15);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+
+    .route-stats-panel .stat-value {
+      display: block;
+      font-size: 0.9em;
+      font-weight: 600;
+      color: #4fc3f7;
+    }
+
+    .route-stats-panel .stat-item.highlight .stat-value {
+      color: #f44336;
+    }
+
+    .route-stats-panel .stat-name {
+      display: block;
+      font-size: 0.65em;
+      color: #888;
+      margin-top: 2px;
     }
 
     /* Detection targets */
@@ -666,6 +964,64 @@
     .map-control-btn.loading {
       animation: pulse 1s infinite;
       pointer-events: none;
+    }
+
+    /* Keyboard shortcuts help */
+    .keyboard-help {
+      top: 70px;
+      right: 60px;
+      width: 220px;
+      padding: 0;
+    }
+
+    .keyboard-help-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid #2a2a4a;
+      font-size: 0.9em;
+      font-weight: 600;
+    }
+
+    .keyboard-help-header button {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 1.2em;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .keyboard-help-header button:hover {
+      color: #fff;
+    }
+
+    .keyboard-help-content {
+      padding: 10px 12px;
+    }
+
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 0;
+      font-size: 0.85em;
+    }
+
+    .shortcut-row kbd {
+      background: #2a2a4a;
+      border: 1px solid #3a3a5a;
+      border-radius: 3px;
+      padding: 2px 6px;
+      font-family: monospace;
+      font-size: 0.9em;
+      color: #4fc3f7;
+    }
+
+    .shortcut-row span {
+      color: #888;
     }
 
     @keyframes pulse {
@@ -1163,6 +1519,193 @@
       color: #ffb74d;
     }
 
+    /* Custom detection modal */
+    .custom-detection-content {
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .custom-target-form {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+    }
+
+    .file-upload-area {
+      border: 2px dashed #2a2a4a;
+      border-radius: 6px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: #888;
+      font-size: 0.9em;
+    }
+
+    .file-upload-area:hover {
+      border-color: #4fc3f7;
+      background: rgba(79, 195, 247, 0.05);
+    }
+
+    .file-upload-area.has-file {
+      border-color: #4caf50;
+      background: rgba(76, 175, 80, 0.1);
+      color: #81c784;
+    }
+
+    .custom-targets-list {
+      border-top: 1px solid #2a2a4a;
+      margin-top: 15px;
+    }
+
+    .custom-target-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #1a1a2e;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .custom-target-item.disabled {
+      opacity: 0.5;
+    }
+
+    .custom-target-icon {
+      font-size: 1.5em;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(79, 195, 247, 0.1);
+      border-radius: 8px;
+    }
+
+    .custom-target-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .custom-target-name {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .custom-target-meta {
+      font-size: 0.8em;
+      color: #888;
+    }
+
+    .custom-target-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .custom-target-actions button {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: #2a2a4a;
+      color: #888;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .custom-target-actions button:hover {
+      background: #3a3a5a;
+      color: #fff;
+    }
+
+    .custom-target-actions button.delete:hover {
+      background: rgba(244, 67, 54, 0.2);
+      color: #f44336;
+    }
+
+    .custom-target-actions button.edit:hover {
+      background: rgba(79, 195, 247, 0.2);
+      color: #4fc3f7;
+    }
+
+    .custom-target-actions button.toggle.enabled {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4caf50;
+    }
+
+    /* Icon selector */
+    .icon-selector-wrapper {
+      position: relative;
+    }
+
+    .icon-selector-btn {
+      width: 100%;
+      height: 42px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1.5em;
+      transition: all 0.2s;
+    }
+
+    .icon-selector-btn:hover {
+      border-color: #4fc3f7;
+      background: #2a2a4a;
+    }
+
+    .icon-picker {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 280px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #16213e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 10px;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      margin-top: 4px;
+    }
+
+    .icon-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+
+    .icon-option {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1.2em;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-option:hover {
+      background: rgba(79, 195, 247, 0.2);
+      transform: scale(1.15);
+    }
+
+    .icon-option.selected {
+      background: rgba(79, 195, 247, 0.3);
+      box-shadow: 0 0 0 2px #4fc3f7;
+    }
+
     /* Responsive */
     @media (max-width: 900px) {
       .sidebar {
@@ -1301,6 +1844,17 @@
                 <div class="patrol-stat-value" id="patrolLaps">0</div>
               </div>
             </div>
+
+            <div class="waypoint-progress" id="waypointProgress" style="display: none;">
+              <div class="waypoint-progress-header">
+                <span>Waypoint Progress</span>
+                <span id="waypointProgressText">0 / 0</span>
+              </div>
+              <div class="waypoint-progress-bar">
+                <div class="waypoint-progress-fill" id="waypointProgressFill" style="width: 0%;"></div>
+              </div>
+              <div class="waypoint-markers" id="waypointMarkers"></div>
+            </div>
           </div>
 
           <div class="btn-group" style="margin-top: 15px;">
@@ -1320,11 +1874,11 @@
       <!-- Routes & Zones -->
       <section class="sidebar-section">
         <div class="sidebar-section-header" onclick="toggleSection(this)">
-          <h3>🗺️ Routes & Zones</h3>
+          <h3>🗺️ Routes & Zones <span id="routeCount" class="section-count"></span></h3>
           <span class="collapse-icon">▼</span>
         </div>
         <div class="sidebar-section-content">
-          <div class="btn-group" style="margin-bottom: 15px;">
+          <div class="btn-group" style="margin-bottom: 10px;">
             <button class="btn btn-primary" onclick="showNewRouteModal('route')">
               + Route
             </button>
@@ -1333,11 +1887,68 @@
             </button>
           </div>
 
+          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <div class="route-search" style="flex: 1;">
+              <input type="text" id="routeSearchInput" placeholder="🔍 Filter routes..." onkeyup="filterRoutes(this.value)">
+            </div>
+            <button class="btn-icon" onclick="showAllRoutes()" title="Show all routes on map">👁️</button>
+            <button class="btn-icon" onclick="hideAllRoutes()" title="Hide all routes from map">🙈</button>
+            <button class="btn-icon" onclick="exportRoutes()" title="Export routes to JSON">💾</button>
+            <button class="btn-icon" onclick="document.getElementById('importRoutesInput').click()" title="Import routes from JSON">📂</button>
+            <input type="file" id="importRoutesInput" accept=".json" style="display: none;" onchange="importRoutes(event)">
+          </div>
+
+          <div class="route-sort-bar">
+            <span class="sort-label">Sort:</span>
+            <button class="sort-btn active" data-sort="name" onclick="sortRoutes('name')" title="Sort by name">
+              A-Z <span class="sort-arrow">↑</span>
+            </button>
+            <button class="sort-btn" data-sort="date" onclick="sortRoutes('date')" title="Sort by date created">
+              Date <span class="sort-arrow">↕</span>
+            </button>
+            <button class="sort-btn" data-sort="distance" onclick="sortRoutes('distance')" title="Sort by distance/area">
+              Size <span class="sort-arrow">↕</span>
+            </button>
+            <button class="sort-btn" data-sort="priority" onclick="sortRoutes('priority')" title="Sort by priority">
+              Priority <span class="sort-arrow">↕</span>
+            </button>
+          </div>
+
+          <div class="route-stats-panel" id="routeStats" style="display: none;">
+            <div class="stat-item">
+              <span class="stat-value" id="statRouteCount">0</span>
+              <span class="stat-name">Routes</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="statZoneCount">0</span>
+              <span class="stat-name">Zones</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="statTotalDistance">0 m</span>
+              <span class="stat-name">Distance</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="statTotalArea">0 m²</span>
+              <span class="stat-name">Area</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="statEstTime">-</span>
+              <span class="stat-name">Est. Time</span>
+            </div>
+            <div class="stat-item highlight">
+              <span class="stat-value" id="statHighPriority">0</span>
+              <span class="stat-name">High Priority</span>
+            </div>
+          </div>
+
           <div class="routes-list" id="routesList">
             <div class="empty-state">
               <div class="icon">🗺️</div>
-              <div>No routes defined yet</div>
-              <div style="font-size: 0.85em; margin-top: 5px;">Click "+ Route" to create one</div>
+              <div style="font-weight: 500; margin-bottom: 8px;">No patrol routes yet</div>
+              <div style="font-size: 0.85em; color: #888; line-height: 1.5;">
+                <strong>+ Route</strong>: Create a path with waypoints<br>
+                <strong>+ Zone</strong>: Define an area to patrol
+              </div>
             </div>
           </div>
         </div>
@@ -1472,8 +2083,11 @@
           <div class="detection-log" id="detectionLog">
             <div class="empty-state">
               <div class="icon">🔍</div>
-              <div>No detections yet</div>
-              <div style="font-size: 0.85em; margin-top: 5px;">Start a patrol to begin scanning</div>
+              <div style="font-weight: 500; margin-bottom: 8px;">No detections recorded</div>
+              <div style="font-size: 0.85em; color: #888; line-height: 1.5;">
+                Detection targets are highlighted when found during patrol.<br>
+                Select targets above and start a patrol to begin.
+              </div>
             </div>
           </div>
           <button class="btn btn-secondary btn-block" style="margin-top: 10px;" onclick="clearDetectionLog()">
@@ -1613,6 +2227,51 @@
         <button class="map-control-btn" onclick="fitAllRoutes()" title="Fit All Routes">
           📐
         </button>
+        <button class="map-control-btn" onclick="toggleKeyboardHelp()" title="Keyboard Shortcuts">
+          ⌨️
+        </button>
+      </div>
+
+      <!-- Keyboard Shortcuts Help -->
+      <div class="map-overlay keyboard-help" id="keyboardHelp" style="display: none;">
+        <div class="keyboard-help-header">
+          <span>⌨️ Keyboard Shortcuts</span>
+          <button onclick="toggleKeyboardHelp()">&times;</button>
+        </div>
+        <div class="keyboard-help-content">
+          <div class="shortcut-row">
+            <kbd>Esc</kbd>
+            <span>Cancel drawing</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>Ctrl</kbd>+<kbd>S</kbd>
+            <span>Save routes</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>Space</kbd>
+            <span>Start/Pause patrol</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>H</kbd>
+            <span>Return home</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>C</kbd>
+            <span>Center on hexapod</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>F</kbd>
+            <span>Fit all routes</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>S</kbd>
+            <span>Toggle satellite view</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>?</kbd>
+            <span>Show/hide this help</span>
+          </div>
+        </div>
       </div>
 
       <!-- Cancel Drawing Button (hidden by default) -->
@@ -1729,6 +2388,174 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeDetectionModal()">Close</button>
         <button class="btn btn-primary" onclick="goToDetection()">Go To Location</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Detection Modal -->
+  <div class="modal-overlay" id="customDetectionModal">
+    <div class="modal" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>Custom Detection Targets</h2>
+        <button class="modal-close" onclick="closeCustomDetectionModal()">&times;</button>
+      </div>
+
+      <div class="custom-detection-content">
+        <div class="custom-detection-info">
+          <p style="color: #888; font-size: 0.9em; margin-bottom: 15px;">
+            Create custom detection targets using YOLO model files or class names from a pre-trained model.
+          </p>
+        </div>
+
+        <!-- Add new custom target -->
+        <div class="custom-target-form">
+          <h4 style="margin-bottom: 10px; color: #4fc3f7;">Add New Target</h4>
+          <div class="form-row">
+            <div class="form-group" style="flex: 2;">
+              <label>Target Name</label>
+              <input type="text" id="customTargetName" placeholder="e.g., Garden gnome, Bicycle">
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label>Icon</label>
+              <div class="icon-selector-wrapper">
+                <button type="button" class="icon-selector-btn" id="iconSelectorBtn" onclick="toggleIconPicker()">
+                  <span id="selectedIconDisplay">🎯</span>
+                </button>
+                <input type="hidden" id="customTargetIcon" value="🎯">
+                <div class="icon-picker" id="iconPicker" style="display: none;">
+                  <div class="icon-picker-grid" id="iconPickerGrid"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Detection Source</label>
+            <select id="customTargetSource">
+              <option value="yolo-coco">YOLO COCO Class Name</option>
+              <option value="custom-model">Custom YOLO Model File</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="cocoClassGroup">
+            <label>COCO Class Name</label>
+            <select id="customCocoClass">
+              <option value="">Select a class...</option>
+              <option value="person">person</option>
+              <option value="bicycle">bicycle</option>
+              <option value="car">car</option>
+              <option value="motorcycle">motorcycle</option>
+              <option value="airplane">airplane</option>
+              <option value="bus">bus</option>
+              <option value="train">train</option>
+              <option value="truck">truck</option>
+              <option value="boat">boat</option>
+              <option value="bird">bird</option>
+              <option value="cat">cat</option>
+              <option value="dog">dog</option>
+              <option value="horse">horse</option>
+              <option value="sheep">sheep</option>
+              <option value="cow">cow</option>
+              <option value="elephant">elephant</option>
+              <option value="bear">bear</option>
+              <option value="zebra">zebra</option>
+              <option value="giraffe">giraffe</option>
+              <option value="backpack">backpack</option>
+              <option value="umbrella">umbrella</option>
+              <option value="handbag">handbag</option>
+              <option value="suitcase">suitcase</option>
+              <option value="frisbee">frisbee</option>
+              <option value="skis">skis</option>
+              <option value="snowboard">snowboard</option>
+              <option value="sports ball">sports ball</option>
+              <option value="kite">kite</option>
+              <option value="baseball bat">baseball bat</option>
+              <option value="skateboard">skateboard</option>
+              <option value="surfboard">surfboard</option>
+              <option value="tennis racket">tennis racket</option>
+              <option value="bottle">bottle</option>
+              <option value="wine glass">wine glass</option>
+              <option value="cup">cup</option>
+              <option value="fork">fork</option>
+              <option value="knife">knife</option>
+              <option value="spoon">spoon</option>
+              <option value="bowl">bowl</option>
+              <option value="banana">banana</option>
+              <option value="apple">apple</option>
+              <option value="sandwich">sandwich</option>
+              <option value="orange">orange</option>
+              <option value="broccoli">broccoli</option>
+              <option value="carrot">carrot</option>
+              <option value="hot dog">hot dog</option>
+              <option value="pizza">pizza</option>
+              <option value="donut">donut</option>
+              <option value="cake">cake</option>
+              <option value="chair">chair</option>
+              <option value="couch">couch</option>
+              <option value="potted plant">potted plant</option>
+              <option value="bed">bed</option>
+              <option value="dining table">dining table</option>
+              <option value="toilet">toilet</option>
+              <option value="tv">tv</option>
+              <option value="laptop">laptop</option>
+              <option value="mouse">mouse</option>
+              <option value="remote">remote</option>
+              <option value="keyboard">keyboard</option>
+              <option value="cell phone">cell phone</option>
+              <option value="microwave">microwave</option>
+              <option value="oven">oven</option>
+              <option value="toaster">toaster</option>
+              <option value="sink">sink</option>
+              <option value="refrigerator">refrigerator</option>
+              <option value="book">book</option>
+              <option value="clock">clock</option>
+              <option value="vase">vase</option>
+              <option value="scissors">scissors</option>
+              <option value="teddy bear">teddy bear</option>
+              <option value="hair drier">hair drier</option>
+              <option value="toothbrush">toothbrush</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="modelFileGroup" style="display: none;">
+            <label>YOLO Model File (.pt, .onnx)</label>
+            <div class="file-upload-area" onclick="document.getElementById('customModelFile').click()">
+              <span id="modelFileName">Click to select model file...</span>
+              <input type="file" id="customModelFile" accept=".pt,.onnx,.weights" style="display: none;" onchange="handleModelFileSelect(event)">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Confidence Threshold</label>
+            <div class="slider-container">
+              <input type="range" id="customTargetConfidence" min="10" max="100" value="50">
+              <span class="slider-value" id="customConfidenceValue">50%</span>
+            </div>
+          </div>
+
+          <div class="form-actions" style="display: flex; gap: 10px;">
+            <button class="btn btn-primary" style="flex: 1;" onclick="addCustomTarget()">
+              + Add Custom Target
+            </button>
+            <button class="btn btn-secondary" id="cancelEditBtn" style="display: none;" onclick="cancelEditCustomTarget()">
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Existing custom targets list -->
+        <div class="custom-targets-list">
+          <h4 style="margin: 20px 0 10px; color: #4fc3f7;">Your Custom Targets</h4>
+          <div id="customTargetsList">
+            <div class="empty-state" style="padding: 15px;">
+              <div style="color: #888; font-size: 0.85em;">No custom targets created yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCustomDetectionModal()">Close</button>
       </div>
     </div>
   </div>
