@@ -1279,32 +1279,45 @@ setInterval(loadSystemInfo, 30000);
 async function testGait(gaitMode, duration = 3) {
   // Start walking with the specified gait for a short duration
   try {
-    // Set the gait mode
-    await fetch('/api/gait', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: gaitMode })
-    });
+    // Check if WebSocket is connected
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      logEvent('WARN', 'Gait test requires backend connection - connect to robot or simulator first');
+      return false;
+    }
 
-    // Start walking
-    await fetch('/api/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ run: true })
-    });
+    logEvent('INFO', `Testing ${gaitMode} gait for ${duration} seconds...`);
+
+    // Set the gait mode via WebSocket
+    sendCommand('set_gait', { mode: gaitMode });
+
+    // Small delay to ensure gait mode is set before starting
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Send walk and move commands together (like main UI does)
+    sendCommand('walk', { walking: true });
+    sendCommand('move', { speed: 0.5, heading: 0, turn: 0, walking: true });
+
+    // Keep sending move commands periodically to maintain movement
+    const moveInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendCommand('move', { speed: 0.5, heading: 0, turn: 0, walking: true });
+      }
+    }, 100);
 
     // Stop after duration seconds
-    setTimeout(async () => {
-      await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ run: false })
-      });
+    setTimeout(() => {
+      clearInterval(moveInterval);
+      // Stop movement - send both walk and move commands
+      sendCommand('walk', { walking: false });
+      sendCommand('move', { speed: 0, heading: 0, turn: 0, walking: false });
+
+      logEvent('INFO', `Gait test complete`);
     }, duration * 1000);
 
     return true;
   } catch (err) {
     console.error('Error testing gait:', err);
+    logEvent('ERROR', `Gait test failed: ${err.message}`);
     return false;
   }
 }

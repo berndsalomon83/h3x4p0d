@@ -1543,6 +1543,7 @@
 
   // Theme presets and helpers
   const THEME_STORAGE_KEY = 'hexapod-theme';
+  const VISUAL_STORAGE_KEY = 'hexapod-visual-settings';
   const themeVars = ['--accent', '--panel-bg', '--control-bg', '--panel-border', '--text-primary', '--text-muted', '--success', '--danger'];
   const themePresets = {
     aurora: {
@@ -1753,6 +1754,85 @@
     syncThemeInputs(activeTheme);
   }
 
+  // Visual settings (3D scene) save/load
+  function saveVisualSettings() {
+    const settings = {
+      showGrid: document.getElementById('showGrid')?.checked ?? true,
+      showShadows: document.getElementById('showShadows')?.checked ?? true,
+      bodyColor: document.getElementById('bodyColor')?.value ?? '#333333',
+      groundColor: document.getElementById('groundColor')?.value ?? '#66aa44',
+      skyColor: document.getElementById('skyColor')?.value ?? '#87ceeb'
+    };
+    localStorage.setItem(VISUAL_STORAGE_KEY, JSON.stringify(settings));
+  }
+
+  function loadVisualSettings() {
+    const saved = localStorage.getItem(VISUAL_STORAGE_KEY);
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+
+        // Apply grid visibility
+        if (settings.showGrid !== undefined) {
+          const gridCheckbox = document.getElementById('showGrid');
+          if (gridCheckbox) {
+            gridCheckbox.checked = settings.showGrid;
+            gridHelper.visible = settings.showGrid;
+          }
+        }
+
+        // Apply shadows
+        if (settings.showShadows !== undefined) {
+          const shadowCheckbox = document.getElementById('showShadows');
+          if (shadowCheckbox) {
+            shadowCheckbox.checked = settings.showShadows;
+            settingsValues.showShadows = settings.showShadows;
+            body.castShadow = settings.showShadows;
+            body.receiveShadow = settings.showShadows;
+            legs.forEach(leg => {
+              leg.group.traverse(child => {
+                if (child.isMesh) {
+                  child.castShadow = settings.showShadows;
+                  child.receiveShadow = settings.showShadows;
+                }
+              });
+            });
+          }
+        }
+
+        // Apply body color
+        if (settings.bodyColor) {
+          const bodyColorInput = document.getElementById('bodyColor');
+          if (bodyColorInput) {
+            bodyColorInput.value = settings.bodyColor;
+            body.material.color.setStyle(settings.bodyColor);
+          }
+        }
+
+        // Apply ground color
+        if (settings.groundColor) {
+          const groundColorInput = document.getElementById('groundColor');
+          if (groundColorInput) {
+            groundColorInput.value = settings.groundColor;
+            ground.material.color.setStyle(settings.groundColor);
+          }
+        }
+
+        // Apply sky color
+        if (settings.skyColor) {
+          const skyColorInput = document.getElementById('skyColor');
+          if (skyColorInput) {
+            skyColorInput.value = settings.skyColor;
+            scene.background.setStyle(settings.skyColor);
+            scene.fog.color.setStyle(settings.skyColor);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load saved visual settings:', e);
+      }
+    }
+  }
+
   // Toggle settings panel
   gearBtn.addEventListener('click', () => {
     settingsPanel.classList.toggle('open');
@@ -1830,6 +1910,9 @@
 
   // Load saved theme once UI controls are available
   loadTheme();
+
+  // Load saved visual settings (3D scene colors, grid, shadows)
+  loadVisualSettings();
 
   // Initialize leg configuration UI (legacy - now using unified Legs tab with SVG diagram)
   function initializeConfigUI() {
@@ -2217,27 +2300,32 @@
     });
     // Force shadow map update
     renderer.shadowMap.needsUpdate = true;
+    saveVisualSettings();
   });
 
   // Grid toggle
   document.getElementById('showGrid').addEventListener('change', (e) => {
     gridHelper.visible = e.target.checked;
+    saveVisualSettings();
   });
 
   // Body color
   document.getElementById('bodyColor').addEventListener('input', (e) => {
     body.material.color.setStyle(e.target.value);
+    saveVisualSettings();
   });
 
   // Ground color
   document.getElementById('groundColor').addEventListener('input', (e) => {
     ground.material.color.setStyle(e.target.value);
+    saveVisualSettings();
   });
 
   // Sky color
   document.getElementById('skyColor').addEventListener('input', (e) => {
     scene.background.setStyle(e.target.value);
     scene.fog.color.setStyle(e.target.value);
+    saveVisualSettings();
   });
 
   // Webcam variables (declared before use in renderCameraDock)
@@ -2562,6 +2650,7 @@
       // Reset visual settings
       document.getElementById('showGroundContact').checked = true;
       document.getElementById('showShadows').checked = true;
+      document.getElementById('showGrid').checked = true;
       document.getElementById('bodyColor').value = '#333333';
       document.getElementById('groundColor').value = '#66aa44';
       document.getElementById('skyColor').value = '#87ceeb';
@@ -2569,6 +2658,20 @@
       ground.material.color.setStyle('#66aa44');
       scene.background.setStyle('#87ceeb');
       scene.fog.color.setStyle('#87ceeb');
+      gridHelper.visible = true;
+      // Apply shadow reset to body and legs
+      body.castShadow = true;
+      body.receiveShadow = true;
+      ground.receiveShadow = true;
+      legs.forEach(leg => {
+        leg.group.traverse(obj => {
+          if (obj.isMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+          }
+        });
+      });
+      renderer.shadowMap.needsUpdate = true;
 
       // Reset advanced settings
       document.getElementById('smoothing').value = 20;
@@ -2580,6 +2683,9 @@
       settingsValues.showFPS = false;
       camera.fov = 45;
       camera.updateProjectionMatrix();
+
+      // Save reset visual settings
+      saveVisualSettings();
 
       logMsg('All settings reset to defaults');
     }

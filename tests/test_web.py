@@ -1,7 +1,9 @@
 """Integration tests for web API endpoints and FastAPI application."""
 import pytest
 import sys
+import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -11,14 +13,20 @@ from fastapi.testclient import TestClient
 _ = fastapi
 from hexapod.web import create_app
 from hexapod.hardware import MockServoController
+from hexapod.config import reset_profile_manager
 
 
 @pytest.fixture
 def client():
-    """Create test client with mock hardware."""
-    app = create_app(servo=MockServoController(), use_controller=False)
-    with TestClient(app) as test_client:
-        yield test_client
+    """Create test client with mock hardware, isolated from user config."""
+    # Use a temporary directory for home to isolate tests from user config
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch('pathlib.Path.home', return_value=Path(tmpdir)):
+            # Reset profile manager to use the mocked home directory
+            reset_profile_manager()
+            app = create_app(servo=MockServoController(), use_controller=False)
+            with TestClient(app) as test_client:
+                yield test_client
 
 
 @pytest.mark.integration

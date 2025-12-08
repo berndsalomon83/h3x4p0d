@@ -45,7 +45,9 @@
       "Bash(.venv/bin/pip install:*)",
       "Bash(.venv/bin/hexapod-api:*)",
       "Bash(cat:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(PYTHONPATH=src .venv/bin/python:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
