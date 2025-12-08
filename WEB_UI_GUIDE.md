@@ -258,6 +258,24 @@ The 3D model updates in real-time as the hexapod walks:
 ### Camera Control
 View can be adjusted using your browser's three.js controls (if enabled). Default view is an angled top-down perspective.
 
+### Visual Settings Persistence
+
+Visual settings are automatically saved to your browser's localStorage and restored when you refresh the page:
+
+| Setting | Description |
+|---------|-------------|
+| **Ground Color** | Color of the ground plane |
+| **Body Color** | Color of the hexapod body |
+| **Sky Color** | Background color of the 3D scene |
+| **Show Grid** | Toggle ground grid visibility |
+| **Show Shadows** | Toggle shadow rendering |
+
+**How it works:**
+- Settings are saved automatically when changed
+- Restored automatically on page load
+- Use "Reset All Settings" in the Settings panel to restore defaults
+- Settings persist per browser (stored in localStorage)
+
 ---
 
 ## Live Camera Views

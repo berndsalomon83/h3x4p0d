@@ -1,6 +1,6 @@
 # Hexapod Test Suite
 
-Comprehensive test suite for the hexapod robot controller with **170 passing tests** (nearly doubled from original 88 tests).
+Comprehensive test suite for the hexapod robot controller with **262 passing tests**.
 
 ## Test Coverage
 
@@ -104,9 +104,9 @@ Comprehensive test suite for the hexapod robot controller with **170 passing tes
   - Motion command to controller flow
   - State persistence across events
 
-### Integration Tests (47 tests)
+### Integration Tests (71 tests)
 
-#### Web API ([test_web.py](test_web.py)) - 47 tests
+#### Web API ([test_web.py](test_web.py)) - 71 tests
 - **REST Endpoints**: 20 tests
   - Status and sensor endpoints
   - Gait mode changes (tripod, wave, ripple)
@@ -144,6 +144,18 @@ Comprehensive test suite for the hexapod robot controller with **170 passing tes
   - Connection management (single and multiple)
   - Disconnect handling
   - Broadcast exception handling
+
+- **Poses API**: 13 tests
+  - List, create, update, delete poses
+  - Apply pose endpoint
+  - Record current pose
+  - Value clamping validation
+  - Builtin pose protection
+
+- **WebSocket Poses**: 5 tests
+  - Apply pose via WebSocket
+  - Pose presets (stand, crouch, neutral)
+  - Nonexistent pose handling
 
 ## Running Tests
 
@@ -226,12 +238,24 @@ Available fixtures in [conftest.py](conftest.py):
 - `inverse_kinematics`: InverseKinematics with standard dimensions
 - `gait_engine`: GaitEngine with default parameters
 - `hexapod_config`: HexapodConfig with temporary file
-- `client`: FastAPI TestClient (in test_web.py)
+- `reset_global_config`: Auto-use fixture that resets global config state between tests
+- `client`: FastAPI TestClient with isolated config (in test_web.py)
+
+## Test Isolation
+
+Tests are isolated from user configuration files to ensure consistent results:
+
+- The `client` fixture in `test_web.py` mocks `Path.home()` to use a temporary directory
+- This prevents tests from loading user config from `~/.hexapod/profiles/`
+- Tests use code defaults instead of potentially modified user settings
+- The `reset_global_config` fixture resets the global ProfileManager between tests
+
+This isolation ensures tests pass regardless of local user configuration.
 
 ## Test Results
 
 Latest test run:
-- ✅ **170 tests** passed (increased from 88 tests)
+- ✅ **262 tests** passed
 - ❌ 0 tests failed
 - ⏭️ 0 tests skipped
 

@@ -850,10 +850,10 @@ function applyConfigToUI() {
   setSliderValue('body_height_geo', c.body_height_geo || 30);
   setSliderValue('body_radius', c.body_radius || 80);
 
-  // Leg geometry
-  const coxa = c.leg_coxa_length || c.leg0_coxa_length || 30;
-  const femur = c.leg_femur_length || c.leg0_femur_length || 50;
-  const tibia = c.leg_tibia_length || c.leg0_tibia_length || 80;
+  // Leg geometry - prefer per-leg values (leg0_*) like app.js does
+  const coxa = c.leg0_coxa_length ?? c.leg_coxa_length ?? 30;
+  const femur = c.leg0_femur_length ?? c.leg_femur_length ?? 50;
+  const tibia = c.leg0_tibia_length ?? c.leg_tibia_length ?? 80;
   setSliderValue('leg_coxa_length', coxa);
   setSliderValue('leg_femur_length', femur);
   setSliderValue('leg_tibia_length', tibia);
@@ -2253,9 +2253,9 @@ const defaultGeometry = {
 let scene, camera, renderer, body, legs = [];
 let hexapodModel;
 let groundContactIndicators = [];
-let cameraRadius = 400;
+let cameraRadius = 200;  // Adjusted for scaled hexapod
 let cameraTheta = Math.PI / 4;
-let cameraPhi = Math.PI / 4;
+let cameraPhi = Math.PI / 3;  // Slightly higher angle for better view
 
 // Walking simulation state (used in animate loop)
 let walkSimulation = null;
@@ -2313,8 +2313,8 @@ function animateCameraTo(targetTheta, targetPhi, duration = 1500) {
   cameraTransition = { frameId: requestAnimationFrame(step) };
 }
 
-// Scale factor: mm in config → units in 3D scene (roughly 1/3 scale)
-const GEOMETRY_SCALE = 1 / 3;
+// Scale factor to fit preview panel (0.5 = half size for better fit)
+const GEOMETRY_SCALE = 0.5;
 const GROUND_Y = -10 * GEOMETRY_SCALE;
 
 // Materials (shared across rebuilds)
@@ -2360,7 +2360,7 @@ function rebuildHexapodPreview() {
     })
   };
 
-  const scaledBodyHeight = (state.telemetry.bodyHeight || 80) * GEOMETRY_SCALE;
+  const scaledBodyHeight = (state.telemetry.bodyHeight || 90) * GEOMETRY_SCALE;  // Match app.js default
 
   console.log('rebuildHexapodPreview: geometry.leg_attach_points =', JSON.stringify(geometry.leg_attach_points));
   console.log('rebuildHexapodPreview: scaledBodyHeight =', scaledBodyHeight);
@@ -2411,8 +2411,8 @@ console.log('3D Preview: previewCanvas found:', !!previewCanvas, 'THREE loaded:'
 if (previewCanvas && typeof THREE !== 'undefined') {
   console.log('3D Preview: Initializing...');
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 300, 900);
+  scene.background = new THREE.Color(0x1a1a2e);
+  scene.fog = new THREE.Fog(0x1a1a2e, 300, 900);
 
   camera = new THREE.PerspectiveCamera(45, previewCanvas.clientWidth / previewCanvas.clientHeight, 0.1, 1000);
   // Use updateCameraPosition to set initial position matching ISO preset
@@ -2438,18 +2438,19 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   directionalLight.shadow.camera.bottom = -200;
   scene.add(directionalLight);
 
-  // Ground plane and subtle grid to match main view
+  // Ground plane - black floor for config view
   const groundGeom = new THREE.PlaneGeometry(800, 600);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x66aa44 });
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
   const ground = new THREE.Mesh(groundGeom, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = GROUND_Y;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const gridHelper = new THREE.GridHelper(400, 20, 0x444444, 0x222222);
-  gridHelper.position.y = GROUND_Y + 0.1;
-  gridHelper.visible = false;
+  // Grid lines visible on black floor
+  const gridHelper = new THREE.GridHelper(200, 20, 0x555555, 0x333333);
+  gridHelper.position.y = GROUND_Y + 0.1;  // Slightly above ground to avoid z-fighting
+  gridHelper.visible = true;
   scene.add(gridHelper);
 
   // Initialize shared materials
@@ -2489,7 +2490,7 @@ if (previewCanvas && typeof THREE !== 'undefined') {
 
   previewCanvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    cameraRadius = Math.max(150, Math.min(800, cameraRadius + e.deltaY * 0.5));
+    cameraRadius = Math.max(80, Math.min(400, cameraRadius + e.deltaY * 0.5));
     updateCameraPosition();
   });
 
@@ -2510,7 +2511,7 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     requestAnimationFrame(animate);
     animationTime += 0.016; // ~60fps
 
-    const bodyHeight = state.telemetry.bodyHeight || 80;
+    const bodyHeight = state.telemetry.bodyHeight || 90;  // Match app.js default
     const bodyRollDeg = state.telemetry.roll || 0;
     const bodyPitchDeg = state.telemetry.pitch || 0;
     const bodyYawDeg = state.telemetry.yaw || 0;

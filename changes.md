@@ -1,5 +1,32 @@
 # Changelog
 
+## 2025-12-08
+
+### Config Preview Visual Updates
+
+- Restored 0.5x scaling for config page hexapod to fit the preview panel while maintaining visual consistency with the main UI. (web_static/config.js)
+- Changed config page 3D preview to use a black floor with visible gray grid lines for better visibility during configuration. (web_static/config.js)
+- Updated config page background to a dark blue-gray color to complement the black floor. (web_static/config.js)
+- Aligned default body height (90) and camera settings to match the main UI. (web_static/config.js)
+
+### Hexapod Leg Rendering Consistency
+
+- Fixed config.js to prefer per-leg config values (leg0_coxa_length, etc.) over global values (leg_coxa_length), matching the behavior of app.js so both UIs render the same hexapod geometry. (web_static/config.js)
+- Fixed user config file to synchronize per-leg values with global leg length values, resolving visual mismatch between main UI and config page. (~/.hexapod/profiles/default.json)
+
+### Visual Settings Persistence
+
+- Added localStorage persistence for 3D scene visual settings (ground color, body color, sky color, grid visibility, shadows) so preferences are restored on page refresh. (web_static/app.js)
+
+### Gait Test Functionality
+
+- Fixed the "Test" button in the config UI gait section to properly test gaits using WebSocket commands instead of just HTTP API calls. The test now sends set_gait, walk, and continuous move commands to make the hexapod actually walk with the selected gait for the test duration. (web_static/config.js)
+
+### Test Suite Improvements
+
+- Fixed test isolation in test_web.py by mocking Path.home() to use a temporary directory, preventing tests from loading user config files from ~/.hexapod/profiles/. This ensures tests use code defaults and pass consistently regardless of local user configuration. (tests/test_web.py)
+- Updated test count to 262 passing tests with improved documentation of test isolation patterns. (tests/README.md)
+
 ## 2025-02-18
 
 ### Config Preview Visual Refresh
