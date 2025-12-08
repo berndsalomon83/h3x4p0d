@@ -519,6 +519,24 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
             return FileResponse(str(favicon_file), media_type="image/svg+xml")
         return Response(status_code=204)  # No content if favicon doesn't exist
 
+    # ========== Patrol Routes ==========
+    @app.get("/patrol.html")
+    @app.get("/patrol")
+    async def patrol_page():
+        """Serve the patrol control page."""
+        patrol_file = Path(__file__).parent.parent.parent / "web_static" / "patrol.html"
+        if patrol_file.exists():
+            return FileResponse(str(patrol_file), media_type="text/html")
+        return HTMLResponse("<h1>Patrol page not found</h1>", status_code=404)
+
+    @app.get("/patrol.js")
+    async def patrol_js():
+        """Serve the patrol JavaScript."""
+        js_file = Path(__file__).parent.parent.parent / "web_static" / "patrol.js"
+        if js_file.exists():
+            return FileResponse(str(js_file), media_type="application/javascript")
+        return Response(status_code=404)
+
     @app.get("/api/health")
     async def health_check():
         """Health check endpoint for monitoring."""
@@ -1283,6 +1301,226 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
         # TODO: Implement disconnection
         return {"ok": True, "message": "Disconnected"}
 
+    # ========== Patrol API Endpoints ==========
+    # Patrol state (stored in controller for simplicity)
+    patrol_state = {
+        "status": "stopped",  # stopped, running, paused
+        "active_route": None,
+        "current_waypoint": 0,
+        "routes": [],  # List of patrol routes/zones
+        "detections": [],  # Detection log
+        "settings": {
+            "speed": 50,
+            "mode": "loop",
+            "pattern": "lawnmower",
+            "waypoint_pause": 2,
+            "detection_targets": ["snail"],
+            "detection_sensitivity": 70
+        }
+    }
+
+    @app.get("/api/patrol/status")
+    async def patrol_status():
+        """Get current patrol status."""
+        return {
+            "status": patrol_state["status"],
+            "active_route": patrol_state["active_route"],
+            "current_waypoint": patrol_state["current_waypoint"],
+            "settings": patrol_state["settings"]
+        }
+
+    @app.get("/api/patrol/routes")
+    async def get_patrol_routes():
+        """Get all patrol routes and zones."""
+        return {"routes": patrol_state["routes"]}
+
+    @app.post("/api/patrol/routes")
+    async def save_patrol_route(request: Request):
+        """Save a new patrol route or zone."""
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        route = {
+            "id": body.get("id") or f"route_{int(asyncio.get_event_loop().time() * 1000)}",
+            "name": body.get("name", "New Route"),
+            "description": body.get("description", ""),
+            "type": body.get("type", "polyline"),  # polyline or polygon
+            "coordinates": body.get("coordinates", []),
+            "color": body.get("color", "#4fc3f7"),
+            "priority": body.get("priority", "normal"),
+            "created_at": body.get("created_at") or asyncio.get_event_loop().time()
+        }
+
+        # Check if updating existing route
+        existing_idx = next((i for i, r in enumerate(patrol_state["routes"]) if r["id"] == route["id"]), -1)
+        if existing_idx >= 0:
+            patrol_state["routes"][existing_idx] = route
+        else:
+            patrol_state["routes"].append(route)
+
+        # Save to config file
+        from .config import get_config
+        cfg = get_config()
+        cfg.set("patrol_routes", patrol_state["routes"])
+        cfg.save()
+
+        return {"ok": True, "route": route}
+
+    @app.delete("/api/patrol/routes/{route_id}")
+    async def delete_patrol_route(route_id: str):
+        """Delete a patrol route."""
+        patrol_state["routes"] = [r for r in patrol_state["routes"] if r["id"] != route_id]
+
+        # Save to config file
+        from .config import get_config
+        cfg = get_config()
+        cfg.set("patrol_routes", patrol_state["routes"])
+        cfg.save()
+
+        return {"ok": True}
+
+    @app.post("/api/patrol/start")
+    async def start_patrol(request: Request):
+        """Start patrolling a route."""
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        route_id = body.get("route_id")
+        route = next((r for r in patrol_state["routes"] if r["id"] == route_id), None)
+
+        if not route:
+            return JSONResponse({"error": "Route not found"}, status_code=404)
+
+        patrol_state["status"] = "running"
+        patrol_state["active_route"] = route_id
+        patrol_state["current_waypoint"] = 0
+
+        # Update settings from request
+        if "speed" in body:
+            patrol_state["settings"]["speed"] = body["speed"]
+        if "mode" in body:
+            patrol_state["settings"]["mode"] = body["mode"]
+        if "pattern" in body:
+            patrol_state["settings"]["pattern"] = body["pattern"]
+        if "detection_targets" in body:
+            patrol_state["settings"]["detection_targets"] = body["detection_targets"]
+        if "detection_sensitivity" in body:
+            patrol_state["settings"]["detection_sensitivity"] = body["detection_sensitivity"]
+
+        # Start the hexapod walking
+        controller.running = True
+        controller.speed = patrol_state["settings"]["speed"] / 100.0
+
+        logger.info(f"Patrol started on route: {route['name']}")
+
+        return {"ok": True, "status": "running", "route": route}
+
+    @app.post("/api/patrol/stop")
+    async def stop_patrol():
+        """Stop the current patrol."""
+        patrol_state["status"] = "stopped"
+        patrol_state["active_route"] = None
+        patrol_state["current_waypoint"] = 0
+
+        # Stop the hexapod
+        controller.running = False
+        controller.speed = 0
+
+        logger.info("Patrol stopped")
+
+        return {"ok": True, "status": "stopped"}
+
+    @app.post("/api/patrol/pause")
+    async def pause_patrol():
+        """Pause the current patrol."""
+        if patrol_state["status"] == "running":
+            patrol_state["status"] = "paused"
+            controller.running = False
+            logger.info("Patrol paused")
+
+        return {"ok": True, "status": patrol_state["status"]}
+
+    @app.post("/api/patrol/resume")
+    async def resume_patrol():
+        """Resume a paused patrol."""
+        if patrol_state["status"] == "paused":
+            patrol_state["status"] = "running"
+            controller.running = True
+            controller.speed = patrol_state["settings"]["speed"] / 100.0
+            logger.info("Patrol resumed")
+
+        return {"ok": True, "status": patrol_state["status"]}
+
+    @app.get("/api/patrol/detections")
+    async def get_detections():
+        """Get recent detections."""
+        return {"detections": patrol_state["detections"][-100:]}  # Last 100
+
+    @app.post("/api/patrol/detections")
+    async def add_detection(request: Request):
+        """Add a detection (from camera/AI processing)."""
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        detection = {
+            "id": f"det_{int(asyncio.get_event_loop().time() * 1000)}",
+            "type": body.get("type", "unknown"),
+            "confidence": body.get("confidence", 0.0),
+            "lat": body.get("lat", 0.0),
+            "lng": body.get("lng", 0.0),
+            "timestamp": body.get("timestamp") or asyncio.get_event_loop().time(),
+            "image_url": body.get("image_url")
+        }
+
+        patrol_state["detections"].append(detection)
+
+        # Broadcast to WebSocket clients
+        await manager.broadcast({
+            "type": "detection",
+            **detection
+        })
+
+        return {"ok": True, "detection": detection}
+
+    @app.delete("/api/patrol/detections")
+    async def clear_detections():
+        """Clear all detections."""
+        patrol_state["detections"] = []
+        return {"ok": True}
+
+    @app.post("/api/patrol/settings")
+    async def update_patrol_settings(request: Request):
+        """Update patrol settings."""
+        body, error = await parse_json_body(request)
+        if error:
+            return error
+
+        patrol_state["settings"].update(body)
+
+        # Save to config file
+        from .config import get_config
+        cfg = get_config()
+        cfg.set("patrol_settings", patrol_state["settings"])
+        cfg.save()
+
+        return {"ok": True, "settings": patrol_state["settings"]}
+
+    # Load patrol routes and settings from config on startup
+    def load_patrol_config():
+        from .config import get_config
+        cfg = get_config()
+        routes = cfg.get("patrol_routes", [])
+        if routes:
+            patrol_state["routes"] = routes
+        settings = cfg.get("patrol_settings", {})
+        if settings:
+            patrol_state["settings"].update(settings)
+
+    load_patrol_config()
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
         await manager.connect(websocket)
@@ -1428,6 +1666,88 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                         "voltage": voltage,
                         "percentage": percentage,
                         "message": f"Battery: {voltage:.1f}V ({percentage}%)"
+                    })
+                # ========== Patrol Commands ==========
+                elif typ == "patrol_start":
+                    route_id = data.get("route_id")
+                    route = next((r for r in patrol_state["routes"] if r["id"] == route_id), None)
+                    if route:
+                        patrol_state["status"] = "running"
+                        patrol_state["active_route"] = route_id
+                        patrol_state["current_waypoint"] = 0
+                        # Update settings
+                        if "speed" in data:
+                            patrol_state["settings"]["speed"] = data["speed"]
+                        if "mode" in data:
+                            patrol_state["settings"]["mode"] = data["mode"]
+                        if "pattern" in data:
+                            patrol_state["settings"]["pattern"] = data["pattern"]
+                        if "detection_targets" in data:
+                            patrol_state["settings"]["detection_targets"] = data["detection_targets"]
+                        if "detection_sensitivity" in data:
+                            patrol_state["settings"]["detection_sensitivity"] = data["detection_sensitivity"]
+                        controller.running = True
+                        controller.speed = patrol_state["settings"]["speed"] / 100.0
+                        logger.info(f"Patrol started: {route['name']}")
+                        await websocket.send_json({
+                            "type": "patrol_status",
+                            "status": "running",
+                            "route_id": route_id
+                        })
+                elif typ == "patrol_stop":
+                    patrol_state["status"] = "stopped"
+                    patrol_state["active_route"] = None
+                    controller.running = False
+                    controller.speed = 0
+                    logger.info("Patrol stopped")
+                    await websocket.send_json({
+                        "type": "patrol_status",
+                        "status": "stopped"
+                    })
+                elif typ == "patrol_pause":
+                    if patrol_state["status"] == "running":
+                        patrol_state["status"] = "paused"
+                        controller.running = False
+                        logger.info("Patrol paused")
+                    await websocket.send_json({
+                        "type": "patrol_status",
+                        "status": patrol_state["status"]
+                    })
+                elif typ == "patrol_resume":
+                    if patrol_state["status"] == "paused":
+                        patrol_state["status"] = "running"
+                        controller.running = True
+                        controller.speed = patrol_state["settings"]["speed"] / 100.0
+                        logger.info("Patrol resumed")
+                    await websocket.send_json({
+                        "type": "patrol_status",
+                        "status": patrol_state["status"]
+                    })
+                elif typ == "go_to_position":
+                    # Navigate to a specific position (home, detection location, etc.)
+                    target_lat = data.get("lat")
+                    target_lng = data.get("lng")
+                    logger.info(f"Navigating to: {target_lat}, {target_lng}")
+                    # TODO: Implement actual navigation logic
+                    controller.running = True
+                    controller.speed = 0.5
+                    await websocket.send_json({
+                        "type": "navigation_started",
+                        "target": {"lat": target_lat, "lng": target_lng}
+                    })
+                elif typ == "update_detection_targets":
+                    targets = data.get("targets", [])
+                    sensitivity = data.get("sensitivity", 70)
+                    patrol_state["settings"]["detection_targets"] = targets
+                    patrol_state["settings"]["detection_sensitivity"] = sensitivity
+                    logger.info(f"Detection targets updated: {targets}")
+                elif typ == "get_position":
+                    # Return current simulated position
+                    # TODO: Integrate with actual GPS/position tracking
+                    await websocket.send_json({
+                        "type": "position",
+                        "lat": 37.7749,
+                        "lng": -122.4194
                     })
         except WebSocketDisconnect:
             manager.disconnect(websocket)

@@ -297,6 +297,35 @@ class HexapodConfig:
                 "builtin": False
             }
         },
+
+        # Patrol configuration
+        "patrol_settings": {
+            "speed": 50,           # Patrol speed percentage (0-100)
+            "mode": "loop",        # Route traversal: loop, bounce, once, random
+            "zone_pattern": "lawnmower",  # Zone coverage: lawnmower, spiral, perimeter, random
+            "pause_on_detection": True,   # Stop when target detected
+            "detection_pause_time": 10,   # Seconds to pause on detection
+        },
+        "patrol_detection_targets": {
+            "snails": True,        # Detect snails (garden pest)
+            "people": False,       # Detect people
+            "animals": False,      # Detect animals (cats, dogs, etc.)
+            "vehicles": False,     # Detect vehicles
+            "packages": False,     # Detect packages/deliveries
+        },
+        "patrol_alerts": {
+            "sound": True,         # Play alert sound
+            "notification": True,  # Browser notification
+            "email": False,        # Email alert (requires SMTP config)
+            "photo": True,         # Capture photo on detection
+        },
+        "patrol_schedule": {
+            "enabled": False,      # Enable scheduled patrols
+            "start_time": "08:00", # Daily start time (HH:MM)
+            "end_time": "18:00",   # Daily end time (HH:MM)
+            "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+        },
+        "patrol_routes": [],       # Saved patrol routes/zones
     }
 
     def __init__(self, config_file: Optional[Path] = None):

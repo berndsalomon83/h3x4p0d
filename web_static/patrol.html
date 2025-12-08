@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexapod Patrol Control</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #2a2a4a;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+    }
+
+    .header h1 {
+      font-size: 1.4em;
+      color: #4fc3f7;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1 .icon {
+      font-size: 1.2em;
+    }
+
+    .header-nav {
+      display: flex;
+      gap: 15px;
+    }
+
+    .header-nav a {
+      color: #888;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .header-nav a:hover {
+      color: #fff;
+      background: rgba(79, 195, 247, 0.1);
+    }
+
+    .header-nav a.active {
+      color: #4fc3f7;
+      background: rgba(79, 195, 247, 0.15);
+    }
+
+    /* Connection status */
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.85em;
+    }
+
+    .connection-status.connected {
+      background: rgba(76, 175, 80, 0.2);
+      color: #81c784;
+    }
+
+    .connection-status.disconnected {
+      background: rgba(244, 67, 54, 0.2);
+      color: #e57373;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Main layout */
+    .main-container {
+      display: flex;
+      height: calc(100vh - 56px);
+      margin-top: 56px;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 380px;
+      background: #16213e;
+      border-right: 1px solid #2a2a4a;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-section {
+      border-bottom: 1px solid #2a2a4a;
+    }
+
+    .sidebar-section-header {
+      padding: 15px 20px;
+      background: rgba(0,0,0,0.2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+
+    .sidebar-section-header:hover {
+      background: rgba(79, 195, 247, 0.05);
+    }
+
+    .sidebar-section-header h3 {
+      font-size: 0.95em;
+      font-weight: 600;
+      color: #4fc3f7;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-section-content {
+      padding: 15px 20px;
+    }
+
+    .sidebar-section.collapsed .sidebar-section-content {
+      display: none;
+    }
+
+    .collapse-icon {
+      transition: transform 0.2s;
+    }
+
+    .sidebar-section.collapsed .collapse-icon {
+      transform: rotate(-90deg);
+    }
+
+    /* Form controls */
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85em;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 0.9em;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #4fc3f7;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: #4fc3f7;
+      color: #1a1a2e;
+    }
+
+    .btn-primary:hover {
+      background: #29b6f6;
+    }
+
+    .btn-success {
+      background: #4caf50;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #43a047;
+    }
+
+    .btn-danger {
+      background: #f44336;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #e53935;
+    }
+
+    .btn-warning {
+      background: #ff9800;
+      color: #1a1a2e;
+    }
+
+    .btn-warning:hover {
+      background: #fb8c00;
+    }
+
+    .btn-secondary {
+      background: #2a2a4a;
+      color: #e0e0e0;
+    }
+
+    .btn-secondary:hover {
+      background: #3a3a5a;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-block {
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* Patrol status panel */
+    .patrol-status {
+      background: linear-gradient(135deg, #1a3a1a 0%, #162e16 100%);
+      border: 1px solid #2a4a2a;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .patrol-status.active {
+      background: linear-gradient(135deg, #1a3a1a 0%, #162e16 100%);
+      border-color: #4caf50;
+    }
+
+    .patrol-status.paused {
+      background: linear-gradient(135deg, #3a3a1a 0%, #2e2e16 100%);
+      border-color: #ff9800;
+    }
+
+    .patrol-status.stopped {
+      background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+      border-color: #666;
+    }
+
+    .patrol-status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .patrol-status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+    }
+
+    .patrol-status-indicator .pulse {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4caf50;
+      animation: pulse 1.5s infinite;
+    }
+
+    .patrol-status.paused .pulse {
+      background: #ff9800;
+      animation: none;
+    }
+
+    .patrol-status.stopped .pulse {
+      background: #666;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    .patrol-stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      font-size: 0.85em;
+    }
+
+    .patrol-stat {
+      background: rgba(0,0,0,0.2);
+      padding: 8px 10px;
+      border-radius: 4px;
+    }
+
+    .patrol-stat-label {
+      color: #888;
+      font-size: 0.85em;
+    }
+
+    .patrol-stat-value {
+      font-weight: 600;
+      color: #4fc3f7;
+    }
+
+    /* Routes list */
+    .routes-list {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .route-item {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      background: #1a1a2e;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .route-item:hover {
+      background: #2a2a4a;
+    }
+
+    .route-item.selected {
+      background: rgba(79, 195, 247, 0.15);
+      border: 1px solid #4fc3f7;
+    }
+
+    .route-item.active {
+      background: rgba(76, 175, 80, 0.15);
+      border: 1px solid #4caf50;
+    }
+
+    .route-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    .route-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .route-name {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .route-meta {
+      font-size: 0.8em;
+      color: #888;
+    }
+
+    .route-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .route-action-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: #888;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .route-action-btn:hover {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+
+    .route-action-btn.delete:hover {
+      color: #f44336;
+    }
+
+    /* Detection targets */
+    .detection-targets {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .detection-target {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .detection-target:hover {
+      border-color: #4fc3f7;
+    }
+
+    .detection-target.active {
+      background: rgba(79, 195, 247, 0.1);
+      border-color: #4fc3f7;
+    }
+
+    .detection-target .icon {
+      font-size: 1.8em;
+      margin-bottom: 5px;
+    }
+
+    .detection-target .name {
+      font-size: 0.85em;
+      font-weight: 500;
+    }
+
+    .detection-target .count {
+      font-size: 0.75em;
+      color: #888;
+    }
+
+    /* Alert settings */
+    .alert-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background: #1a1a2e;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .alert-option-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-option-icon {
+      font-size: 1.2em;
+    }
+
+    /* Toggle switch */
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #2a2a4a;
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #888;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background: #4fc3f7;
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+      background: white;
+      transform: translateX(20px);
+    }
+
+    /* Detection log */
+    .detection-log {
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .detection-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px;
+      background: #1a1a2e;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border-left: 3px solid #4fc3f7;
+    }
+
+    .detection-entry.snail {
+      border-left-color: #ff9800;
+    }
+
+    .detection-entry.person {
+      border-left-color: #f44336;
+    }
+
+    .detection-entry.animal {
+      border-left-color: #9c27b0;
+    }
+
+    .detection-thumbnail {
+      width: 50px;
+      height: 50px;
+      background: #2a2a4a;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .detection-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .detection-type {
+      font-weight: 600;
+      font-size: 0.9em;
+    }
+
+    .detection-time {
+      font-size: 0.8em;
+      color: #888;
+    }
+
+    .detection-location {
+      font-size: 0.8em;
+      color: #4fc3f7;
+      cursor: pointer;
+    }
+
+    .detection-location:hover {
+      text-decoration: underline;
+    }
+
+    /* Map container */
+    .map-container {
+      flex: 1;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Map overlays */
+    .map-overlay {
+      position: absolute;
+      z-index: 1000;
+      background: rgba(22, 33, 62, 0.95);
+      border-radius: 8px;
+      padding: 15px;
+      border: 1px solid #2a2a4a;
+    }
+
+    .map-controls {
+      top: 10px;
+      right: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .map-control-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: #16213e;
+      color: #e0e0e0;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2em;
+      transition: all 0.2s;
+    }
+
+    .map-control-btn:hover {
+      background: #2a2a4a;
+      color: #4fc3f7;
+    }
+
+    .map-control-btn.active {
+      background: #4fc3f7;
+      color: #1a1a2e;
+    }
+
+    .hexapod-position {
+      bottom: 10px;
+      left: 10px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .hexapod-coords {
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    .hexapod-heading {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .heading-indicator {
+      width: 30px;
+      height: 30px;
+      border: 2px solid #4fc3f7;
+      border-radius: 50%;
+      position: relative;
+    }
+
+    .heading-arrow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 2px;
+      height: 12px;
+      background: #4fc3f7;
+      transform-origin: bottom center;
+      margin-left: -1px;
+      margin-top: -12px;
+    }
+
+    .heading-arrow::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -3px;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-bottom: 6px solid #4fc3f7;
+    }
+
+    /* Hexapod marker on map */
+    .hexapod-marker {
+      width: 40px;
+      height: 40px;
+      position: relative;
+    }
+
+    .hexapod-marker-body {
+      width: 30px;
+      height: 20px;
+      background: #4fc3f7;
+      border: 2px solid #fff;
+      border-radius: 6px;
+      position: absolute;
+      top: 10px;
+      left: 5px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .hexapod-marker-direction {
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 12px solid #4fc3f7;
+      position: absolute;
+      top: 0;
+      left: 12px;
+      filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.3));
+    }
+
+    /* Detection marker */
+    .detection-marker {
+      width: 24px;
+      height: 24px;
+      background: #ff9800;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    /* Waypoint marker */
+    .waypoint-marker {
+      width: 20px;
+      height: 20px;
+      background: #4fc3f7;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      color: #1a1a2e;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s;
+    }
+
+    .modal-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 25px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      border: 1px solid #2a2a4a;
+      transform: scale(0.9);
+      transition: transform 0.3s;
+    }
+
+    .modal-overlay.visible .modal {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .modal-header h2 {
+      font-size: 1.2em;
+      color: #4fc3f7;
+    }
+
+    .modal-close {
+      width: 30px;
+      height: 30px;
+      border: none;
+      background: transparent;
+      color: #888;
+      font-size: 1.5em;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .modal-close:hover {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #2a2a4a;
+    }
+
+    /* Schedule picker */
+    .schedule-days {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .schedule-day {
+      width: 36px;
+      height: 36px;
+      border: 1px solid #2a2a4a;
+      background: #1a1a2e;
+      color: #888;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8em;
+      font-weight: 600;
+    }
+
+    .schedule-day.active {
+      background: #4fc3f7;
+      color: #1a1a2e;
+      border-color: #4fc3f7;
+    }
+
+    /* Color picker */
+    .color-options {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .color-option {
+      width: 30px;
+      height: 30px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .color-option:hover {
+      transform: scale(1.1);
+    }
+
+    .color-option.selected {
+      border-color: #fff;
+    }
+
+    /* Leaflet custom styles */
+    .leaflet-container {
+      background: #1a1a2e;
+    }
+
+    .leaflet-control-zoom {
+      border: none !important;
+    }
+
+    .leaflet-control-zoom a {
+      background: #16213e !important;
+      color: #e0e0e0 !important;
+      border: 1px solid #2a2a4a !important;
+    }
+
+    .leaflet-control-zoom a:hover {
+      background: #2a2a4a !important;
+    }
+
+    .leaflet-draw-toolbar a {
+      background: #16213e !important;
+      color: #e0e0e0 !important;
+      border: 1px solid #2a2a4a !important;
+    }
+
+    .leaflet-draw-toolbar a:hover {
+      background: #2a2a4a !important;
+    }
+
+    /* Slider */
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-container input[type="range"] {
+      flex: 1;
+      height: 6px;
+      -webkit-appearance: none;
+      background: #2a2a4a;
+      border-radius: 3px;
+    }
+
+    .slider-container input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #4fc3f7;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .slider-value {
+      min-width: 40px;
+      text-align: right;
+      font-weight: 500;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 30px;
+      color: #888;
+    }
+
+    .empty-state .icon {
+      font-size: 3em;
+      margin-bottom: 10px;
+      opacity: 0.5;
+    }
+
+    /* Quick actions floating panel */
+    .quick-actions {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(22, 33, 62, 0.95);
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 10px 20px;
+      display: flex;
+      gap: 15px;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .quick-action {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      padding: 10px 15px;
+      border: none;
+      background: transparent;
+      color: #e0e0e0;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .quick-action:hover {
+      background: rgba(79, 195, 247, 0.1);
+    }
+
+    .quick-action .icon {
+      font-size: 1.5em;
+    }
+
+    .quick-action .label {
+      font-size: 0.75em;
+    }
+
+    .quick-action.start {
+      background: rgba(76, 175, 80, 0.2);
+      color: #81c784;
+    }
+
+    .quick-action.stop {
+      background: rgba(244, 67, 54, 0.2);
+      color: #e57373;
+    }
+
+    .quick-action.pause {
+      background: rgba(255, 152, 0, 0.2);
+      color: #ffb74d;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar {
+        width: 320px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .main-container {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        height: 50%;
+        order: 2;
+      }
+
+      .map-container {
+        height: 50%;
+        order: 1;
+      }
+
+      .quick-actions {
+        bottom: auto;
+        top: 66px;
+        transform: translateX(-50%) scale(0.9);
+      }
+    }
+
+    /* First vertex marker for polygon drawing */
+    .first-vertex-marker {
+      pointer-events: auto !important;
+      cursor: pointer !important;
+    }
+
+    .first-vertex-inner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, #ff6b6b, #ee5253);
+      border: 3px solid #fff;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 12px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      z-index: 2;
+    }
+
+    .first-vertex-pulse {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 30px;
+      height: 30px;
+      background: rgba(255, 107, 107, 0.4);
+      border-radius: 50%;
+      animation: first-vertex-pulse 1.5s ease-out infinite;
+      z-index: 1;
+    }
+
+    @keyframes first-vertex-pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(2.5);
+        opacity: 0;
+      }
+    }
+
+    .first-vertex-marker:hover .first-vertex-inner {
+      background: linear-gradient(135deg, #ff8787, #ff6b6b);
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1><span class="icon">🤖</span> Hexapod Patrol Control</h1>
+    <nav class="header-nav">
+      <a href="/">Controller</a>
+      <a href="/config.html">Config</a>
+      <a href="/patrol.html" class="active">Patrol</a>
+    </nav>
+    <div id="connectionStatus" class="connection-status disconnected">
+      <div class="status-dot"></div>
+      <span>Disconnected</span>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <!-- Patrol Status -->
+      <section class="sidebar-section">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>📡 Patrol Status</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div id="patrolStatus" class="patrol-status stopped">
+            <div class="patrol-status-header">
+              <div class="patrol-status-indicator">
+                <div class="pulse"></div>
+                <span id="patrolStatusText">Stopped</span>
+              </div>
+              <span id="patrolRouteName" style="color: #888; font-size: 0.85em;">No route selected</span>
+            </div>
+            <div class="patrol-stats">
+              <div class="patrol-stat">
+                <div class="patrol-stat-label">Distance</div>
+                <div class="patrol-stat-value" id="patrolDistance">0 m</div>
+              </div>
+              <div class="patrol-stat">
+                <div class="patrol-stat-label">Time</div>
+                <div class="patrol-stat-value" id="patrolTime">0:00</div>
+              </div>
+              <div class="patrol-stat">
+                <div class="patrol-stat-label">Detections</div>
+                <div class="patrol-stat-value" id="patrolDetections">0</div>
+              </div>
+              <div class="patrol-stat">
+                <div class="patrol-stat-label">Laps</div>
+                <div class="patrol-stat-value" id="patrolLaps">0</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-group" style="margin-top: 15px;">
+            <button class="btn btn-success" id="btnStartPatrol" onclick="startPatrol()">
+              ▶ Start Patrol
+            </button>
+            <button class="btn btn-warning" id="btnPausePatrol" onclick="pausePatrol()" style="display: none;">
+              ⏸ Pause
+            </button>
+            <button class="btn btn-danger" id="btnStopPatrol" onclick="stopPatrol()" style="display: none;">
+              ⏹ Stop
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Routes & Zones -->
+      <section class="sidebar-section">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>🗺️ Routes & Zones</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="btn-group" style="margin-bottom: 15px;">
+            <button class="btn btn-primary" onclick="showNewRouteModal('route')">
+              + Route
+            </button>
+            <button class="btn btn-secondary" onclick="showNewRouteModal('zone')">
+              + Zone
+            </button>
+          </div>
+
+          <div class="routes-list" id="routesList">
+            <div class="empty-state">
+              <div class="icon">🗺️</div>
+              <div>No routes defined yet</div>
+              <div style="font-size: 0.85em; margin-top: 5px;">Click "+ Route" to create one</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Detection Targets -->
+      <section class="sidebar-section">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>🎯 Detection Targets</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="detection-targets">
+            <div class="detection-target active" data-target="snail" onclick="toggleDetectionTarget(this)">
+              <div class="icon">🐌</div>
+              <div class="name">Snails</div>
+              <div class="count">0 found</div>
+            </div>
+            <div class="detection-target" data-target="person" onclick="toggleDetectionTarget(this)">
+              <div class="icon">🚶</div>
+              <div class="name">People</div>
+              <div class="count">0 found</div>
+            </div>
+            <div class="detection-target" data-target="animal" onclick="toggleDetectionTarget(this)">
+              <div class="icon">🐕</div>
+              <div class="name">Animals</div>
+              <div class="count">0 found</div>
+            </div>
+            <div class="detection-target" data-target="vehicle" onclick="toggleDetectionTarget(this)">
+              <div class="icon">🚗</div>
+              <div class="name">Vehicles</div>
+              <div class="count">0 found</div>
+            </div>
+            <div class="detection-target" data-target="package" onclick="toggleDetectionTarget(this)">
+              <div class="icon">📦</div>
+              <div class="name">Packages</div>
+              <div class="count">0 found</div>
+            </div>
+            <div class="detection-target" data-target="custom" onclick="toggleDetectionTarget(this)">
+              <div class="icon">⚙️</div>
+              <div class="name">Custom</div>
+              <div class="count">Configure</div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 15px;">
+            <label>Detection Sensitivity</label>
+            <div class="slider-container">
+              <input type="range" id="detectionSensitivity" min="1" max="100" value="70">
+              <span class="slider-value" id="sensitivityValue">70%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Alert Settings -->
+      <section class="sidebar-section">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>🔔 Alert Settings</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">🔊</span>
+              <span>Sound Alert</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="alertSound" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">📱</span>
+              <span>Browser Notification</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="alertNotification" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">📧</span>
+              <span>Email Alert</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="alertEmail">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">📸</span>
+              <span>Capture Photo</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="alertPhoto" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">⏸️</span>
+              <span>Pause on Detection</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="alertPause">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="form-group" style="margin-top: 15px;">
+            <label>Alert Cooldown (seconds)</label>
+            <input type="number" id="alertCooldown" value="30" min="5" max="300">
+          </div>
+        </div>
+      </section>
+
+      <!-- Detection Log -->
+      <section class="sidebar-section">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>📋 Detection Log</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="detection-log" id="detectionLog">
+            <div class="empty-state">
+              <div class="icon">🔍</div>
+              <div>No detections yet</div>
+              <div style="font-size: 0.85em; margin-top: 5px;">Start a patrol to begin scanning</div>
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-block" style="margin-top: 10px;" onclick="clearDetectionLog()">
+            Clear Log
+          </button>
+        </div>
+      </section>
+
+      <!-- Patrol Settings -->
+      <section class="sidebar-section collapsed">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>⚙️ Patrol Settings</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="form-group">
+            <label>Patrol Speed</label>
+            <div class="slider-container">
+              <input type="range" id="patrolSpeed" min="10" max="100" value="50">
+              <span class="slider-value" id="speedValue">50%</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Patrol Mode</label>
+            <select id="patrolMode">
+              <option value="loop">Loop (continuous)</option>
+              <option value="bounce">Bounce (back and forth)</option>
+              <option value="once">One-way (stop at end)</option>
+              <option value="random">Random waypoints</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Zone Coverage Pattern</label>
+            <select id="zonePattern">
+              <option value="lawnmower">Lawnmower (parallel lines)</option>
+              <option value="spiral">Spiral (inward)</option>
+              <option value="perimeter">Perimeter (edge patrol)</option>
+              <option value="random">Random coverage</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Waypoint Pause (seconds)</label>
+            <input type="number" id="waypointPause" value="2" min="0" max="30">
+          </div>
+
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">🔄</span>
+              <span>Auto-return Home</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="autoReturnHome" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>Low Battery Return (%)</label>
+            <input type="number" id="lowBatteryReturn" value="20" min="5" max="50">
+          </div>
+        </div>
+      </section>
+
+      <!-- Schedule -->
+      <section class="sidebar-section collapsed">
+        <div class="sidebar-section-header" onclick="toggleSection(this)">
+          <h3>📅 Schedule</h3>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="sidebar-section-content">
+          <div class="alert-option">
+            <div class="alert-option-info">
+              <span class="alert-option-icon">⏰</span>
+              <span>Enable Scheduled Patrols</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="scheduleEnabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div id="scheduleSettings" style="margin-top: 15px; opacity: 0.5; pointer-events: none;">
+            <div class="form-group">
+              <label>Active Days</label>
+              <div class="schedule-days">
+                <button class="schedule-day active" data-day="0">Su</button>
+                <button class="schedule-day active" data-day="1">Mo</button>
+                <button class="schedule-day active" data-day="2">Tu</button>
+                <button class="schedule-day active" data-day="3">We</button>
+                <button class="schedule-day active" data-day="4">Th</button>
+                <button class="schedule-day active" data-day="5">Fr</button>
+                <button class="schedule-day active" data-day="6">Sa</button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start Time</label>
+                <input type="time" id="scheduleStart" value="06:00">
+              </div>
+              <div class="form-group">
+                <label>End Time</label>
+                <input type="time" id="scheduleEnd" value="20:00">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Patrol Interval (minutes)</label>
+              <input type="number" id="scheduleInterval" value="60" min="15" max="480">
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Map Container -->
+    <div class="map-container">
+      <div id="map"></div>
+
+      <!-- Map Controls -->
+      <div class="map-overlay map-controls">
+        <button class="map-control-btn" onclick="centerOnHexapod()" title="Center on Hexapod">
+          🤖
+        </button>
+        <button class="map-control-btn" onclick="setHomePosition()" title="Set Home Position">
+          🏠
+        </button>
+        <button class="map-control-btn" onclick="toggleSatellite()" title="Toggle Satellite View">
+          🛰️
+        </button>
+        <button class="map-control-btn" onclick="fitAllRoutes()" title="Fit All Routes">
+          📐
+        </button>
+      </div>
+
+      <!-- Hexapod Position -->
+      <div class="map-overlay hexapod-position">
+        <div class="hexapod-coords">
+          <div style="color: #888; font-size: 0.8em;">Position</div>
+          <div id="hexapodCoords">0.00, 0.00</div>
+        </div>
+        <div class="hexapod-heading">
+          <div class="heading-indicator">
+            <div class="heading-arrow" id="headingArrow"></div>
+          </div>
+          <span id="hexapodHeading">0°</span>
+        </div>
+        <div>
+          <div style="color: #888; font-size: 0.8em;">Battery</div>
+          <div id="hexapodBattery">---%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <button class="quick-action start" id="quickStart" onclick="startPatrol()">
+      <span class="icon">▶️</span>
+      <span class="label">Start</span>
+    </button>
+    <button class="quick-action pause" id="quickPause" onclick="pausePatrol()" style="display: none;">
+      <span class="icon">⏸️</span>
+      <span class="label">Pause</span>
+    </button>
+    <button class="quick-action stop" id="quickStop" onclick="stopPatrol()" style="display: none;">
+      <span class="icon">⏹️</span>
+      <span class="label">Stop</span>
+    </button>
+    <button class="quick-action" onclick="goHome()">
+      <span class="icon">🏠</span>
+      <span class="label">Home</span>
+    </button>
+    <button class="quick-action" onclick="emergencyStop()">
+      <span class="icon">🛑</span>
+      <span class="label">E-Stop</span>
+    </button>
+  </div>
+
+  <!-- New Route Modal -->
+  <div class="modal-overlay" id="routeModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="routeModalTitle">New Patrol Route</h2>
+        <button class="modal-close" onclick="closeRouteModal()">&times;</button>
+      </div>
+
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="routeName" placeholder="e.g., Garden Perimeter">
+      </div>
+
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="routeDescription" rows="2" placeholder="Optional description..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Color</label>
+        <div class="color-options" id="colorOptions">
+          <div class="color-option selected" style="background: #4fc3f7;" data-color="#4fc3f7"></div>
+          <div class="color-option" style="background: #4caf50;" data-color="#4caf50"></div>
+          <div class="color-option" style="background: #ff9800;" data-color="#ff9800"></div>
+          <div class="color-option" style="background: #f44336;" data-color="#f44336"></div>
+          <div class="color-option" style="background: #9c27b0;" data-color="#9c27b0"></div>
+          <div class="color-option" style="background: #e91e63;" data-color="#e91e63"></div>
+          <div class="color-option" style="background: #00bcd4;" data-color="#00bcd4"></div>
+          <div class="color-option" style="background: #ffeb3b;" data-color="#ffeb3b"></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Priority</label>
+        <select id="routePriority">
+          <option value="low">Low</option>
+          <option value="normal" selected>Normal</option>
+          <option value="high">High</option>
+        </select>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeRouteModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="createRoute()">
+          <span id="routeModalAction">Draw on Map</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detection Detail Modal -->
+  <div class="modal-overlay" id="detectionModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Detection Details</h2>
+        <button class="modal-close" onclick="closeDetectionModal()">&times;</button>
+      </div>
+
+      <div id="detectionModalContent">
+        <!-- Filled dynamically -->
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDetectionModal()">Close</button>
+        <button class="btn btn-primary" onclick="goToDetection()">Go To Location</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="/patrol.js"></script>
+</body>
+</html>

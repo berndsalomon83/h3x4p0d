@@ -47,7 +47,8 @@
       "Bash(cat:*)",
       "Bash(git fetch:*)",
       "Bash(PYTHONPATH=src .venv/bin/python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

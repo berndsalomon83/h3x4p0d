@@ -480,6 +480,107 @@ curl -X POST http://localhost:8000/api/rotation \
 
 ---
 
+## Patrol Control System
+
+The hexapod includes an autonomous patrol system for property protection and garden pest control (e.g., snail detection).
+
+### Accessing Patrol Control
+Navigate to: **http://localhost:8000/patrol** or click the **"Patrol"** link in the main UI navigation.
+
+### Features
+
+#### Interactive Map
+- Uses Leaflet.js with OpenStreetMap tiles
+- Pan and zoom to your property location
+- Real-time hexapod position tracking marker
+
+#### Creating Patrol Routes
+1. Click **"Create Route"** button
+2. Click on the map to add waypoints
+3. Double-click or click the first vertex (pulsing red "1") to finish
+4. Name your route and save
+
+#### Creating Patrol Zones
+1. Click **"Create Zone"** button
+2. Click to add polygon vertices
+3. Double-click or click the first vertex to close the polygon
+4. Name your zone and save
+
+#### Route/Zone Management
+- Click any route or zone to select it
+- Edit name, description, priority, and color
+- Delete routes/zones you no longer need
+- Routes and zones are saved to your config file
+
+#### Detection Targets
+Configure what the hexapod should look for:
+- **Snails** - Garden pest control
+- **People** - Property security
+- **Animals** - Wildlife monitoring
+- **Vehicles** - Driveway monitoring
+- **Packages** - Delivery detection
+
+#### Patrol Modes
+- **Loop** - Continuously patrol the route
+- **Bounce** - Go back and forth along the route
+- **Once** - Single patrol run
+- **Random** - Visit waypoints in random order
+
+#### Zone Coverage Patterns
+- **Lawnmower** - Systematic back-and-forth coverage
+- **Spiral** - Outward or inward spiral pattern
+- **Perimeter** - Walk the zone boundary
+- **Random** - Random movement within zone
+
+#### Alert Settings
+Configure notifications when targets are detected:
+- Sound alerts
+- Browser notifications
+- Email notifications
+- Photo capture
+
+#### Quick Actions
+Manual navigation commands for immediate control during patrol.
+
+### Patrol API Endpoints
+
+```bash
+# Get patrol status
+curl http://localhost:8000/api/patrol/status | jq
+
+# Get all routes/zones
+curl http://localhost:8000/api/patrol/routes | jq
+
+# Start patrol on a route
+curl -X POST http://localhost:8000/api/patrol/start \
+  -H "Content-Type: application/json" \
+  -d '{"route_id": "route_123", "speed": 50, "mode": "loop"}'
+
+# Stop patrol
+curl -X POST http://localhost:8000/api/patrol/stop
+
+# Pause patrol
+curl -X POST http://localhost:8000/api/patrol/pause
+
+# Resume patrol
+curl -X POST http://localhost:8000/api/patrol/resume
+
+# Get detections
+curl http://localhost:8000/api/patrol/detections | jq
+
+# Clear detections
+curl -X DELETE http://localhost:8000/api/patrol/detections
+```
+
+### Current Limitations
+The patrol UI is fully functional for route/zone creation and management. The following backend features are not yet implemented:
+- Actual GPS-based waypoint navigation (requires GPS hardware)
+- AI object detection (requires camera and ML model integration)
+- Email alert delivery
+- Scheduled patrol automation
+
+---
+
 ## Limitations & Future Enhancements
 
 ### Current Limitations

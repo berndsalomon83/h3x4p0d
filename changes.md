@@ -2,6 +2,23 @@
 
 ## 2025-12-08
 
+### Patrol Control System
+
+- Added a new patrol control page (`/patrol`) for configuring autonomous patrol routes and search zones on an interactive map. (web_static/patrol.html, web_static/patrol.js)
+- Features include:
+  - Interactive Leaflet.js map with drawing tools for creating waypoint routes and polygon zones
+  - Detection targets configuration (snails, people, animals, vehicles, packages) for property protection and garden pest control
+  - Alert settings (sound, browser notification, email, photo capture) when targets are detected
+  - Patrol modes: loop, bounce, once, random traversal of routes
+  - Zone coverage patterns: lawnmower, spiral, perimeter, random
+  - Schedule configuration for automated daily patrols
+  - Real-time position tracking and detection logging
+  - Quick actions panel for manual navigation commands
+- Added patrol API endpoints for route/zone CRUD, patrol control (start/stop/pause/resume), detection management, and status queries. (src/hexapod/web.py)
+- Added WebSocket commands for real-time patrol control and position updates. (src/hexapod/web.py)
+- Added default patrol configuration to config.py including patrol_settings, patrol_detection_targets, patrol_alerts, patrol_schedule, and patrol_routes. (src/hexapod/config.py)
+- Added navigation link to patrol page from main UI. (web_static/index.html)
+
 ### Config Preview Visual Updates
 
 - Restored 0.5x scaling for config page hexapod to fit the preview panel while maintaining visual consistency with the main UI. (web_static/config.js)
