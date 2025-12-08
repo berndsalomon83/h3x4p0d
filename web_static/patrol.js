@@ -80,7 +80,8 @@ const STORAGE_KEYS = {
   routes: 'hexapod_patrol_routes',
   settings: 'hexapod_patrol_settings',
   homePosition: 'hexapod_home_position',
-  detections: 'hexapod_detections'
+  detections: 'hexapod_detections',
+  satelliteView: 'hexapod_patrol_satellite_view'
 };
 
 // ========== Initialization ==========
@@ -99,15 +100,20 @@ function loadFromStorage() {
     const settings = localStorage.getItem(STORAGE_KEYS.settings);
     const homePosition = localStorage.getItem(STORAGE_KEYS.homePosition);
     const detections = localStorage.getItem(STORAGE_KEYS.detections);
+    const satelliteView = localStorage.getItem(STORAGE_KEYS.satelliteView);
 
     if (routes) state.routes = JSON.parse(routes);
     if (settings) state.settings = { ...state.settings, ...JSON.parse(settings) };
-    if (homePosition) state.homePosition = JSON.parse(homePosition);
+    if (homePosition) {
+      state.homePosition = JSON.parse(homePosition);
+      console.log('[Patrol] Loaded home position from storage:', state.homePosition);
+    }
     if (detections) {
       const parsed = JSON.parse(detections);
       state.detections = parsed.detections || [];
       state.detectionCounts = parsed.counts || state.detectionCounts;
     }
+    if (satelliteView !== null) state.satelliteView = satelliteView === 'true';
   } catch (e) {
     console.error('Failed to load from storage:', e);
   }
@@ -147,47 +153,28 @@ function initMap() {
     attribution: '&copy; Esri'
   });
 
-  // Add default layer
-  streetLayer.addTo(state.map);
   state.streetLayer = streetLayer;
   state.satelliteLayer = satelliteLayer;
+
+  // Add layer based on saved preference
+  if (state.satelliteView) {
+    satelliteLayer.addTo(state.map);
+  } else {
+    streetLayer.addTo(state.map);
+  }
 
   // Initialize draw layer
   state.drawnItems = new L.FeatureGroup();
   state.map.addLayer(state.drawnItems);
 
-  // Initialize draw control
+  // Initialize draw control - only show edit/delete buttons
+  // (users create routes via "+ Route"/"+Zone" buttons which open the naming modal)
   const drawControl = new L.Control.Draw({
     position: 'topright',
-    draw: {
-      polyline: {
-        shapeOptions: {
-          color: '#4fc3f7',
-          weight: 4
-        }
-      },
-      polygon: {
-        allowIntersection: false,
-        showArea: true,
-        shapeOptions: {
-          color: '#4caf50',
-          fillColor: '#4caf50',
-          fillOpacity: 0.2
-        }
-      },
-      rectangle: {
-        shapeOptions: {
-          color: '#ff9800',
-          fillColor: '#ff9800',
-          fillOpacity: 0.2
-        }
-      },
-      circle: false,
-      marker: false,
-      circlemarker: false
-    },
+    draw: false,  // Disable draw buttons - use our custom buttons instead
     edit: {
       featureGroup: state.drawnItems,
+      edit: true,
       remove: true
     }
   });
@@ -259,6 +246,8 @@ function initMap() {
     state.currentDrawType = null;
     // Re-enable double-click zoom
     state.map.doubleClickZoom.enable();
+    // Hide cancel button
+    updateDrawingUI(false);
   });
 
   state.map.on(L.Draw.Event.CREATED, () => {
@@ -269,6 +258,8 @@ function initMap() {
     state.currentDrawHandler = null;
     // Re-enable double-click zoom
     state.map.doubleClickZoom.enable();
+    // Hide cancel button
+    updateDrawingUI(false);
   });
 
   // Draw events
@@ -284,7 +275,7 @@ function initMap() {
       updateRouteOnMap(state.editingRoute);
       saveRoutes();
     } else if (state.currentDrawType) {
-      // New route being created
+      // New route being created via our buttons
       const route = {
         id: 'route_' + Date.now(),
         name: document.getElementById('routeName').value || 'New Route',
@@ -303,6 +294,29 @@ function initMap() {
       saveRoutes();
       renderRoutesList();
       closeRouteModal();
+    } else {
+      // Fallback: shape created without context (shouldn't happen now that draw buttons are disabled)
+      // Create with default name and prompt user to rename
+      const isZone = e.layerType === 'polygon' || e.layerType === 'rectangle';
+      const defaultName = isZone ? 'Unnamed Zone' : 'Unnamed Route';
+      const route = {
+        id: 'route_' + Date.now(),
+        name: defaultName,
+        description: '',
+        color: '#4fc3f7',
+        priority: 'normal',
+        type: e.layerType,
+        coordinates: getLayerCoordinates(layer),
+        layer: layer,
+        createdAt: new Date().toISOString()
+      };
+
+      state.routes.push(route);
+      state.drawnItems.addLayer(layer);
+      updateRouteOnMap(route);
+      saveRoutes();
+      renderRoutesList();
+      addLog(`Created ${defaultName} - click edit to rename`);
     }
 
     state.currentDrawType = null;
@@ -340,7 +354,17 @@ function initMap() {
 
   // Create home marker if set
   if (state.homePosition) {
+    console.log('[Patrol] Creating home marker at:', state.homePosition);
     createHomeMarker(state.homePosition);
+  } else {
+    console.log('[Patrol] No home position to restore');
+  }
+
+  // Center map on content: prefer routes, fall back to home position
+  if (state.routes.length > 0 && state.routes[0].layer) {
+    state.map.fitBounds(state.routes[0].layer.getBounds(), { padding: [50, 50] });
+  } else if (state.homePosition) {
+    state.map.setView([state.homePosition.lat, state.homePosition.lng], 18);
   }
 }
 
@@ -365,6 +389,11 @@ function createHexapodMarker() {
 }
 
 function createHomeMarker(position) {
+  if (!position || typeof position.lat !== 'number' || typeof position.lng !== 'number') {
+    console.error('[Patrol] Invalid home position:', position);
+    return;
+  }
+
   if (state.homeMarker) {
     state.map.removeLayer(state.homeMarker);
   }
@@ -377,10 +406,12 @@ function createHomeMarker(position) {
   });
 
   state.homeMarker = L.marker([position.lat, position.lng], {
-    icon: homeIcon
+    icon: homeIcon,
+    zIndexOffset: 900
   }).addTo(state.map);
 
   state.homeMarker.bindPopup('<strong>Home Position</strong>');
+  console.log('[Patrol] Home marker created at:', position.lat, position.lng);
 }
 
 function getLayerCoordinates(layer) {
@@ -399,8 +430,9 @@ function loadRoutesOntoMap() {
     if (route.type === 'polygon' || route.type === 'rectangle') {
       layer = L.polygon(route.coordinates, {
         color: route.color,
+        fill: true,
         fillColor: route.color,
-        fillOpacity: 0.2,
+        fillOpacity: 0.3,
         weight: 3
       });
     } else {
@@ -435,9 +467,12 @@ function loadRoutesOntoMap() {
 
 function updateRouteOnMap(route) {
   if (route.layer) {
+    const isZone = route.type === 'polygon' || route.type === 'rectangle';
     route.layer.setStyle({
       color: route.color,
-      fillColor: route.color
+      fillColor: route.color,
+      fill: isZone,
+      fillOpacity: isZone ? 0.3 : 0
     });
 
     route.layer.bindPopup(`<strong>${route.name}</strong><br>${route.description || 'No description'}`);
@@ -562,6 +597,23 @@ function initEventListeners() {
       document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
     });
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Escape to cancel drawing
+    if (e.key === 'Escape') {
+      if (state.currentDrawHandler) {
+        cancelDrawing();
+        e.preventDefault();
+      }
+    }
+    // Ctrl+S to save routes
+    if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+      saveRoutes();
+      addLog('Routes saved');
+      e.preventDefault();
+    }
   });
 }
 
@@ -1022,9 +1074,35 @@ function createRoute() {
     return;
   }
 
+  // If editing an existing route, just update its properties
+  if (state.editingRoute) {
+    state.editingRoute.name = name;
+    state.editingRoute.description = document.getElementById('routeDescription').value || '';
+    state.editingRoute.color = getSelectedColor();
+    state.editingRoute.priority = document.getElementById('routePriority').value;
+
+    // Update the layer style on the map
+    if (state.editingRoute.layer) {
+      const isZone = state.editingRoute.type === 'polygon' || state.editingRoute.type === 'rectangle';
+      state.editingRoute.layer.setStyle({
+        color: state.editingRoute.color,
+        fillColor: state.editingRoute.color,
+        fill: isZone,
+        fillOpacity: isZone ? 0.3 : 0
+      });
+      updateRouteOnMap(state.editingRoute);
+    }
+
+    saveRoutes();
+    renderRoutesList();
+    closeRouteModal();
+    addLog(`Route "${name}" updated`);
+    return;
+  }
+
   closeRouteModal();
 
-  // Enable drawing mode on map
+  // Enable drawing mode on map for new routes
   const drawType = state.currentDrawType === 'zone' ? 'polygon' : 'polyline';
 
   // Disable double-click zoom while drawing (it interferes with finishing shapes)
@@ -1036,12 +1114,13 @@ function createRoute() {
       showArea: true,
       shapeOptions: {
         color: getSelectedColor(),
+        fill: true,
         fillColor: getSelectedColor(),
-        fillOpacity: 0.2
+        fillOpacity: 0.3
       }
     });
     state.currentDrawHandler.enable();
-    addLog(`Drawing zone: Click to add points. Click the red "1" marker or double-click last point to finish.`);
+    addLog(`Drawing zone: Click to add points. Click the red "1" marker or double-click last point to finish. Press Escape to cancel.`);
   } else {
     state.currentDrawHandler = new L.Draw.Polyline(state.map, {
       shapeOptions: {
@@ -1050,8 +1129,56 @@ function createRoute() {
       }
     });
     state.currentDrawHandler.enable();
-    addLog(`Drawing route: Click to add waypoints. Double-click last point to finish.`);
+    addLog(`Drawing route: Click to add waypoints. Double-click last point to finish. Press Escape to cancel.`);
   }
+
+  // Show cancel button
+  updateDrawingUI(true);
+}
+
+// Calculate route distance in meters using Haversine formula
+function calculateRouteDistance(coordinates) {
+  if (!coordinates || coordinates.length < 2) return 0;
+
+  let totalDistance = 0;
+  for (let i = 0; i < coordinates.length - 1; i++) {
+    const [lat1, lng1] = coordinates[i];
+    const [lat2, lng2] = coordinates[i + 1];
+    totalDistance += haversineDistance(lat1, lng1, lat2, lng2);
+  }
+  return totalDistance;
+}
+
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function formatDistance(meters) {
+  if (meters < 1000) {
+    return `${Math.round(meters)}m`;
+  }
+  return `${(meters / 1000).toFixed(2)}km`;
+}
+
+function estimatePatrolTime(distanceMeters, speedPercent) {
+  // Assume max speed is about 0.5 m/s for the hexapod
+  const maxSpeed = 0.5; // m/s
+  const actualSpeed = maxSpeed * (speedPercent / 100);
+  const timeSeconds = distanceMeters / actualSpeed;
+  const minutes = Math.round(timeSeconds / 60);
+  if (minutes < 60) {
+    return `~${minutes}min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `~${hours}h ${mins}min`;
 }
 
 function selectRoute(routeId) {
@@ -1130,13 +1257,21 @@ function renderRoutesList() {
     const typeIcon = route.type === 'polygon' || route.type === 'rectangle' ? '🔲' : '📍';
     const waypointCount = route.coordinates ? route.coordinates.length : 0;
 
+    // Calculate distance and time for routes (not zones)
+    let distanceInfo = '';
+    if (route.type === 'polyline' && route.coordinates && route.coordinates.length >= 2) {
+      const distance = calculateRouteDistance(route.coordinates);
+      const time = estimatePatrolTime(distance, state.settings.patrolSpeed);
+      distanceInfo = ` • ${formatDistance(distance)} • ${time}`;
+    }
+
     return `
       <div class="route-item ${isSelected ? 'selected' : ''} ${isActive ? 'active' : ''}"
            data-id="${route.id}" onclick="selectRoute('${route.id}')">
         <div class="route-color" style="background: ${route.color};"></div>
         <div class="route-info">
           <div class="route-name">${typeIcon} ${route.name}</div>
-          <div class="route-meta">${waypointCount} waypoints • ${route.priority || 'normal'} priority</div>
+          <div class="route-meta">${waypointCount} ${route.type === 'polyline' ? 'waypoints' : 'vertices'}${distanceInfo}</div>
         </div>
         <div class="route-actions">
           <button class="route-action-btn" onclick="event.stopPropagation(); editRoute('${route.id}')" title="Edit">
@@ -1264,11 +1399,68 @@ function centerOnHexapod() {
   state.map.setView([state.hexapodPosition.lat, state.hexapodPosition.lng], 18);
 }
 
+function centerOnMyLocation() {
+  if (!navigator.geolocation) {
+    addLog('Geolocation not supported by your browser');
+    return;
+  }
+
+  addLog('Getting your location...');
+  const btn = document.querySelector('[onclick="centerOnMyLocation()"]');
+  if (btn) btn.classList.add('loading');
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+      state.map.setView([latitude, longitude], 18);
+      addLog(`Centered on your location: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      if (btn) btn.classList.remove('loading');
+    },
+    (error) => {
+      let msg = 'Could not get your location';
+      if (error.code === 1) msg = 'Location permission denied';
+      else if (error.code === 2) msg = 'Location unavailable';
+      else if (error.code === 3) msg = 'Location request timed out';
+      addLog(msg);
+      if (btn) btn.classList.remove('loading');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function cancelDrawing() {
+  if (state.currentDrawHandler) {
+    state.currentDrawHandler.disable();
+    state.currentDrawHandler = null;
+  }
+  if (state.firstVertexMarker) {
+    state.map.removeLayer(state.firstVertexMarker);
+    state.firstVertexMarker = null;
+  }
+  state.currentDrawType = null;
+  state.map.doubleClickZoom.enable();
+  updateDrawingUI(false);
+  addLog('Drawing cancelled');
+}
+
+function updateDrawingUI(isDrawing) {
+  const cancelBtn = document.getElementById('cancelDrawingBtn');
+  if (cancelBtn) {
+    cancelBtn.style.display = isDrawing ? 'flex' : 'none';
+  }
+}
+
 function setHomePosition() {
-  state.homePosition = { ...state.hexapodPosition };
+  // Use center of current map view (more intuitive for setting home manually)
+  const center = state.map.getCenter();
+  state.homePosition = { lat: center.lat, lng: center.lng };
+  console.log('[Patrol] Setting home position:', state.homePosition);
   createHomeMarker(state.homePosition);
   saveToStorage();
-  addLog('Home position set to current location');
+  // Verify it was saved
+  const saved = localStorage.getItem(STORAGE_KEYS.homePosition);
+  console.log('[Patrol] Saved home position to localStorage:', saved);
+  addLog(`Home position set: ${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}`);
 }
 
 function toggleSatellite() {
@@ -1281,6 +1473,9 @@ function toggleSatellite() {
     state.map.removeLayer(state.satelliteLayer);
     state.streetLayer.addTo(state.map);
   }
+
+  // Persist preference
+  localStorage.setItem(STORAGE_KEYS.satelliteView, state.satelliteView);
 }
 
 function fitAllRoutes() {
@@ -1354,7 +1549,33 @@ function updateUI() {
 
 function addLog(message) {
   console.log(`[Patrol] ${message}`);
-  // Could also add to a visible log area
+
+  // Show toast notification
+  showToast(message);
+}
+
+function showToast(message, duration = 4000) {
+  // Create or get toast container
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.style.cssText = 'position: fixed; bottom: 80px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 350px;';
+    document.body.appendChild(container);
+  }
+
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.style.cssText = 'background: rgba(22, 33, 62, 0.95); color: #e0e0e0; padding: 12px 16px; border-radius: 8px; font-size: 0.9em; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border-left: 3px solid #4fc3f7; animation: slideIn 0.3s ease; display: flex; align-items: center; gap: 10px;';
+  toast.innerHTML = `<span style="flex: 1;">${message}</span><button onclick="this.parentElement.remove()" style="background: none; border: none; color: #888; cursor: pointer; font-size: 1.2em; padding: 0; line-height: 1;">&times;</button>`;
+
+  container.appendChild(toast);
+
+  // Auto-remove after duration
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }
 
 // ========== Utility Functions ==========

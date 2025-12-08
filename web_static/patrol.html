@@ -631,7 +631,7 @@
     }
 
     .map-controls {
-      top: 10px;
+      bottom: 100px;
       right: 10px;
       display: flex;
       flex-direction: column;
@@ -661,6 +661,48 @@
     .map-control-btn.active {
       background: #4fc3f7;
       color: #1a1a2e;
+    }
+
+    .map-control-btn.loading {
+      animation: pulse 1s infinite;
+      pointer-events: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
+    /* Cancel drawing button */
+    .cancel-drawing-btn {
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(244, 67, 54, 0.9) !important;
+      color: #fff;
+      padding: 10px 20px;
+      font-size: 0.9em;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .cancel-drawing-btn:hover {
+      background: rgba(244, 67, 54, 1) !important;
     }
 
     .hexapod-position {
@@ -741,6 +783,17 @@
       top: 0;
       left: 12px;
       filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.3));
+    }
+
+    /* Home marker */
+    .home-marker {
+      width: 24px;
+      height: 24px;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
     }
 
     /* Detection marker */
@@ -917,14 +970,97 @@
       background: #2a2a4a !important;
     }
 
-    .leaflet-draw-toolbar a {
-      background: #16213e !important;
-      color: #e0e0e0 !important;
-      border: 1px solid #2a2a4a !important;
+    /* Leaflet.Draw toolbar - dark theme with colorful icons */
+    .leaflet-draw-toolbar {
+      margin-top: 0 !important;
     }
 
-    .leaflet-draw-toolbar a:hover {
+    .leaflet-draw-toolbar a,
+    .leaflet-draw-actions a {
+      width: 40px !important;
+      height: 40px !important;
+      line-height: 40px !important;
+      background-color: #16213e !important;
+      border: 1px solid #2a2a4a !important;
+      border-radius: 6px !important;
+      margin-bottom: 4px !important;
+    }
+
+    .leaflet-draw-toolbar a:hover,
+    .leaflet-draw-actions a:hover {
+      background-color: #2a2a4a !important;
+    }
+
+    .leaflet-draw-toolbar a.leaflet-draw-toolbar-button-enabled {
+      background-color: rgba(79, 195, 247, 0.3) !important;
+      border-color: #4fc3f7 !important;
+    }
+
+    /* Hide default sprite icons and use emoji instead */
+    .leaflet-draw-edit-edit {
+      background-image: none !important;
+    }
+
+    .leaflet-draw-edit-edit::after {
+      content: '✏️';
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+
+    .leaflet-draw-edit-remove {
+      background-image: none !important;
+    }
+
+    .leaflet-draw-edit-remove::after {
+      content: '🗑️';
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Edit toolbar section */
+    .leaflet-draw-section {
+      margin-top: 5px;
+    }
+
+    .leaflet-draw-edit-edit,
+    .leaflet-draw-edit-remove {
+      display: block !important;
+    }
+
+    /* Actions toolbar (Save/Cancel buttons) */
+    .leaflet-draw-actions {
+      background: #16213e !important;
+      border: 1px solid #2a2a4a !important;
+      border-radius: 6px !important;
+      padding: 4px !important;
+    }
+
+    .leaflet-draw-actions li {
+      background: none !important;
+      border: none !important;
+    }
+
+    .leaflet-draw-actions a {
+      color: #e0e0e0 !important;
       background: #2a2a4a !important;
+      height: 28px !important;
+      line-height: 28px !important;
+      width: auto !important;
+      padding: 0 12px !important;
+      font-size: 12px !important;
+    }
+
+    .leaflet-draw-actions a:hover {
+      background: #3a3a5a !important;
+      color: #4fc3f7 !important;
     }
 
     /* Slider */
@@ -1462,10 +1598,13 @@
 
       <!-- Map Controls -->
       <div class="map-overlay map-controls">
+        <button class="map-control-btn" onclick="centerOnMyLocation()" title="Center on My Location">
+          📍
+        </button>
         <button class="map-control-btn" onclick="centerOnHexapod()" title="Center on Hexapod">
           🤖
         </button>
-        <button class="map-control-btn" onclick="setHomePosition()" title="Set Home Position">
+        <button class="map-control-btn" onclick="setHomePosition()" title="Set Home at Map Center">
           🏠
         </button>
         <button class="map-control-btn" onclick="toggleSatellite()" title="Toggle Satellite View">
@@ -1475,6 +1614,11 @@
           📐
         </button>
       </div>
+
+      <!-- Cancel Drawing Button (hidden by default) -->
+      <button class="map-overlay cancel-drawing-btn" id="cancelDrawingBtn" onclick="cancelDrawing()" style="display: none;">
+        ✕ Cancel Drawing (Esc)
+      </button>
 
       <!-- Hexapod Position -->
       <div class="map-overlay hexapod-position">

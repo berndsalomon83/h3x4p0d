@@ -97,6 +97,7 @@ if __name__ == "__main__":
     print("=" * 50)
     print(f"Main UI:     http://localhost:{args.port}")
     print(f"Config:      http://localhost:{args.port}/config")
+    print(f"Patrol:      http://localhost:{args.port}/patrol")
     if args.controller:
         print("✓ Gamepad/controller input enabled")
     if args.hardware:

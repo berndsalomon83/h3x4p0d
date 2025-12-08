@@ -18,6 +18,16 @@
 - Added WebSocket commands for real-time patrol control and position updates. (src/hexapod/web.py)
 - Added default patrol configuration to config.py including patrol_settings, patrol_detection_targets, patrol_alerts, patrol_schedule, and patrol_routes. (src/hexapod/config.py)
 - Added navigation link to patrol page from main UI. (web_static/index.html)
+- Added patrol URL to server startup message display. (src/hexapod/main.py)
+
+### Patrol UI Improvements
+
+- Added geolocation button (📍) to center the map on the user's actual GPS location. (web_static/patrol.js, web_static/patrol.html)
+- Added "Cancel Drawing" button that appears when drawing routes/zones, with Escape key shortcut. (web_static/patrol.js, web_static/patrol.html)
+- Added route distance and estimated patrol time display in route list (e.g., "5 waypoints • 120m • ~4min"). (web_static/patrol.js)
+- Added keyboard shortcuts: Escape to cancel drawing, Ctrl+S to save routes. (web_static/patrol.js)
+- Added toast notification system to display log messages on-screen. (web_static/patrol.js, web_static/patrol.html)
+- Added loading animation state for geolocation button. (web_static/patrol.html)
 
 ### Config Preview Visual Updates
 
