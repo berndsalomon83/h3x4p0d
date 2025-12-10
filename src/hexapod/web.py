@@ -68,14 +68,22 @@ class ConnectionManager:
     """Manages WebSocket connections for broadcasting telemetry."""
     def __init__(self):
         self.active: List[WebSocket] = []
+        self._connection_id = 0
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
+        self._connection_id += 1
+        websocket.state.connection_id = self._connection_id
+        client = websocket.client
+        client_info = f"{client.host}:{client.port}" if client else "unknown"
         self.active.append(websocket)
+        logger.info(f"WebSocket #{self._connection_id} connected from {client_info} (total: {len(self.active)})")
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active:
             self.active.remove(websocket)
+            conn_id = getattr(websocket.state, 'connection_id', '?')
+            logger.info(f"WebSocket #{conn_id} disconnected (remaining: {len(self.active)})")
 
     async def broadcast(self, message: dict):
         for ws in list(self.active):
@@ -1750,6 +1758,12 @@ def create_app(servo: Optional[ServoController] = None, use_controller: bool = F
                         "lng": -122.4194
                     })
         except WebSocketDisconnect:
+            conn_id = getattr(websocket.state, 'connection_id', '?')
+            logger.info(f"WebSocket #{conn_id} client disconnected normally")
+            manager.disconnect(websocket)
+        except Exception as e:
+            conn_id = getattr(websocket.state, 'connection_id', '?')
+            logger.warning(f"WebSocket #{conn_id} error: {e}")
             manager.disconnect(websocket)
 
     return app

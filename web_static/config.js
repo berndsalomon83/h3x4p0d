@@ -1,15 +1,18 @@
 // Hexapod Configuration - JavaScript
 
+// ========== Constants ==========
+const DEFAULT_PROFILE_NAME = 'default';
+
 // ========== State Management ==========
 const state = {
   connected: false,
-  currentProfile: 'default',
-  defaultProfile: 'default',  // Which profile loads on startup
+  currentProfile: DEFAULT_PROFILE_NAME,
+  defaultProfile: DEFAULT_PROFILE_NAME,  // Which profile loads on startup
   profiles: [],  // Will be populated with profile objects
   profilesData: {
     // Profile metadata - will be loaded from backend
-    'default': {
-      name: 'default',
+    [DEFAULT_PROFILE_NAME]: {
+      name: DEFAULT_PROFILE_NAME,
       description: 'Default configuration for general use',
       lastModified: new Date().toISOString(),
       isDefault: true
@@ -35,7 +38,6 @@ const state = {
   recordedPoses: [],
   poses: {},  // Saved poses from backend (pose_id -> pose data)
   isRecording: false,
-  gaitPhase: 0,
   testActionActive: false  // When true, disables idle animation
 };
 
@@ -168,14 +170,20 @@ async function loadConfig() {
     const response = await fetch('/api/config');
     if (response.ok) {
       const serverConfig = await response.json();
-      // Merge: server defaults first, then localStorage overrides, then server values
+      console.log('[loadConfig] serverConfig camera_views:', serverConfig.camera_views);
+      console.log('[loadConfig] savedConfig camera_views:', savedConfig?.camera_views);
+      // Merge: server defaults first, then localStorage overrides
       // This ensures new backend keys are added while preserving user changes
-      state.config = { ...serverConfig, ...savedConfig, ...serverConfig };
-      // But prefer localStorage for user-edited values (camera_views, hardware_cameras, etc)
-      if (savedConfig) {
-        if (savedConfig.camera_views) state.config.camera_views = savedConfig.camera_views;
-        if (savedConfig.hardware_cameras) state.config.hardware_cameras = savedConfig.hardware_cameras;
+      // Special handling for camera_views: prefer server if localStorage has none/empty
+      const mergedConfig = savedConfig
+        ? { ...serverConfig, ...savedConfig }
+        : serverConfig;
+      // Ensure camera_views from server is used if localStorage doesn't have valid camera data
+      if (serverConfig.camera_views && (!savedConfig?.camera_views || savedConfig.camera_views.length === 0)) {
+        mergedConfig.camera_views = serverConfig.camera_views;
       }
+      state.config = mergedConfig;
+      console.log('[loadConfig] merged config camera_views:', state.config.camera_views);
       applyConfigToUI();
       updatePreview();
       updateSummaryCards();
@@ -263,7 +271,7 @@ async function loadProfiles() {
               name: name,
               description: typeof p === 'object' ? p.description : '',
               lastModified: typeof p === 'object' ? p.lastModified : new Date().toISOString(),
-              isDefault: name === 'default'
+              isDefault: name === DEFAULT_PROFILE_NAME
             };
           }
         });
@@ -273,9 +281,9 @@ async function loadProfiles() {
   } catch (e) {
     console.log('Using default profiles');
     // Set up default profiles for demo
-    state.profiles = ['default', 'outdoor_rough', 'indoor_demo'];
+    state.profiles = [DEFAULT_PROFILE_NAME, 'outdoor_rough', 'indoor_demo'];
     state.profilesData = {
-      'default': { name: 'default', description: 'Default configuration', lastModified: new Date().toISOString(), isDefault: true },
+      [DEFAULT_PROFILE_NAME]: { name: DEFAULT_PROFILE_NAME, description: 'Default configuration', lastModified: new Date().toISOString(), isDefault: true },
       'outdoor_rough': { name: 'outdoor_rough', description: 'Optimized for rough outdoor terrain', lastModified: new Date(Date.now() - 86400000).toISOString(), isDefault: false },
       'indoor_demo': { name: 'indoor_demo', description: 'Slow and smooth for indoor demonstrations', lastModified: new Date(Date.now() - 172800000).toISOString(), isDefault: false }
     };
@@ -512,13 +520,13 @@ document.getElementById('btnDuplicateProfile')?.addEventListener('click', async 
 });
 
 document.getElementById('btnDeleteProfile')?.addEventListener('click', async () => {
-  if (state.currentProfile !== 'default' && confirm(`Delete profile "${state.currentProfile}"?`)) {
+  if (state.currentProfile !== DEFAULT_PROFILE_NAME && confirm(`Delete profile "${state.currentProfile}"?`)) {
     state.profiles = state.profiles.filter(p => p !== state.currentProfile);
-    state.currentProfile = 'default';
+    state.currentProfile = DEFAULT_PROFILE_NAME;
     updateProfileSelector();
     await loadConfig();
     logEvent('WARN', `Profile deleted`);
-  } else if (state.currentProfile === 'default') {
+  } else if (state.currentProfile === DEFAULT_PROFILE_NAME) {
     logEvent('WARN', 'Cannot delete the default profile');
   }
 });
@@ -529,7 +537,7 @@ document.getElementById('btnExportJson')?.addEventListener('click', () => {
   // Create a complete export package with all profile data
   const exportData = {
     // Profile identification
-    profile_id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    profile_id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
     profile_name: state.currentProfile,
     profile_description: profileData.description || '',
 
@@ -868,12 +876,9 @@ function applyConfigToUI() {
 
   // Body pose
   setSliderValue('body_height', c.body_height || state.telemetry.bodyHeight || 90);
-  setSliderValue('bodyRoll', c.body_roll || 0);
-  setSliderValue('bodyPitch', c.body_pitch || 0);
-  setSliderValue('bodyYaw', c.body_yaw || 0);
-  setSliderValue('bodyTransX', c.body_trans_x || 0);
-  setSliderValue('bodyTransY', c.body_trans_y || 0);
-  setSliderValue('bodyTransZ', c.body_trans_z || 0);
+  setSliderValue('body_roll', c.body_roll || 0);
+  setSliderValue('body_pitch', c.body_pitch || 0);
+  setSliderValue('body_yaw', c.body_yaw || 0);
 
   // Apply all config-bound elements (sliders, selects, toggles, inputs)
   applyConfigBoundElements(c);
@@ -924,6 +929,11 @@ function applyConfigBoundElements(c) {
     if (radio) {
       radio.checked = true;
     }
+  }
+
+  // Reload cameras from config (unified camera system)
+  if (typeof loadCameras === 'function') {
+    loadCameras();
   }
 }
 
@@ -1109,7 +1119,7 @@ function showInputFeedback(input, type, message) {
     input.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.2)';
 
     // Add error message tooltip
-    if (message) {
+    if (message && input.parentElement) {
       const tooltip = document.createElement('div');
       tooltip.className = 'input-error-tooltip';
       tooltip.textContent = message;
@@ -1193,7 +1203,8 @@ document.getElementById('sys-regenerate-token')?.addEventListener('click', async
   if (tokenInput) {
     tokenInput.value = token;
     tokenInput.type = 'text';
-    document.getElementById('sys-show-token').textContent = 'Hide';
+    const showBtn = document.getElementById('sys-show-token');
+    if (showBtn) showBtn.textContent = 'Hide';
     await saveConfig({ system_api_token: token });
   }
 });
@@ -1205,7 +1216,7 @@ document.getElementById('sys-export-config')?.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `hexapod-config-${state.currentProfile || 'default'}.json`;
+  a.download = `hexapod-config-${state.currentProfile || DEFAULT_PROFILE_NAME}.json`;
   a.click();
   URL.revokeObjectURL(url);
 });
@@ -1276,12 +1287,23 @@ loadSystemInfo();
 setInterval(loadSystemInfo, 30000);
 
 // ========== Gait Test Button ==========
+let gaitTestInProgress = false;
+
 async function testGait(gaitMode, duration = 3) {
+  // Prevent overlapping gait tests
+  if (gaitTestInProgress) {
+    logEvent('WARN', 'Gait test already in progress');
+    return false;
+  }
+
+  gaitTestInProgress = true;
+
   // Start walking with the specified gait for a short duration
   try {
     // Check if WebSocket is connected
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       logEvent('WARN', 'Gait test requires backend connection - connect to robot or simulator first');
+      gaitTestInProgress = false;
       return false;
     }
 
@@ -1311,11 +1333,13 @@ async function testGait(gaitMode, duration = 3) {
       sendCommand('walk', { walking: false });
       sendCommand('move', { speed: 0, heading: 0, turn: 0, walking: false });
 
+      gaitTestInProgress = false;
       logEvent('INFO', `Gait test complete`);
     }, duration * 1000);
 
     return true;
   } catch (err) {
+    gaitTestInProgress = false;
     console.error('Error testing gait:', err);
     logEvent('ERROR', `Gait test failed: ${err.message}`);
     return false;
@@ -1515,7 +1539,7 @@ if (servoMappingTable) {
   });
 
   // Highlight All button
-  document.querySelector('#tab-servo-mapping .btn-warning')?.addEventListener('click', () => {
+  document.getElementById('btnHighlightAll')?.addEventListener('click', () => {
     highlightAllServos();
   });
 
@@ -1629,6 +1653,18 @@ async function testServo(leg, joint, channel) {
 }
 
 async function saveServoMapping(leg, joint, channel, direction, offset) {
+  // Validate channel range (PCA9685 supports 0-15 per board, max 2 boards = 0-31)
+  if (isNaN(channel) || channel < 0 || channel > 31) {
+    logEvent('ERROR', `Invalid servo channel ${channel}. Must be between 0 and 31.`);
+    return;
+  }
+
+  // Validate offset range (typical servo pulse width range)
+  if (isNaN(offset) || offset < 500 || offset > 2500) {
+    logEvent('ERROR', `Invalid servo offset ${offset}. Must be between 500 and 2500.`);
+    return;
+  }
+
   const key = `${leg},${joint}`;
   servoCalibration.mapping[key] = channel;
   servoCalibration.directions[key] = direction;
@@ -1981,7 +2017,7 @@ function resetLegLimitsToDefaults() {
 }
 
 // Apply to All button in Servo Limits card header
-document.querySelector('#tab-servo-limits .card-header .btn-secondary')?.addEventListener('click', () => {
+document.getElementById('btnApplyLimitsToAll')?.addEventListener('click', () => {
   if (state.selectedLeg === null) {
     logEvent('WARN', 'Select a leg first to copy its limits');
     return;
@@ -2042,7 +2078,6 @@ function renderWizardStep() {
 
   const step = wizardSteps[wizardState.step];
   const isLegStep = wizardState.step >= 2 && wizardState.step <= 7;
-  const legIndex = wizardState.step - 2;
 
   let html = `
     <div style="text-align: center; padding: 20px;">
@@ -2349,7 +2384,7 @@ function rebuildHexapodPreview() {
     leg_coxa_length: getGeometryValue('leg_coxa_length') * GEOMETRY_SCALE,
     leg_femur_length: getGeometryValue('leg_femur_length') * GEOMETRY_SCALE,
     leg_tibia_length: getGeometryValue('leg_tibia_length') * GEOMETRY_SCALE,
-    leg_attach_points: defaultGeometry.leg_attach_points.map((pt, idx) => {
+    leg_attach_points: defaultGeometry.leg_attach_points.map((_, idx) => {
       const attach = getLegAttachPoint(idx);
       return {
         x: attach.x * GEOMETRY_SCALE,
@@ -2361,9 +2396,6 @@ function rebuildHexapodPreview() {
   };
 
   const scaledBodyHeight = (state.telemetry.bodyHeight || 90) * GEOMETRY_SCALE;  // Match app.js default
-
-  console.log('rebuildHexapodPreview: geometry.leg_attach_points =', JSON.stringify(geometry.leg_attach_points));
-  console.log('rebuildHexapodPreview: scaledBodyHeight =', scaledBodyHeight);
 
   hexapodModel = Hexapod3D.buildHexapod({
     THREE,
@@ -2383,12 +2415,6 @@ function rebuildHexapodPreview() {
   body = hexapodModel.body;
   legs = hexapodModel.legs;
   groundContactIndicators = hexapodModel.contactIndicators;
-
-  // Debug: log leg positions and joint angles after buildHexapod
-  console.log('rebuildHexapodPreview: leg positions after buildHexapod:');
-  legs.forEach((leg, i) => {
-    console.log(`  Leg ${i}: pos=(${leg.group.position.x.toFixed(2)}, ${leg.group.position.y.toFixed(2)}, ${leg.group.position.z.toFixed(2)}), groupRot.y=${(leg.group.rotation.y * 180 / Math.PI).toFixed(1)}°, femur.x=${(leg.femurJoint.rotation.x * 180 / Math.PI).toFixed(1)}°, tibia.x=${(leg.tibiaJoint.rotation.x * 180 / Math.PI).toFixed(1)}°`);
-  });
 }
 
 // Rebuild body mesh with current geometry
@@ -2406,15 +2432,16 @@ function updateLegPositions() {
 }
 
 const previewCanvas = document.getElementById('previewCanvas');
-console.log('3D Preview: previewCanvas found:', !!previewCanvas, 'THREE loaded:', typeof THREE !== 'undefined');
 
 if (previewCanvas && typeof THREE !== 'undefined') {
-  console.log('3D Preview: Initializing...');
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
   scene.fog = new THREE.Fog(0x1a1a2e, 300, 900);
 
-  camera = new THREE.PerspectiveCamera(45, previewCanvas.clientWidth / previewCanvas.clientHeight, 0.1, 1000);
+  const initialAspect = previewCanvas.clientHeight > 0
+    ? previewCanvas.clientWidth / previewCanvas.clientHeight
+    : 16 / 9;
+  camera = new THREE.PerspectiveCamera(45, initialAspect, 0.1, 1000);
   // Use updateCameraPosition to set initial position matching ISO preset
   updateCameraPosition();
 
@@ -2506,7 +2533,6 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     };
   }
 
-  let animateLogOnce = true;
   function animate() {
     requestAnimationFrame(animate);
     animationTime += 0.016; // ~60fps
@@ -2536,12 +2562,6 @@ if (previewCanvas && typeof THREE !== 'undefined') {
     const scaledBodyHeight = bodyHeight * GEOMETRY_SCALE;
     const geom = getScaledGeometry();
     const poseAngles = Hexapod3D.computeGroundingAngles(scaledBodyHeight, geom, GROUND_Y);
-
-    if (animateLogOnce) {
-      console.log('animate: scaledBodyHeight=', scaledBodyHeight, 'geom=', geom);
-      console.log('animate: poseAngles.femur=', (poseAngles.femur * 180 / Math.PI).toFixed(1) + '°', 'poseAngles.tibia=', (poseAngles.tibia * 180 / Math.PI).toFixed(1) + '°');
-      animateLogOnce = false;
-    }
 
     // Add idle breathing animation (in radians)
     let femurAngle = poseAngles.femur;
@@ -2575,9 +2595,11 @@ if (previewCanvas && typeof THREE !== 'undefined') {
   // Resize handler
   window.addEventListener('resize', () => {
     const container = previewCanvas.parentElement;
-    camera.aspect = container.clientWidth / container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    if (container.clientHeight > 0) {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
   });
 }
 
@@ -2780,21 +2802,18 @@ function startWalkSimulation() {
 }
 
 document.getElementById('testStand')?.addEventListener('click', () => {
-  console.log('Stand button clicked');
   state.testActionActive = true;
   applyPosePreset('stand');
   logEvent('INFO', 'Stand pose applied');
 });
 
 document.getElementById('testCrouch')?.addEventListener('click', () => {
-  console.log('Crouch button clicked');
   state.testActionActive = true;
   applyPosePreset('crouch');
   logEvent('INFO', 'Crouch pose applied');
 });
 
 document.getElementById('testWalk')?.addEventListener('click', () => {
-  console.log('Walk button clicked');
   state.testActionActive = true;
 
   if (state.connected) {
@@ -2806,11 +2825,9 @@ document.getElementById('testWalk')?.addEventListener('click', () => {
     startWalkSimulation();
     logEvent('INFO', 'Walk test started (offline simulation)');
   }
-  console.log('Walk started, connected:', state.connected);
 });
 
 document.getElementById('testReset')?.addEventListener('click', () => {
-  console.log('Reset button clicked');
   state.testActionActive = false;  // Re-enable idle animation
 
   // Stop walking (both local and backend)
@@ -2821,7 +2838,6 @@ document.getElementById('testReset')?.addEventListener('click', () => {
 
   applyPosePreset('neutral');
   logEvent('INFO', 'Reset to neutral pose');
-  console.log('Reset applied, bodyHeight:', state.telemetry.bodyHeight);
 });
 
 // Helper function to animate all legs to target angles
@@ -2856,12 +2872,13 @@ function animateLegsTo(targetAngles, duration = 500) {
 }
 
 // ========== E-Stop ==========
-document.getElementById('estopBtn')?.addEventListener('click', () => {
+const estopBtn = document.getElementById('estopBtn');
+estopBtn?.addEventListener('click', () => {
   sendCommand('estop', {});
-  document.getElementById('estopBtn').classList.add('active');
+  estopBtn.classList.add('active');
   logEvent('WARN', 'EMERGENCY STOP ACTIVATED');
   setTimeout(() => {
-    document.getElementById('estopBtn').classList.remove('active');
+    estopBtn.classList.remove('active');
   }, 1000);
 });
 
@@ -3694,8 +3711,8 @@ function initTargetSelector() {
     logEvent('INFO', `Target changed to: ${target}`);
 
     // Notify server of target change if connected
-    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-      state.ws.send(JSON.stringify({
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
         type: 'set_target_mode',
         mode: target
       }));
@@ -3797,12 +3814,22 @@ function updateSummaryCards() {
 
 // Summary card click navigation
 document.querySelectorAll('.summary-card[data-nav]').forEach(card => {
-  card.addEventListener('click', () => {
+  const navigateToSection = () => {
     const targetSection = card.dataset.nav;
     const navItem = document.querySelector(`.nav-item[data-section="${targetSection}"]`);
     if (navItem) {
       navItem.click();
       logEvent('INFO', `Navigated to ${targetSection}`);
+    }
+  };
+
+  card.addEventListener('click', navigateToSection);
+
+  // Keyboard accessibility for role="button" elements
+  card.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      navigateToSection();
     }
   });
 });
@@ -3984,12 +4011,34 @@ document.getElementById('btnImportProfile')?.addEventListener('click', () => {
       const text = await file.text();
       const imported = JSON.parse(text);
 
+      // Validate imported data is an object
+      if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
+        throw new Error('Invalid profile format: expected an object');
+      }
+
       // Handle new export format (with config wrapper) or legacy format
       const configData = imported.config || imported;
+
+      // Validate configData is a non-empty object
+      if (!configData || typeof configData !== 'object' || Array.isArray(configData)) {
+        throw new Error('Invalid config data: expected an object');
+      }
+
+      if (Object.keys(configData).length === 0) {
+        throw new Error('Config data is empty');
+      }
+
       const profileDescription = imported.profile_description || imported.description || `Imported from ${file.name}`;
 
-      // Determine profile name from export data or filename
-      let profileName = imported.profile_name || file.name.replace('.json', '').replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+      // Determine profile name from export data or filename, with sanitization
+      let profileName = (imported.profile_name || file.name.replace('.json', ''))
+        .replace(/[^a-z0-9_]/gi, '_')
+        .toLowerCase()
+        .substring(0, 64);  // Limit length
+
+      if (!profileName) {
+        profileName = 'imported_profile';
+      }
 
       // Check if exists
       const exists = state.profiles.some(p => {
@@ -4086,14 +4135,11 @@ function initGeometrySection() {
   }
 
   // Reset to defaults button
-  const resetBtn = document.querySelector('#tab-geo-body .btn-secondary');
-  if (resetBtn && resetBtn.textContent.includes('Reset')) {
-    resetBtn.addEventListener('click', () => {
-      if (confirm('Reset body geometry to defaults?')) {
-        resetGeometryToDefaults();
-      }
-    });
-  }
+  document.getElementById('btnResetBodyGeometry')?.addEventListener('click', () => {
+    if (confirm('Reset body geometry to defaults?')) {
+      resetGeometryToDefaults();
+    }
+  });
 
   // Body origin selector
   const bodyOriginSelect = document.getElementById('bodyOrigin');
@@ -4277,12 +4323,6 @@ function applySymmetryForLeg(legIndex, field, value) {
 }
 
 function setupAxisSelects() {
-  const axisConfig = [
-    { selectId: 'coxaAxisSelect', configKey: 'coxa_axis' },
-    { selectId: 'femurAxisSelect', configKey: 'femur_axis' },
-    { selectId: 'tibiaAxisSelect', configKey: 'tibia_axis' }
-  ];
-
   // Find selects in the Axis Orientation card
   const card = document.querySelector('#tab-geo-legs .card:last-child');
   if (!card) return;
@@ -4329,7 +4369,7 @@ function setupFramesTable() {
         btn.textContent = 'Edit';
       } else {
         // Enter edit mode
-        enableFrameEdit(row, frameName);
+        enableFrameEdit(row);
         row.classList.add('editing');
         btn.textContent = 'Save';
       }
@@ -4337,8 +4377,8 @@ function setupFramesTable() {
   });
 
   // Add new frame button functionality
-  const addFrameBtn = document.querySelector('#tab-geo-frames .btn-primary');
-  if (addFrameBtn) {
+  const addFrameBtn = document.querySelector('#tab-geo-frames button.btn-secondary');
+  if (addFrameBtn && addFrameBtn.textContent.includes('Add Frame')) {
     addFrameBtn.addEventListener('click', () => {
       const name = prompt('Enter name for new frame:');
       if (name && name.trim()) {
@@ -4348,7 +4388,7 @@ function setupFramesTable() {
   }
 }
 
-function enableFrameEdit(row, frameName) {
+function enableFrameEdit(row) {
   const cells = row.querySelectorAll('td');
 
   // Position cell (index 2)
@@ -4561,368 +4601,6 @@ const fpsOptions = [10, 15, 24, 30, 60];
 const imuDevices = ['MPU6050 (I2C)', 'BNO055 (I2C)', 'ICM20948 (SPI)', 'LSM6DS3 (I2C)'];
 const imuFilters = ['Complementary Filter', 'Extended Kalman Filter', 'Madgwick Filter', 'Mahony Filter'];
 const sensorTypes = ['Current Spike', 'Force Sensor', 'Switch', 'Capacitive'];
-
-// Initialize cameras section
-function initCamerasSection() {
-  renderCameraTable();
-  updateCameraTransformEditor();
-  setupCameraEventListeners();
-}
-
-function renderCameraTable() {
-  const tbody = document.querySelector('#tab-sensor-cameras .data-table tbody');
-  if (!tbody) return;
-
-  tbody.innerHTML = sensorState.cameras.map(cam => `
-    <tr data-camera-id="${cam.id}" class="${cam.id === sensorState.selectedCamera ? 'selected' : ''}">
-      <td><strong>${cam.id}</strong></td>
-      <td>${cam.interface}</td>
-      <td><span class="tag ${cameraRoles[cam.role]?.tagClass || 'tag-secondary'}">${cameraRoles[cam.role]?.label || cam.role}</span></td>
-      <td>${cam.resolution}</td>
-      <td>${cam.fps}</td>
-      <td><code style="font-size: 11px;">${cam.stream}</code></td>
-      <td>
-        <button class="btn btn-secondary btn-sm camera-edit-btn" data-camera="${cam.id}">Edit</button>
-        <button class="btn btn-secondary btn-sm camera-preview-btn" data-camera="${cam.id}">Preview</button>
-        <button class="btn btn-danger btn-sm camera-delete-btn" data-camera="${cam.id}" ${sensorState.cameras.length <= 1 ? 'disabled' : ''}>✕</button>
-      </td>
-    </tr>
-  `).join('');
-
-  // Add click handlers for row selection
-  tbody.querySelectorAll('tr').forEach(row => {
-    row.addEventListener('click', (e) => {
-      if (e.target.tagName === 'BUTTON') return;
-      sensorState.selectedCamera = row.dataset.cameraId;
-      renderCameraTable();
-      updateCameraTransformEditor();
-    });
-  });
-
-  // Add button handlers
-  tbody.querySelectorAll('.camera-edit-btn').forEach(btn => {
-    btn.addEventListener('click', () => showCameraEditModal(btn.dataset.camera));
-  });
-
-  tbody.querySelectorAll('.camera-preview-btn').forEach(btn => {
-    btn.addEventListener('click', () => showCameraPreview(btn.dataset.camera));
-  });
-
-  tbody.querySelectorAll('.camera-delete-btn').forEach(btn => {
-    btn.addEventListener('click', () => deleteCamera(btn.dataset.camera));
-  });
-}
-
-function updateCameraTransformEditor() {
-  const cam = sensorState.cameras.find(c => c.id === sensorState.selectedCamera);
-  if (!cam) return;
-
-  // Update title
-  const title = document.querySelector('#tab-sensor-cameras .card:last-child .card-title');
-  if (title) title.textContent = `Camera Transform: ${cam.id}`;
-
-  // Update position/orientation inputs
-  const transformEditor = document.querySelector('#tab-sensor-cameras .transform-editor');
-  if (!transformEditor) return;
-
-  const inputs = transformEditor.querySelectorAll('.transform-axis-input');
-  if (inputs.length >= 6) {
-    inputs[0].value = cam.position.x;
-    inputs[1].value = cam.position.y;
-    inputs[2].value = cam.position.z;
-    inputs[3].value = cam.orientation.roll;
-    inputs[4].value = cam.orientation.pitch;
-    inputs[5].value = cam.orientation.yaw;
-  }
-}
-
-function setupCameraEventListeners() {
-  // Add Camera button
-  const addCameraBtn = document.querySelector('#tab-sensor-cameras .card-header .btn-primary');
-  if (addCameraBtn) {
-    addCameraBtn.addEventListener('click', () => showCameraEditModal(null));
-  }
-
-  // Transform editor inputs
-  const transformEditor = document.querySelector('#tab-sensor-cameras .transform-editor');
-  if (transformEditor) {
-    const inputs = transformEditor.querySelectorAll('.transform-axis-input');
-    const fields = ['x', 'y', 'z', 'roll', 'pitch', 'yaw'];
-
-    inputs.forEach((input, i) => {
-      input.addEventListener('change', () => {
-        const cam = sensorState.cameras.find(c => c.id === sensorState.selectedCamera);
-        if (!cam) return;
-
-        const value = parseFloat(input.value) || 0;
-        if (i < 3) {
-          cam.position[fields[i]] = value;
-        } else {
-          cam.orientation[fields[i]] = value;
-        }
-
-        saveSensorConfig();
-        update3DCameraPositions();
-        logEvent('INFO', `Updated ${cam.id} ${fields[i]} to ${value}`);
-      });
-    });
-  }
-}
-
-function showCameraEditModal(cameraId) {
-  const isNew = !cameraId;
-  const cam = isNew ? {
-    id: `camera_${Date.now()}`,
-    interface: '/dev/video' + sensorState.cameras.length,
-    role: 'aux',
-    resolution: '640x480',
-    fps: 30,
-    stream: '/api/stream/new',
-    position: { x: 0, y: 0, z: 50 },
-    orientation: { roll: 0, pitch: 0, yaw: 0 }
-  } : sensorState.cameras.find(c => c.id === cameraId);
-
-  if (!cam) return;
-
-  // Create modal
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal-content" style="max-width: 500px;">
-      <div class="modal-header">
-        <h3>${isNew ? 'Add Camera' : 'Edit Camera'}</h3>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">Camera Name</label>
-          <input type="text" class="form-input" id="modal-cam-id" value="${cam.id}" ${isNew ? '' : 'readonly'}>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Interface</label>
-            <input type="text" class="form-input" id="modal-cam-interface" value="${cam.interface}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Role</label>
-            <select class="form-select" id="modal-cam-role">
-              ${Object.entries(cameraRoles).map(([key, val]) =>
-                `<option value="${key}" ${cam.role === key ? 'selected' : ''}>${val.label}</option>`
-              ).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Resolution</label>
-            <select class="form-select" id="modal-cam-resolution">
-              ${resolutionOptions.map(r =>
-                `<option value="${r}" ${cam.resolution === r ? 'selected' : ''}>${r}</option>`
-              ).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">FPS</label>
-            <select class="form-select" id="modal-cam-fps">
-              ${fpsOptions.map(f =>
-                `<option value="${f}" ${cam.fps === f ? 'selected' : ''}>${f}</option>`
-              ).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Stream Endpoint</label>
-          <input type="text" class="form-input" id="modal-cam-stream" value="${cam.stream}">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary modal-cancel">Cancel</button>
-        <button class="btn btn-primary modal-save">${isNew ? 'Add Camera' : 'Save Changes'}</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  // Event handlers
-  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
-  modal.querySelector('.modal-cancel').addEventListener('click', () => modal.remove());
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-
-  modal.querySelector('.modal-save').addEventListener('click', () => {
-    const updatedCam = {
-      id: document.getElementById('modal-cam-id').value.trim(),
-      interface: document.getElementById('modal-cam-interface').value.trim(),
-      role: document.getElementById('modal-cam-role').value,
-      resolution: document.getElementById('modal-cam-resolution').value,
-      fps: parseInt(document.getElementById('modal-cam-fps').value),
-      stream: document.getElementById('modal-cam-stream').value.trim(),
-      position: cam.position,
-      orientation: cam.orientation
-    };
-
-    if (!updatedCam.id) {
-      logEvent('ERROR', 'Camera name is required');
-      return;
-    }
-
-    if (isNew) {
-      sensorState.cameras.push(updatedCam);
-      sensorState.selectedCamera = updatedCam.id;
-      logEvent('INFO', `Added camera: ${updatedCam.id}`);
-    } else {
-      const index = sensorState.cameras.findIndex(c => c.id === cameraId);
-      if (index >= 0) {
-        sensorState.cameras[index] = updatedCam;
-        logEvent('INFO', `Updated camera: ${updatedCam.id}`);
-      }
-    }
-
-    saveSensorConfig();
-    renderCameraTable();
-    updateCameraTransformEditor();
-    update3DCameraPositions();
-    modal.remove();
-  });
-}
-
-function showCameraPreview(cameraId) {
-  const cam = sensorState.cameras.find(c => c.id === cameraId);
-  if (!cam) return;
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal-content" style="max-width: 800px;">
-      <div class="modal-header">
-        <h3>Camera Preview: ${cam.id}</h3>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body" style="text-align: center;">
-        <div style="background: #1a1a2e; border-radius: 8px; padding: 40px; margin-bottom: 16px;">
-          <div style="color: var(--text-muted); font-size: 14px; margin-bottom: 8px;">
-            ${cam.resolution} @ ${cam.fps}fps
-          </div>
-          <div style="width: 100%; aspect-ratio: 16/9; background: linear-gradient(45deg, #0a0a15 25%, transparent 25%), linear-gradient(-45deg, #0a0a15 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #0a0a15 75%), linear-gradient(-45deg, transparent 75%, #0a0a15 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-            <div style="text-align: center; color: var(--text-muted);">
-              <div style="font-size: 48px; margin-bottom: 8px;">📷</div>
-              <div>Stream: <code>${cam.stream}</code></div>
-              <div style="margin-top: 8px; font-size: 12px;">Connect to robot to view live feed</div>
-            </div>
-          </div>
-        </div>
-        <div style="display: flex; gap: 12px; justify-content: center;">
-          <button class="btn btn-secondary" id="preview-snapshot">📸 Snapshot</button>
-          <button class="btn btn-secondary" id="preview-fullscreen">⛶ Fullscreen</button>
-          <button class="btn btn-warning" id="preview-test-pattern">Test Pattern</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-
-  const previewArea = modal.querySelector('[style*="aspect-ratio"]');
-  const previewContent = previewArea?.querySelector('div');
-
-  modal.querySelector('#preview-snapshot').addEventListener('click', async () => {
-    logEvent('INFO', `Snapshot requested for ${cam.id}`);
-    try {
-      // Request snapshot from backend
-      const response = await fetch(`/api/camera/${cam.id}/snapshot`, { method: 'POST' });
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${cam.id}_${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
-        link.click();
-        URL.revokeObjectURL(url);
-        logEvent('INFO', `Snapshot saved: ${link.download}`);
-      } else {
-        // Fallback: create placeholder image
-        const canvas = document.createElement('canvas');
-        canvas.width = cam.width || 640;
-        canvas.height = cam.height || 480;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#8b5cf6';
-        ctx.font = '24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${cam.name} - Snapshot`, canvas.width/2, canvas.height/2 - 20);
-        ctx.fillStyle = '#666';
-        ctx.font = '14px sans-serif';
-        ctx.fillText(new Date().toLocaleString(), canvas.width/2, canvas.height/2 + 20);
-        canvas.toBlob(blob => {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `${cam.id}_${Date.now()}.png`;
-          link.click();
-          URL.revokeObjectURL(url);
-        });
-        logEvent('INFO', `Placeholder snapshot created for ${cam.id}`);
-      }
-    } catch (e) {
-      logEvent('WARN', `Snapshot failed: ${e.message}`);
-    }
-  });
-
-  modal.querySelector('#preview-fullscreen').addEventListener('click', () => {
-    if (previewArea) {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        previewArea.requestFullscreen().catch(err => {
-          logEvent('WARN', `Fullscreen failed: ${err.message}`);
-        });
-      }
-    }
-  });
-
-  modal.querySelector('#preview-test-pattern').addEventListener('click', () => {
-    logEvent('INFO', `Test pattern requested for ${cam.id}`);
-    if (previewContent) {
-      // Generate test pattern
-      const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff'];
-      const barWidth = 100 / colors.length;
-      const gradient = colors.map((c, i) => `${c} ${i * barWidth}%, ${c} ${(i + 1) * barWidth}%`).join(', ');
-      previewContent.innerHTML = `
-        <div style="width: 100%; height: 100%; display: flex; flex-direction: column;">
-          <div style="flex: 1; background: linear-gradient(to right, ${gradient});"></div>
-          <div style="flex: 1; background: linear-gradient(to bottom, #000 0%, #fff 100%);"></div>
-          <div style="padding: 8px; background: #000; text-align: center; color: #fff; font-family: monospace;">
-            Test Pattern - ${cam.name} (${cam.width}x${cam.height})
-          </div>
-        </div>
-      `;
-    }
-  });
-}
-
-function deleteCamera(cameraId) {
-  if (sensorState.cameras.length <= 1) {
-    logEvent('WARN', 'Cannot delete the last camera');
-    return;
-  }
-
-  const index = sensorState.cameras.findIndex(c => c.id === cameraId);
-  if (index >= 0) {
-    sensorState.cameras.splice(index, 1);
-    if (sensorState.selectedCamera === cameraId) {
-      sensorState.selectedCamera = sensorState.cameras[0]?.id;
-    }
-    saveSensorConfig();
-    renderCameraTable();
-    updateCameraTransformEditor();
-    update3DCameraPositions();
-    logEvent('INFO', `Deleted camera: ${cameraId}`);
-  }
-}
 
 // IMU Section
 function initIMUSection() {
@@ -5598,7 +5276,7 @@ function initMotionSmoothingSliders() {
     });
     linearAccelSlider.addEventListener('change', (e) => {
       const val = parseFloat(e.target.value);
-      saveConfigValue('max_linear_accel', val);
+      saveConfig({ max_linear_accel: val });
       logEvent('INFO', `Max linear acceleration set to ${val.toFixed(1)} m/s²`);
     });
   }
@@ -5613,7 +5291,7 @@ function initMotionSmoothingSliders() {
     });
     angularAccelSlider.addEventListener('change', (e) => {
       const val = parseInt(e.target.value);
-      saveConfigValue('max_angular_accel', val);
+      saveConfig({ max_angular_accel: val });
       logEvent('INFO', `Max angular acceleration set to ${val} °/s²`);
     });
   }
@@ -5628,7 +5306,7 @@ function initMotionSmoothingSliders() {
     });
     smoothingSlider.addEventListener('change', (e) => {
       const val = parseFloat(e.target.value);
-      saveConfigValue('input_smoothing_factor', val);
+      saveConfig({ input_smoothing_factor: val });
       logEvent('INFO', `Input smoothing factor set to ${val.toFixed(2)}`);
     });
   }
@@ -5742,99 +5420,183 @@ function initPostureAndGaitSettings() {
 // Initialize posture and gait settings after DOM ready
 setTimeout(initPostureAndGaitSettings, 150);
 
-// ========== Hardware Cameras Configuration ==========
-// Hardware camera state
-let hardwareCameras = [];
+// ========== Unified Camera Configuration ==========
+// Single unified camera list - combines source + display settings
+let cameras = [];
 let detectedCameras = []; // Cameras found during detection
 
-// Default hardware camera
-const DEFAULT_HARDWARE_CAMERAS = [];
+// Default camera configuration
+const DEFAULT_CAMERAS = [
+  {
+    id: 'front-cam',
+    name: 'Front Camera',
+    enabled: true,
+    // Source
+    sourceType: 'browser',  // browser, usb, csi, rtsp, http
+    sourceAddress: '',
+    resolution: '1280x720',
+    fps: 30,
+    // Display
+    displayMode: 'dock',    // dock (floating pane) or overlay (3D scene)
+    position: 'front'       // front, left, right, rear, floating
+  }
+];
 
-function initHardwareCamerasSection() {
-  // Load hardware cameras from config
-  loadHardwareCameras();
+function initCamerasSection() {
+  // Load cameras from config
+  loadCameras();
 
   // Detect cameras button
   document.getElementById('detectCamerasBtn')?.addEventListener('click', async () => {
-    await detectHardwareCameras();
+    await detectCameras();
   });
 
   // Add camera button
-  document.getElementById('addHardwareCameraBtn')?.addEventListener('click', () => {
-    addHardwareCamera();
+  document.getElementById('addCameraBtn')?.addEventListener('click', () => {
+    addCamera();
   });
 
-  // Save hardware cameras button
-  document.getElementById('saveHardwareCamerasBtn')?.addEventListener('click', async () => {
-    await saveHardwareCameras();
-  });
-
-  // Camera transform select
-  document.getElementById('transformCameraSelect')?.addEventListener('change', (e) => {
-    loadCameraTransform(e.target.value);
-  });
-
-  // Camera transform inputs
-  document.querySelectorAll('#cameraTransformEditor .transform-axis-input').forEach(input => {
-    input.addEventListener('change', () => {
-      saveCameraTransform();
-    });
+  // Save cameras button
+  document.getElementById('saveCamerasBtn')?.addEventListener('click', async () => {
+    await saveCameras();
   });
 }
 
-function loadHardwareCameras() {
-  const configCameras = state.config.hardware_cameras;
+function loadCameras() {
+  // First try new unified format, then fall back to legacy formats
+  const configCameras = state.config.cameras;
+  console.log('[loadCameras] state.config keys:', Object.keys(state.config));
+  console.log('[loadCameras] state.config.cameras:', configCameras);
+  console.log('[loadCameras] state.config.camera_views:', state.config.camera_views);
+
   if (configCameras && Array.isArray(configCameras) && configCameras.length > 0) {
-    hardwareCameras = configCameras.map((c, i) => normalizeHardwareCamera(c, i));
+    console.log('[loadCameras] Using unified cameras format');
+    cameras = configCameras.map((c, i) => normalizeCamera(c, i));
+  } else if (state.config.camera_views && Array.isArray(state.config.camera_views) && state.config.camera_views.length > 0) {
+    // Migrate from legacy camera_views format
+    console.log('[loadCameras] Migrating from legacy camera_views');
+    cameras = migrateLegacyCameraViews(state.config.camera_views, state.config.hardware_cameras || []);
   } else {
-    hardwareCameras = [...DEFAULT_HARDWARE_CAMERAS];
+    console.log('[loadCameras] Using DEFAULT_CAMERAS (no config found)');
+    cameras = DEFAULT_CAMERAS.map((c, i) => normalizeCamera(c, i));
   }
-  renderHardwareCameraList();
-  updateTransformCameraSelect();
-  updateCameraLayoutSourceOptions();
+  console.log('[loadCameras] Final cameras array:', cameras);
+  renderCameraList();
 }
 
-function normalizeHardwareCamera(camera, index = 0) {
+function normalizeCamera(camera, index = 0) {
   return {
-    id: camera?.id || `hw-cam-${index}`,
-    name: camera?.name || `Camera ${index + 1}`,
-    address: camera?.address || '',
-    type: camera?.type || 'usb', // usb, csi, ip, rtsp
+    id: camera?.id || `cam-${index}`,
+    name: camera?.name || camera?.label || `Camera ${index + 1}`,
+    enabled: camera?.enabled !== undefined ? !!camera.enabled : true,
+    // Source
+    sourceType: camera?.source_type || camera?.sourceType || 'browser',
+    sourceAddress: camera?.source_address || camera?.sourceAddress || camera?.address || '',
     resolution: camera?.resolution || '1280x720',
     fps: camera?.fps || 30,
-    role: camera?.role || 'general',
-    enabled: camera?.enabled !== undefined ? !!camera.enabled : true,
-    transform: camera?.transform || { x: 0, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0 }
+    // Display
+    displayMode: camera?.display_mode || camera?.displayMode || 'dock',
+    position: camera?.position || 'front',
+    // Browser webcam device selection
+    deviceId: camera?.device_id || camera?.deviceId || null,
+    deviceLabel: camera?.device_label || camera?.deviceLabel || null
   };
 }
 
-async function detectHardwareCameras() {
+// Populate device dropdown with available webcam devices
+async function populateDeviceDropdown(selectEl, currentDeviceId = null) {
+  if (!selectEl) return;
+
+  // Request permission first (needed to get device labels)
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    stream.getTracks().forEach(track => track.stop());
+  } catch (err) {
+    logEvent('WARN', 'Camera permission denied');
+    selectEl.innerHTML = '<option value="">Permission denied</option>';
+    return;
+  }
+
+  // Get available video devices
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+  if (videoDevices.length === 0) {
+    selectEl.innerHTML = '<option value="">No devices found</option>';
+    return;
+  }
+
+  // Build options
+  let html = '<option value="">-- Select Device --</option>';
+  videoDevices.forEach((device, idx) => {
+    const label = device.label || `Camera ${idx + 1}`;
+    const selected = device.deviceId === currentDeviceId ? 'selected' : '';
+    html += `<option value="${device.deviceId}" ${selected}>${label}</option>`;
+  });
+
+  selectEl.innerHTML = html;
+  logEvent('INFO', `Found ${videoDevices.length} webcam device(s)`);
+}
+
+// Migrate from old two-layer format (hardware_cameras + camera_views)
+function migrateLegacyCameraViews(legacyViews, legacyHardware) {
+  return legacyViews.map((view, idx) => {
+    let sourceType = view.source_type || view.sourceType || 'browser';
+    let sourceAddress = view.source_url || view.sourceUrl || '';
+    let resolution = '1280x720';
+    let fps = 30;
+
+    // If it was a hardware reference, resolve it
+    if (sourceType === 'hardware' && (view.hardware_camera_id || view.hardwareCameraId)) {
+      const hwId = view.hardware_camera_id || view.hardwareCameraId;
+      const hwCam = legacyHardware.find(c => c.id === hwId);
+      if (hwCam) {
+        sourceType = hwCam.type || 'usb';
+        sourceAddress = hwCam.address || '';
+        resolution = hwCam.resolution || '1280x720';
+        fps = hwCam.fps || 30;
+      }
+    } else if (sourceType === 'local') {
+      sourceType = 'browser';
+    }
+
+    return normalizeCamera({
+      id: view.id || `cam-${idx}`,
+      name: view.label || `Camera ${idx + 1}`,
+      enabled: view.enabled,
+      sourceType,
+      sourceAddress,
+      resolution,
+      fps,
+      displayMode: (view.display_mode || view.displayMode) === 'pane' ? 'dock' : (view.display_mode || view.displayMode || 'dock'),
+      position: view.position || 'front'
+    }, idx);
+  });
+}
+
+async function detectCameras() {
   const btn = document.getElementById('detectCamerasBtn');
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '⏳ Detecting...';
+    btn.textContent = 'Detecting...';
   }
 
-  logEvent('INFO', 'Scanning for attached cameras...');
+  logEvent('INFO', 'Scanning for cameras...');
 
   try {
-    // Try to get cameras from backend API
     const response = await fetch('/api/cameras/detect');
     if (response.ok) {
       const data = await response.json();
       detectedCameras = data.cameras || [];
       logEvent('INFO', `Found ${detectedCameras.length} camera(s) from hardware`);
     } else {
-      // Fallback: enumerate browser media devices
       detectedCameras = await detectBrowserCameras();
     }
   } catch (err) {
-    // Fallback: enumerate browser media devices
-    logEvent('WARN', 'Backend camera detection unavailable, using browser detection');
+    logEvent('WARN', 'Backend detection unavailable, using browser');
     detectedCameras = await detectBrowserCameras();
   }
 
-  // Show detected cameras that aren't already configured
   if (detectedCameras.length > 0) {
     showDetectedCamerasDialog(detectedCameras);
   } else {
@@ -5843,22 +5605,19 @@ async function detectHardwareCameras() {
 
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = '🔍 Detect';
+    btn.textContent = 'Detect';
   }
 }
 
 async function detectBrowserCameras() {
   try {
-    // Request camera permission first - this is needed to get device labels
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      // Stop the stream immediately - we just needed it for permission
       stream.getTracks().forEach(track => track.stop());
     } catch (permErr) {
       logEvent('WARN', 'Camera permission denied or unavailable');
     }
 
-    // Now enumerate devices - labels should be available if permission was granted
     const devices = await navigator.mediaDevices.enumerateDevices();
     const videoDevices = devices.filter(d => d.kind === 'videoinput');
 
@@ -5881,20 +5640,17 @@ async function detectBrowserCameras() {
   }
 }
 
-function showDetectedCamerasDialog(cameras) {
-  // Filter out cameras already in our list
-  const existingAddresses = hardwareCameras.map(c => c.address);
-  const newCameras = cameras.filter(c => !existingAddresses.includes(c.address));
+function showDetectedCamerasDialog(detectedList) {
+  const existingAddresses = cameras.map(c => c.sourceAddress);
+  const newCameras = detectedList.filter(c => !existingAddresses.includes(c.address));
 
   if (newCameras.length === 0) {
     logEvent('INFO', 'All detected cameras are already configured');
     return;
   }
 
-  // Remove any existing modal first (prevents duplicates)
   document.querySelector('.detected-cameras-modal')?.remove();
 
-  // Create a simple modal to select which cameras to add
   const modal = document.createElement('div');
   modal.className = 'modal detected-cameras-modal';
   modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000;';
@@ -5902,16 +5658,14 @@ function showDetectedCamerasDialog(cameras) {
   modal.innerHTML = `
     <div style="background: var(--panel-bg); border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;">
       <h3 style="margin: 0 0 16px 0; font-size: 18px;">Detected Cameras</h3>
-      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
-        Select cameras to add to your configuration:
-      </p>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">Select cameras to add:</p>
       <div id="detectedCamerasList" style="max-height: 300px; overflow-y: auto;">
         ${newCameras.map((c, i) => `
           <label style="display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--control-bg); border-radius: 6px; margin-bottom: 8px; cursor: pointer;">
             <input type="checkbox" class="detected-cam-checkbox" data-index="${i}" checked>
             <div>
               <div style="font-weight: 500;">${c.name}</div>
-              <div style="font-size: 11px; color: var(--text-muted);">${c.address} (${c.type})</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${c.type}</div>
             </div>
           </label>
         `).join('')}
@@ -5925,26 +5679,27 @@ function showDetectedCamerasDialog(cameras) {
 
   document.body.appendChild(modal);
 
-  // Event handlers
-  modal.querySelector('#cancelDetectedBtn').addEventListener('click', () => {
-    modal.remove();
-  });
+  modal.querySelector('#cancelDetectedBtn').addEventListener('click', () => modal.remove());
 
   modal.querySelector('#addDetectedBtn').addEventListener('click', () => {
     const checkboxes = modal.querySelectorAll('.detected-cam-checkbox:checked');
     checkboxes.forEach(cb => {
       const idx = parseInt(cb.dataset.index);
       const cam = newCameras[idx];
-      hardwareCameras.push(normalizeHardwareCamera({
-        id: `hw-cam-${Date.now()}-${idx}`,
+      // For browser cameras, use address as deviceId
+      const isBrowser = cam.type === 'browser';
+      cameras.push(normalizeCamera({
+        id: `cam-${Date.now()}-${idx}`,
         name: cam.name,
-        address: cam.address,
-        type: cam.type
-      }, hardwareCameras.length));
+        sourceType: cam.type,
+        sourceAddress: isBrowser ? '' : cam.address,
+        deviceId: isBrowser ? cam.address : null,
+        deviceLabel: isBrowser ? cam.name : null,
+        displayMode: 'dock',
+        position: 'front'
+      }, cameras.length));
     });
-    renderHardwareCameraList();
-    updateTransformCameraSelect();
-    updateCameraLayoutSourceOptions();
+    renderCameraList();
     logEvent('INFO', `Added ${checkboxes.length} camera(s)`);
     modal.remove();
   });
@@ -5954,75 +5709,91 @@ function showDetectedCamerasDialog(cameras) {
   });
 }
 
-function addHardwareCamera() {
-  const newCam = normalizeHardwareCamera({
-    id: `hw-cam-${Date.now()}`,
-    name: `Camera ${hardwareCameras.length + 1}`,
-    address: '',
-    type: 'usb'
-  }, hardwareCameras.length);
+function addCamera() {
+  cameras.push(normalizeCamera({
+    id: `cam-${Date.now()}`,
+    name: `Camera ${cameras.length + 1}`,
+    sourceType: 'browser',
+    sourceAddress: '',
+    displayMode: 'dock',
+    position: 'front'
+  }, cameras.length));
 
-  hardwareCameras.push(newCam);
-  renderHardwareCameraList();
-  updateTransformCameraSelect();
-  updateCameraLayoutSourceOptions();
-  logEvent('INFO', 'Added new camera entry');
+  renderCameraList();
+  logEvent('INFO', 'Added new camera');
 }
 
-function updateHardwareCamera(id, field, value) {
-  const cam = hardwareCameras.find(c => c.id === id);
+function updateCamera(id, field, value) {
+  const cam = cameras.find(c => c.id === id);
   if (cam) {
     cam[field] = value;
   }
 }
 
-function removeHardwareCamera(id) {
-  hardwareCameras = hardwareCameras.filter(c => c.id !== id);
-  renderHardwareCameraList();
-  updateTransformCameraSelect();
-  updateCameraLayoutSourceOptions();
+function removeCamera(id) {
+  cameras = cameras.filter(c => c.id !== id);
+  renderCameraList();
   logEvent('INFO', 'Removed camera');
 }
 
-async function saveHardwareCameras() {
+async function saveCameras() {
   const payload = {
-    hardware_cameras: hardwareCameras.map(cam => ({
+    cameras: cameras.map(cam => ({
       id: cam.id,
       name: cam.name,
-      address: cam.address,
-      type: cam.type,
+      enabled: cam.enabled,
+      source_type: cam.sourceType,
+      source_address: cam.sourceAddress,
       resolution: cam.resolution,
       fps: cam.fps,
-      role: cam.role,
-      enabled: cam.enabled,
-      transform: cam.transform
+      display_mode: cam.displayMode,
+      position: cam.position,
+      device_id: cam.deviceId || null,
+      device_label: cam.deviceLabel || null
     }))
   };
   await saveConfig(payload);
-  logEvent('INFO', 'Hardware cameras configuration saved');
+  logEvent('INFO', 'Cameras saved');
 }
 
-function renderHardwareCameraList() {
-  const container = document.getElementById('hardwareCameraList');
-  const noHardware = document.getElementById('noHardwareCameras');
-  const transformCard = document.getElementById('cameraTransformCard');
+function getSourcePlaceholder(type) {
+  switch (type) {
+    case 'usb': return '/dev/video0';
+    case 'csi': return '0 (CSI port)';
+    case 'http': return 'http://192.168.1.100:8080/video';
+    case 'rtsp': return 'rtsp://192.168.1.100:554/stream';
+    case 'browser': return '(uses browser webcam)';
+    default: return 'Device address';
+  }
+}
 
-  if (!container) return;
+function renderCameraList() {
+  const container = document.getElementById('cameraList');
+  const noCameras = document.getElementById('noCameras');
+  console.log('[renderCameraList] container:', container);
+  console.log('[renderCameraList] cameras.length:', cameras.length);
 
-  container.innerHTML = '';
-
-  if (hardwareCameras.length === 0) {
-    if (noHardware) noHardware.style.display = 'block';
-    if (transformCard) transformCard.style.display = 'none';
+  if (!container) {
+    console.log('[renderCameraList] No container found, returning early');
     return;
   }
 
-  if (noHardware) noHardware.style.display = 'none';
-  if (transformCard) transformCard.style.display = 'block';
+  container.innerHTML = '';
 
-  hardwareCameras.forEach((cam) => {
+  if (cameras.length === 0) {
+    if (noCameras) noCameras.style.display = 'block';
+    return;
+  }
+
+  if (noCameras) noCameras.style.display = 'none';
+
+  cameras.forEach((cam) => {
     const row = document.createElement('div');
     row.style.cssText = 'background: var(--control-bg); border-radius: 8px; padding: 12px; margin-bottom: 10px;';
+    row.dataset.camId = cam.id;
+
+    const isBrowserType = cam.sourceType === 'browser';
+    const deviceLabel = cam.deviceLabel || (cam.deviceId ? 'Device selected' : 'No device selected');
 
     row.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -6035,45 +5806,54 @@ function renderHardwareCameraList() {
         </div>
         <button class="btn btn-danger btn-sm cam-remove">Remove</button>
       </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
         <div>
-          <label class="form-label" style="font-size: 11px;">Type</label>
-          <select class="form-select cam-type">
-            <option value="usb" ${cam.type === 'usb' ? 'selected' : ''}>USB / V4L2</option>
-            <option value="csi" ${cam.type === 'csi' ? 'selected' : ''}>CSI (Pi Camera)</option>
-            <option value="ip" ${cam.type === 'ip' ? 'selected' : ''}>IP Camera (HTTP)</option>
-            <option value="rtsp" ${cam.type === 'rtsp' ? 'selected' : ''}>RTSP Stream</option>
-            <option value="browser" ${cam.type === 'browser' ? 'selected' : ''}>Browser Webcam</option>
+          <label class="form-label" style="font-size: 11px;">Source Type</label>
+          <select class="form-select cam-source-type">
+            <option value="browser" ${cam.sourceType === 'browser' ? 'selected' : ''}>Browser Webcam</option>
+            <option value="usb" ${cam.sourceType === 'usb' ? 'selected' : ''}>USB / V4L2</option>
+            <option value="csi" ${cam.sourceType === 'csi' ? 'selected' : ''}>CSI (Pi Camera)</option>
+            <option value="http" ${cam.sourceType === 'http' ? 'selected' : ''}>HTTP (MJPEG)</option>
+            <option value="rtsp" ${cam.sourceType === 'rtsp' ? 'selected' : ''}>RTSP Stream</option>
           </select>
         </div>
-        <div>
-          <label class="form-label" style="font-size: 11px;">Address / Device</label>
-          <input type="text" class="form-input cam-address" value="${cam.address}" placeholder="${getAddressPlaceholder(cam.type)}">
+        <div class="browser-device-container" style="${isBrowserType ? '' : 'display: none;'}">
+          <label class="form-label" style="font-size: 11px;">Webcam Device</label>
+          <div style="display: flex; gap: 6px;">
+            <select class="form-select cam-device-select" style="flex: 1;">
+              <option value="">-- Select Device --</option>
+              ${cam.deviceId ? `<option value="${cam.deviceId}" selected>${deviceLabel}</option>` : ''}
+            </select>
+            <button class="btn btn-secondary btn-sm cam-refresh-devices" title="Refresh device list" style="padding: 4px 8px;">🔄</button>
+          </div>
+        </div>
+        <div class="source-address-container" style="${isBrowserType ? 'display: none;' : ''}">
+          <label class="form-label" style="font-size: 11px;">Address</label>
+          <input type="text" class="form-input cam-address" value="${cam.sourceAddress || ''}" placeholder="${getSourcePlaceholder(cam.sourceType)}">
         </div>
         <div>
           <label class="form-label" style="font-size: 11px;">Resolution</label>
           <select class="form-select cam-resolution">
             <option value="640x480" ${cam.resolution === '640x480' ? 'selected' : ''}>640x480</option>
-            <option value="1280x720" ${cam.resolution === '1280x720' ? 'selected' : ''}>1280x720 (HD)</option>
-            <option value="1920x1080" ${cam.resolution === '1920x1080' ? 'selected' : ''}>1920x1080 (FHD)</option>
+            <option value="1280x720" ${cam.resolution === '1280x720' ? 'selected' : ''}>1280x720</option>
+            <option value="1920x1080" ${cam.resolution === '1920x1080' ? 'selected' : ''}>1920x1080</option>
           </select>
         </div>
         <div>
-          <label class="form-label" style="font-size: 11px;">FPS</label>
-          <select class="form-select cam-fps">
-            <option value="15" ${cam.fps === 15 ? 'selected' : ''}>15</option>
-            <option value="30" ${cam.fps === 30 ? 'selected' : ''}>30</option>
-            <option value="60" ${cam.fps === 60 ? 'selected' : ''}>60</option>
+          <label class="form-label" style="font-size: 11px;">Display</label>
+          <select class="form-select cam-display-mode">
+            <option value="dock" ${cam.displayMode === 'dock' ? 'selected' : ''}>Dock (Pane)</option>
+            <option value="overlay" ${cam.displayMode === 'overlay' ? 'selected' : ''}>3D Overlay</option>
           </select>
         </div>
         <div>
-          <label class="form-label" style="font-size: 11px;">Role</label>
-          <select class="form-select cam-role">
-            <option value="general" ${cam.role === 'general' ? 'selected' : ''}>General</option>
-            <option value="front" ${cam.role === 'front' ? 'selected' : ''}>Front</option>
-            <option value="navigation" ${cam.role === 'navigation' ? 'selected' : ''}>Navigation</option>
-            <option value="rear" ${cam.role === 'rear' ? 'selected' : ''}>Rear View</option>
-            <option value="ground" ${cam.role === 'ground' ? 'selected' : ''}>Ground</option>
+          <label class="form-label" style="font-size: 11px;">Position</label>
+          <select class="form-select cam-position">
+            <option value="front" ${cam.position === 'front' ? 'selected' : ''}>Front</option>
+            <option value="left" ${cam.position === 'left' ? 'selected' : ''}>Left</option>
+            <option value="right" ${cam.position === 'right' ? 'selected' : ''}>Right</option>
+            <option value="rear" ${cam.position === 'rear' ? 'selected' : ''}>Rear</option>
+            <option value="floating" ${cam.position === 'floating' ? 'selected' : ''}>Floating</option>
           </select>
         </div>
       </div>
@@ -6081,370 +5861,84 @@ function renderHardwareCameraList() {
 
     // Event listeners
     row.querySelector('.cam-name').addEventListener('input', (e) => {
-      updateHardwareCamera(cam.id, 'name', e.target.value);
-      updateTransformCameraSelect();
-      updateCameraLayoutSourceOptions();
+      updateCamera(cam.id, 'name', e.target.value);
     });
 
     row.querySelector('.cam-enabled').addEventListener('change', (e) => {
-      updateHardwareCamera(cam.id, 'enabled', e.target.checked);
+      updateCamera(cam.id, 'enabled', e.target.checked);
     });
 
-    row.querySelector('.cam-type').addEventListener('change', (e) => {
-      updateHardwareCamera(cam.id, 'type', e.target.value);
+    row.querySelector('.cam-source-type').addEventListener('change', (e) => {
+      updateCamera(cam.id, 'sourceType', e.target.value);
+      const isBrowser = e.target.value === 'browser';
+      const addrContainer = row.querySelector('.source-address-container');
+      const browserContainer = row.querySelector('.browser-device-container');
       const addrInput = row.querySelector('.cam-address');
-      addrInput.placeholder = getAddressPlaceholder(e.target.value);
-    });
 
-    row.querySelector('.cam-address').addEventListener('input', (e) => {
-      updateHardwareCamera(cam.id, 'address', e.target.value);
-    });
+      addrContainer.style.display = isBrowser ? 'none' : '';
+      browserContainer.style.display = isBrowser ? '' : 'none';
+      addrInput.placeholder = getSourcePlaceholder(e.target.value);
 
-    row.querySelector('.cam-resolution').addEventListener('change', (e) => {
-      updateHardwareCamera(cam.id, 'resolution', e.target.value);
-    });
-
-    row.querySelector('.cam-fps').addEventListener('change', (e) => {
-      updateHardwareCamera(cam.id, 'fps', parseInt(e.target.value));
-    });
-
-    row.querySelector('.cam-role').addEventListener('change', (e) => {
-      updateHardwareCamera(cam.id, 'role', e.target.value);
-    });
-
-    row.querySelector('.cam-remove').addEventListener('click', () => {
-      removeHardwareCamera(cam.id);
-    });
-
-    container.appendChild(row);
-  });
-}
-
-function getAddressPlaceholder(type) {
-  switch (type) {
-    case 'usb': return '/dev/video0';
-    case 'csi': return '0 (CSI port)';
-    case 'ip': return 'http://192.168.1.100:8080/video';
-    case 'rtsp': return 'rtsp://192.168.1.100:554/stream';
-    case 'browser': return 'Browser device ID';
-    default: return 'Device address';
-  }
-}
-
-function updateTransformCameraSelect() {
-  const select = document.getElementById('transformCameraSelect');
-  if (!select) return;
-
-  const currentValue = select.value;
-  select.innerHTML = '<option value="">Select a camera...</option>';
-
-  hardwareCameras.forEach(cam => {
-    const option = document.createElement('option');
-    option.value = cam.id;
-    option.textContent = cam.name;
-    select.appendChild(option);
-  });
-
-  // Restore selection if valid
-  if (currentValue && hardwareCameras.some(c => c.id === currentValue)) {
-    select.value = currentValue;
-  }
-}
-
-function loadCameraTransform(cameraId) {
-  const cam = hardwareCameras.find(c => c.id === cameraId);
-  if (!cam) return;
-
-  const transform = cam.transform || { x: 0, y: 0, z: 0, roll: 0, pitch: 0, yaw: 0 };
-  document.getElementById('camTransformX').value = transform.x;
-  document.getElementById('camTransformY').value = transform.y;
-  document.getElementById('camTransformZ').value = transform.z;
-  document.getElementById('camTransformRoll').value = transform.roll;
-  document.getElementById('camTransformPitch').value = transform.pitch;
-  document.getElementById('camTransformYaw').value = transform.yaw;
-}
-
-function saveCameraTransform() {
-  const select = document.getElementById('transformCameraSelect');
-  if (!select || !select.value) return;
-
-  const cam = hardwareCameras.find(c => c.id === select.value);
-  if (!cam) return;
-
-  cam.transform = {
-    x: parseFloat(document.getElementById('camTransformX').value) || 0,
-    y: parseFloat(document.getElementById('camTransformY').value) || 0,
-    z: parseFloat(document.getElementById('camTransformZ').value) || 0,
-    roll: parseFloat(document.getElementById('camTransformRoll').value) || 0,
-    pitch: parseFloat(document.getElementById('camTransformPitch').value) || 0,
-    yaw: parseFloat(document.getElementById('camTransformYaw').value) || 0
-  };
-}
-
-// Update camera layout source options to use hardware cameras
-function updateCameraLayoutSourceOptions() {
-  // This will be called to refresh the source dropdowns in the camera layout section
-  // when hardware cameras change
-  if (typeof renderCameraLayoutList === 'function') {
-    renderCameraLayoutList();
-  }
-}
-
-// Initialize hardware cameras section after DOM ready
-setTimeout(initHardwareCamerasSection, 180);
-
-// ========== Camera Layout Configuration ==========
-// Default camera view configuration
-const DEFAULT_CAMERA_VIEWS = [
-  {
-    id: 'front_cam',
-    label: 'Front Camera',
-    enabled: true,
-    position: 'front',
-    sourceType: 'local',
-    sourceUrl: '',
-    displayMode: 'pane'
-  }
-];
-
-// Camera layout state
-let cameraLayoutViews = [];
-
-function initCameraLayoutSection() {
-  // Load camera views from config
-  loadCameraLayoutViews();
-
-  // Add camera view button
-  document.getElementById('addCameraLayoutBtn')?.addEventListener('click', () => {
-    addCameraLayoutView();
-  });
-
-  // Save camera layout button
-  document.getElementById('saveCameraLayoutBtn')?.addEventListener('click', async () => {
-    await saveCameraLayoutViews();
-  });
-}
-
-function loadCameraLayoutViews() {
-  // Try to load from config, otherwise use defaults
-  const configViews = state.config.camera_views;
-  if (configViews && Array.isArray(configViews) && configViews.length > 0) {
-    cameraLayoutViews = configViews.map((v, i) => normalizeCameraLayoutView(v, i));
-  } else {
-    cameraLayoutViews = DEFAULT_CAMERA_VIEWS.map((v, i) => normalizeCameraLayoutView(v, i));
-  }
-  renderCameraLayoutList();
-}
-
-function normalizeCameraLayoutView(view, index = 0) {
-  const fallback = DEFAULT_CAMERA_VIEWS[0];
-  return {
-    id: view?.id || `camera-${index}`,
-    label: view?.label || `Camera ${index + 1}`,
-    enabled: view?.enabled !== undefined ? !!view.enabled : fallback.enabled,
-    position: view?.position || fallback.position,
-    sourceType: view?.source_type || view?.sourceType || fallback.sourceType,
-    sourceUrl: view?.source_url || view?.sourceUrl || fallback.sourceUrl,
-    hardwareCameraId: view?.hardware_camera_id || view?.hardwareCameraId || '',
-    displayMode: view?.display_mode || view?.displayMode || fallback.displayMode
-  };
-}
-
-function addCameraLayoutView() {
-  const newId = `camera-${Date.now()}`;
-  // Default to hardware camera if any are configured
-  const defaultSourceType = hardwareCameras.length > 0 ? 'hardware' : 'local';
-  const defaultHwCamId = hardwareCameras.length > 0 ? hardwareCameras[0].id : '';
-
-  cameraLayoutViews.push({
-    id: newId,
-    label: `Camera View ${cameraLayoutViews.length + 1}`,
-    enabled: true,
-    position: 'floating',
-    sourceType: defaultSourceType,
-    sourceUrl: '',
-    hardwareCameraId: defaultHwCamId,
-    displayMode: 'pane'
-  });
-  renderCameraLayoutList();
-  logEvent('INFO', 'Added new camera view');
-}
-
-function updateCameraLayoutView(id, field, value) {
-  const view = cameraLayoutViews.find(v => v.id === id);
-  if (view) {
-    view[field] = value;
-  }
-}
-
-function removeCameraLayoutView(id) {
-  cameraLayoutViews = cameraLayoutViews.filter(v => v.id !== id);
-  renderCameraLayoutList();
-  logEvent('INFO', 'Removed camera view');
-}
-
-async function saveCameraLayoutViews() {
-  const payload = {
-    camera_views: cameraLayoutViews.map(view => ({
-      id: view.id,
-      label: view.label,
-      enabled: view.enabled,
-      position: view.position,
-      source_type: view.sourceType,
-      source_url: view.sourceUrl,
-      hardware_camera_id: view.hardwareCameraId,
-      display_mode: view.displayMode
-    }))
-  };
-  await saveConfig(payload);
-  logEvent('INFO', 'Camera layout saved');
-}
-
-function renderCameraLayoutList() {
-  const container = document.getElementById('cameraLayoutList');
-  if (!container) return;
-
-  container.innerHTML = '';
-
-  if (cameraLayoutViews.length === 0) {
-    container.innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">No camera views configured. Add one to get started.</p>';
-    return;
-  }
-
-  // Build hardware camera options
-  const hwCamOptions = hardwareCameras.map(cam =>
-    `<option value="${cam.id}">${cam.name}</option>`
-  ).join('');
-
-  cameraLayoutViews.forEach((view) => {
-    const row = document.createElement('div');
-    row.style.cssText = 'background: var(--control-bg); border-radius: 8px; padding: 12px; margin-bottom: 12px;';
-
-    const showHardwareSelect = view.sourceType === 'hardware';
-    const showUrlInput = view.sourceType === 'url';
-
-    row.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <input type="text" class="form-input camera-label" value="${view.label}" style="width: 150px;">
-          <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);">
-            <input type="checkbox" class="camera-enabled" ${view.enabled ? 'checked' : ''}>
-            Enabled
-          </label>
-        </div>
-        <button class="btn btn-danger btn-sm camera-remove">Remove</button>
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-        <div>
-          <label class="form-label" style="font-size: 11px;">Source</label>
-          <select class="form-select camera-source-type">
-            <option value="hardware" ${view.sourceType === 'hardware' ? 'selected' : ''}>Hardware Camera</option>
-            <option value="local" ${view.sourceType === 'local' ? 'selected' : ''}>Browser Webcam</option>
-            <option value="url" ${view.sourceType === 'url' ? 'selected' : ''}>Stream URL</option>
-          </select>
-        </div>
-        <div class="hw-camera-select-container" style="${showHardwareSelect ? '' : 'display: none;'}">
-          <label class="form-label" style="font-size: 11px;">Hardware Camera</label>
-          ${hardwareCameras.length > 0 ? `
-            <select class="form-select camera-hw-select">
-              <option value="">-- Select Camera --</option>
-              ${hwCamOptions}
-            </select>
-          ` : `
-            <div style="font-size: 11px; color: var(--warning); padding: 6px; background: rgba(255,165,0,0.1); border-radius: 4px;">
-              No hardware cameras configured. Use the "Hardware Cameras" section above to detect or add cameras first.
-            </div>
-          `}
-        </div>
-        <div class="url-input-container" style="${showUrlInput ? '' : 'display: none;'}">
-          <label class="form-label" style="font-size: 11px;">Stream URL</label>
-          <input type="text" class="form-input camera-source-url" value="${view.sourceUrl || ''}" placeholder="rtsp/http URL">
-        </div>
-        <div>
-          <label class="form-label" style="font-size: 11px;">Display Mode</label>
-          <select class="form-select camera-display-mode">
-            <option value="pane" ${view.displayMode === 'pane' ? 'selected' : ''}>Floating Pane</option>
-            <option value="overlay" ${view.displayMode === 'overlay' ? 'selected' : ''}>3D Overlay</option>
-          </select>
-        </div>
-        <div>
-          <label class="form-label" style="font-size: 11px;">Position</label>
-          <select class="form-select camera-position" ${view.displayMode === 'overlay' ? 'disabled' : ''}>
-            <option value="front" ${view.position === 'front' ? 'selected' : ''}>Front</option>
-            <option value="left" ${view.position === 'left' ? 'selected' : ''}>Left</option>
-            <option value="right" ${view.position === 'right' ? 'selected' : ''}>Right</option>
-            <option value="rear" ${view.position === 'rear' ? 'selected' : ''}>Rear</option>
-            <option value="floating" ${view.position === 'floating' ? 'selected' : ''}>Floating</option>
-          </select>
-        </div>
-      </div>
-    `;
-
-    // Set initial hardware camera selection
-    const hwSelect = row.querySelector('.camera-hw-select');
-    if (hwSelect && view.hardwareCameraId) {
-      hwSelect.value = view.hardwareCameraId;
-    }
-
-    // Add event listeners
-    row.querySelector('.camera-label').addEventListener('input', (e) => {
-      updateCameraLayoutView(view.id, 'label', e.target.value);
-    });
-
-    row.querySelector('.camera-enabled').addEventListener('change', (e) => {
-      updateCameraLayoutView(view.id, 'enabled', e.target.checked);
-    });
-
-    row.querySelector('.camera-source-type').addEventListener('change', (e) => {
-      const sourceType = e.target.value;
-      updateCameraLayoutView(view.id, 'sourceType', sourceType);
-
-      // Show/hide appropriate inputs
-      const hwContainer = row.querySelector('.hw-camera-select-container');
-      const urlContainer = row.querySelector('.url-input-container');
-
-      hwContainer.style.display = sourceType === 'hardware' ? '' : 'none';
-      urlContainer.style.display = sourceType === 'url' ? '' : 'none';
-    });
-
-    row.querySelector('.camera-hw-select')?.addEventListener('change', (e) => {
-      updateCameraLayoutView(view.id, 'hardwareCameraId', e.target.value);
-      // Auto-update label to match camera name if label is generic
-      const cam = hardwareCameras.find(c => c.id === e.target.value);
-      if (cam && view.label.startsWith('Camera View')) {
-        const labelInput = row.querySelector('.camera-label');
-        labelInput.value = cam.name;
-        updateCameraLayoutView(view.id, 'label', cam.name);
+      // Clear device selection when switching away from browser
+      if (!isBrowser) {
+        updateCamera(cam.id, 'deviceId', null);
+        updateCamera(cam.id, 'deviceLabel', null);
       }
     });
 
-    row.querySelector('.camera-source-url')?.addEventListener('input', (e) => {
-      updateCameraLayoutView(view.id, 'sourceUrl', e.target.value);
+    row.querySelector('.cam-address').addEventListener('input', (e) => {
+      updateCamera(cam.id, 'sourceAddress', e.target.value);
     });
 
-    row.querySelector('.camera-display-mode').addEventListener('change', (e) => {
-      updateCameraLayoutView(view.id, 'displayMode', e.target.value);
-      // Disable position selector for overlay mode
-      const positionSelect = row.querySelector('.camera-position');
-      positionSelect.disabled = e.target.value === 'overlay';
+    // Device selector for browser webcams
+    const deviceSelect = row.querySelector('.cam-device-select');
+    const refreshBtn = row.querySelector('.cam-refresh-devices');
+
+    deviceSelect?.addEventListener('change', (e) => {
+      const selectedOption = e.target.selectedOptions[0];
+      const deviceId = e.target.value;
+      const deviceLabel = selectedOption?.textContent || '';
+      updateCamera(cam.id, 'deviceId', deviceId || null);
+      updateCamera(cam.id, 'deviceLabel', deviceId ? deviceLabel : null);
+      logEvent('INFO', deviceId ? `Selected device: ${deviceLabel}` : 'Device cleared');
     });
 
-    row.querySelector('.camera-position').addEventListener('change', (e) => {
-      updateCameraLayoutView(view.id, 'position', e.target.value);
+    // Auto-load devices when dropdown is focused (first time)
+    deviceSelect?.addEventListener('focus', async function onFirstFocus() {
+      deviceSelect.removeEventListener('focus', onFirstFocus);
+      await populateDeviceDropdown(deviceSelect, cam.deviceId);
     });
 
-    row.querySelector('.camera-remove').addEventListener('click', () => {
-      removeCameraLayoutView(view.id);
+    refreshBtn?.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = '⏳';
+      await populateDeviceDropdown(deviceSelect, cam.deviceId);
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '🔄';
+    });
+
+    row.querySelector('.cam-resolution').addEventListener('change', (e) => {
+      updateCamera(cam.id, 'resolution', e.target.value);
+    });
+
+    row.querySelector('.cam-display-mode').addEventListener('change', (e) => {
+      updateCamera(cam.id, 'displayMode', e.target.value);
+    });
+
+    row.querySelector('.cam-position').addEventListener('change', (e) => {
+      updateCamera(cam.id, 'position', e.target.value);
+    });
+
+    row.querySelector('.cam-remove').addEventListener('click', () => {
+      removeCamera(cam.id);
     });
 
     container.appendChild(row);
   });
 }
 
-// Initialize camera layout section after DOM ready
-setTimeout(initCameraLayoutSection, 200);
-
 // ========== Initialize ==========
+// Note: initCamerasSection is called by initSensorsSection - do not call it separately
 connectWebSocket();
 loadProfiles();
 loadConfig();  // Load config immediately for demo mode / summary cards
@@ -6458,4 +5952,3 @@ setTimeout(initGeometrySection, 100);
 setInterval(updateLiveStatus, 100);
 
 logEvent('INFO', 'Hexapod Configuration initialized');
-console.log('Hexapod Configuration loaded');

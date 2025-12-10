@@ -48,7 +48,15 @@
       "Bash(git fetch:*)",
       "Bash(PYTHONPATH=src .venv/bin/python:*)",
       "Bash(find:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(for btn in \"estopBtn\" \"btnImportProfile\" \"btnNewProfile\" \"btnCalibrationWizard\" \"btnTestWalk\" \"btnSaveProfile\" \"btnDuplicateProfile\" \"btnExportJson\" \"btnImportConfig\" \"btnDeleteProfile\" \"btnRefreshCalibration\" \"btnSaveCalibration\" \"btnAutoFillTemplate\" \"btnTestSweep\" \"btnResetLimits\" \"startCalibrationWizardBtn\" \"btnNewPose\" \"btnRecordPose\" \"btnCancelPoseEdit\" \"btnPreviewPoseEdit\" \"btnSavePose\" \"detectCamerasBtn\" \"addHardwareCameraBtn\" \"saveHardwareCamerasBtn\" \"addCameraLayoutBtn\" \"saveCameraLayoutBtn\" \"sys-show-token\" \"sys-regenerate-token\" \"sys-export-config\" \"sys-import-config\" \"sys-reset-defaults\" \"recordBtn\" \"downloadLogsBtn\" \"clearTestResults\" \"testStand\" \"testCrouch\" \"testWalk\" \"testReset\")",
+      "Bash(do)",
+      "Bash(if grep -q \"getElementById(''$btn'')\" /Users/berndsalomon/Documents/hexapod/web_static/config.js)",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(comm:*)"
     ],
     "deny": [],
     "ask": []

@@ -121,27 +121,27 @@
         <p class="section-desc">High-level control and configuration profiles. Pick a preset and go, or dive into the details.</p>
       </div>
 
-      <div class="summary-grid">
-        <div class="summary-card" data-nav="geometry">
-          <div class="summary-card-icon">&#x1F4D0;</div>
+      <div class="summary-grid" role="navigation" aria-label="Configuration sections">
+        <div class="summary-card" data-nav="geometry" role="button" tabindex="0" aria-label="Navigate to Geometry settings">
+          <div class="summary-card-icon" aria-hidden="true">&#x1F4D0;</div>
           <div class="summary-card-label">Geometry</div>
           <div class="summary-card-value" id="summaryGeometry">-- x --mm</div>
           <div class="summary-card-meta" id="summaryGeometryMeta">6 legs, 3 segments each</div>
         </div>
-        <div class="summary-card" data-nav="servos">
-          <div class="summary-card-icon">&#x2699;</div>
+        <div class="summary-card" data-nav="servos" role="button" tabindex="0" aria-label="Navigate to Servo Calibration settings">
+          <div class="summary-card-icon" aria-hidden="true">&#x2699;</div>
           <div class="summary-card-label">Servos</div>
           <div class="summary-card-value" id="summaryServos">18 servos</div>
           <div class="summary-card-meta" id="summaryServosMeta">Loading...</div>
         </div>
-        <div class="summary-card" data-nav="gaits">
-          <div class="summary-card-icon">&#x1F6B6;</div>
+        <div class="summary-card" data-nav="gaits" role="button" tabindex="0" aria-label="Navigate to Gaits settings">
+          <div class="summary-card-icon" aria-hidden="true">&#x1F6B6;</div>
           <div class="summary-card-label">Active Gait</div>
           <div class="summary-card-value" id="summaryGait">--</div>
           <div class="summary-card-meta" id="summaryGaitMeta">Step: --mm, Height: --mm</div>
         </div>
-        <div class="summary-card" data-nav="posture">
-          <div class="summary-card-icon">&#x1F9CD;</div>
+        <div class="summary-card" data-nav="posture" role="button" tabindex="0" aria-label="Navigate to Body Posture settings">
+          <div class="summary-card-icon" aria-hidden="true">&#x1F9CD;</div>
           <div class="summary-card-label">Body Pose</div>
           <div class="summary-card-value" id="summaryPose">Height: --mm</div>
           <div class="summary-card-meta" id="summaryPoseMeta">R: 0° P: 0° Y: 0°</div>
@@ -224,7 +224,7 @@
         <div class="card">
           <div class="card-header">
             <span class="card-title">Body Dimensions</span>
-            <button class="btn btn-secondary btn-sm">Reset to Defaults</button>
+            <button class="btn btn-secondary btn-sm" id="btnResetBodyGeometry">Reset to Defaults</button>
           </div>
           <div class="form-row">
             <div class="slider-group">
@@ -326,21 +326,21 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Coxa Axis</label>
-              <select class="form-select">
+              <select class="form-select config-select" id="coxaAxis" data-config-key="coxa_axis">
                 <option value="z">Yaw around Z (vertical)</option>
                 <option value="y">Yaw around Y</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Femur Axis</label>
-              <select class="form-select">
+              <select class="form-select config-select" id="femurAxis" data-config-key="femur_axis">
                 <option value="y">Pitch around Y</option>
                 <option value="x">Pitch around X</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Tibia Axis</label>
-              <select class="form-select">
+              <select class="form-select config-select" id="tibiaAxis" data-config-key="tibia_axis">
                 <option value="y">Pitch around Y</option>
                 <option value="x">Pitch around X</option>
               </select>
@@ -432,7 +432,7 @@
               <button class="btn btn-secondary btn-sm" id="btnRefreshCalibration">Refresh Status</button>
               <button class="btn btn-primary btn-sm" id="btnSaveCalibration">Save Calibration</button>
               <button class="btn btn-secondary btn-sm" id="btnAutoFillTemplate">Auto-fill Template</button>
-              <button class="btn btn-warning btn-sm">Highlight All</button>
+              <button class="btn btn-warning btn-sm" id="btnHighlightAll">Highlight All</button>
             </div>
           </div>
 
@@ -494,7 +494,7 @@
           <div class="card-header">
             <span class="card-title">Joint Limits & Tuning</span>
             <div class="card-actions">
-              <button class="btn btn-secondary btn-sm">Apply to All</button>
+              <button class="btn btn-secondary btn-sm" id="btnApplyLimitsToAll">Apply to All</button>
             </div>
           </div>
 
@@ -975,77 +975,25 @@
       <div class="tab-content active" id="tab-sensor-cameras">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Hardware Cameras</span>
+            <span class="card-title">Cameras</span>
             <div style="display: flex; gap: 8px;">
-              <button class="btn btn-secondary btn-sm" id="detectCamerasBtn">🔍 Detect</button>
-              <button class="btn btn-primary btn-sm" id="addHardwareCameraBtn">+ Add Camera</button>
+              <button class="btn btn-secondary btn-sm" id="detectCamerasBtn">Detect</button>
+              <button class="btn btn-primary btn-sm" id="addCameraBtn">+ Add Camera</button>
             </div>
           </div>
           <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-            Configure hardware cameras attached to the system. These can then be used in Live Camera Layout.
+            Configure cameras and how they're displayed in the main UI. Each camera combines a video source with display settings.
           </p>
-          <div id="hardwareCameraList" style="margin-bottom: 12px;"></div>
-          <div id="noHardwareCameras" style="display: none; padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
-            No cameras configured. Click "Detect" to scan for attached cameras or "Add Camera" to add manually.
+          <div id="cameraList" style="margin-bottom: 12px;"></div>
+          <div id="noCameras" style="display: none; padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;">
+            No cameras configured. Click "Detect" to scan for cameras or "Add Camera" to add manually.
           </div>
           <div style="display: flex; gap: 8px; margin-top: 12px;">
-            <button class="btn btn-secondary btn-sm" id="saveHardwareCamerasBtn">Save Camera Config</button>
-          </div>
-        </div>
-
-        <div class="card" id="cameraTransformCard" style="display: none;">
-          <div class="card-header">
-            <span class="card-title">Camera Transform</span>
-            <select class="form-select" id="transformCameraSelect" style="width: 160px; font-size: 12px;">
-              <option value="">Select a camera...</option>
-            </select>
-          </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-            Configure the physical position and orientation of the selected camera on the robot.
-          </p>
-          <div class="transform-editor" id="cameraTransformEditor">
-            <div class="transform-axis">
-              <div class="transform-axis-label">Position X (mm)</div>
-              <input type="number" class="transform-axis-input" id="camTransformX" value="0" data-field="x">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Position Y (mm)</div>
-              <input type="number" class="transform-axis-input" id="camTransformY" value="0" data-field="y">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Position Z (mm)</div>
-              <input type="number" class="transform-axis-input" id="camTransformZ" value="0" data-field="z">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Roll (deg)</div>
-              <input type="number" class="transform-axis-input" id="camTransformRoll" value="0" data-field="roll">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Pitch (deg)</div>
-              <input type="number" class="transform-axis-input" id="camTransformPitch" value="0" data-field="pitch">
-            </div>
-            <div class="transform-axis">
-              <div class="transform-axis-label">Yaw (deg)</div>
-              <input type="number" class="transform-axis-input" id="camTransformYaw" value="0" data-field="yaw">
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Live Camera Layout</span>
-            <span class="card-badge">Main UI</span>
-          </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
-            Configure how camera feeds are displayed in the main control interface. These views will be available as a dropdown selection in the main UI.
-          </p>
-          <div id="cameraLayoutList" style="margin-bottom: 16px;"></div>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-primary btn-sm" id="addCameraLayoutBtn">+ Add Camera View</button>
-            <button class="btn btn-secondary btn-sm" id="saveCameraLayoutBtn">Save Layout</button>
+            <button class="btn btn-secondary btn-sm" id="saveCamerasBtn">Save Cameras</button>
           </div>
           <p style="font-size: 11px; color: var(--text-muted); margin-top: 12px;">
-            <strong>Display Modes:</strong> "Floating Pane" shows camera as a draggable window. "3D Overlay" projects the video onto the 3D scene background.
+            <strong>Source types:</strong> Browser (local webcam), USB (/dev/video*), RTSP (network stream), HTTP (MJPEG stream)<br>
+            <strong>Display modes:</strong> Dock (floating pane in corner), Overlay (projected in 3D scene)
           </p>
         </div>
       </div>
@@ -1229,7 +1177,7 @@
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Connected Controller</label>
-              <select class="form-select" id="gamepad-controller">
+              <select class="form-select config-select" id="gamepad-controller" data-config-key="gamepad_type">
                 <option value="xbox">Xbox Controller</option>
                 <option value="playstation">PlayStation Controller</option>
                 <option value="generic">Generic Gamepad</option>

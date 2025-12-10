@@ -479,21 +479,103 @@
     .webcam-btn.active {
       background: #51cf66;
     }
+    .webcam-btn:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
+    .camera-checkbox-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .camera-checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .camera-checkbox-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .camera-checkbox-item input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .camera-checkbox-item label {
+      flex: 1;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-width: 0; /* Allow text truncation */
+    }
+    .camera-checkbox-item .camera-position {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: capitalize;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+    .camera-checkbox-item button {
+      flex-shrink: 0;
+    }
     .camera-dock {
       position: fixed;
+      top: 70px;
       bottom: 14px;
       left: 310px;
       right: 14px;
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      grid-template-rows: auto auto auto;
-      grid-template-areas:
-        "front front front"
-        "left . right"
-        "rear rear rear";
-      gap: 10px;
       z-index: 500;
       pointer-events: none;
+      /* Container for positioned camera panes - no layout, panes position themselves */
+    }
+    /* Containers for grouping cameras by position */
+    .camera-position-group {
+      position: absolute;
+      display: flex;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .camera-position-group.group-left {
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .camera-position-group.group-right {
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .camera-position-group.group-front {
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      flex-direction: row;
+      justify-content: center;
+    }
+    .camera-position-group.group-rear {
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      flex-direction: row;
+      justify-content: center;
+    }
+    .camera-position-group.group-floating {
+      position: static;
     }
     .camera-pane {
       background: rgba(15, 15, 15, 0.92);
@@ -506,11 +588,17 @@
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
       pointer-events: auto;
     }
-    /* Camera positions in grid - front on top, rear on bottom, left/right in middle */
-    .camera-pane.position-front { grid-area: front; justify-self: center; max-width: 300px; }
-    .camera-pane.position-left { grid-area: left; justify-self: start; }
-    .camera-pane.position-right { grid-area: right; justify-self: end; }
-    .camera-pane.position-rear { grid-area: rear; justify-self: center; max-width: 300px; }
+    /* Left/right cameras are vertical - taller than wide */
+    .camera-position-group.group-left .camera-pane,
+    .camera-position-group.group-right .camera-pane {
+      min-width: 160px;
+      max-width: 200px;
+    }
+    /* Front/rear cameras can be wider */
+    .camera-position-group.group-front .camera-pane,
+    .camera-position-group.group-rear .camera-pane {
+      max-width: 280px;
+    }
     .camera-pane.position-floating {
       position: fixed;
       cursor: move;
@@ -1241,9 +1329,10 @@
   <!-- Camera Presets -->
   <div class="camera-presets" role="group" aria-label="Camera view presets">
     <button class="camera-preset-btn" data-view="front" title="View hexapod from the front" aria-label="Front view">Front</button>
+    <button class="camera-preset-btn active" data-view="back" title="View hexapod from the back (default)" aria-label="Back view" aria-pressed="true">Back</button>
     <button class="camera-preset-btn" data-view="side" title="View hexapod from the side" aria-label="Side view">Side</button>
     <button class="camera-preset-btn" data-view="top" title="View hexapod from above" aria-label="Top view">Top</button>
-    <button class="camera-preset-btn active" data-view="iso" title="Isometric 3D view (default)" aria-label="Isometric view" aria-pressed="true">Iso</button>
+    <button class="camera-preset-btn" data-view="iso" title="Isometric 3D view" aria-label="Isometric view">Iso</button>
   </div>
 
   <!-- Live camera dock -->
@@ -1272,7 +1361,7 @@
   <button class="gear-btn" id="gearBtn" title="Settings" aria-label="Open settings panel" aria-expanded="false" aria-controls="settingsPanel">⚙</button>
 
   <!-- Settings Panel -->
-  <div id="settingsPanel" role="dialog" aria-labelledby="settingsPanelTitle" aria-modal="false">
+  <div id="settingsPanel" role="dialog" aria-labelledby="settingsPanelTitle" aria-modal="true">
     <div class="settings-header">
       <div class="settings-title">
         <span id="settingsPanelTitle">Settings</span>
@@ -1513,14 +1602,8 @@
       <div class="settings-content" id="tab-camera">
         <div class="settings-group">
           <div class="settings-group-title">Camera Selection</div>
-          <div class="setting-row">
-            <span class="setting-label">Active Camera</span>
-            <select id="activeCameraSelect" class="setting-select" style="width: 160px;">
-              <option value="">-- None --</option>
-            </select>
-          </div>
-          <div id="cameraInfo" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: none;">
-            <span id="cameraTypeLabel"></span>
+          <div id="cameraCheckboxList" class="camera-checkbox-list">
+            <div style="color: var(--text-muted); font-size: 11px;">No cameras configured</div>
           </div>
           <p class="camera-note" style="margin-top: 8px; font-size: 11px;">
             Configure cameras in <a href="config.html" target="_blank" style="color: var(--accent);">Configuration</a> &rarr; Sensors &amp; Cameras
@@ -1528,15 +1611,16 @@
         </div>
 
         <div class="settings-group" id="cameraControlGroup">
-          <div class="settings-group-title">Camera Feed</div>
-          <video id="webcamFeed" autoplay playsinline muted></video>
-          <div class="webcam-controls">
-            <button class="webcam-btn" id="startWebcam">Start Camera</button>
-            <button class="webcam-btn" id="stopWebcam">Stop Camera</button>
+          <div class="settings-group-title">Camera Controls</div>
+          <div class="webcam-controls" style="margin-bottom: 8px;">
+            <button class="webcam-btn" id="startAllCameras">Start All</button>
+            <button class="webcam-btn" id="stopAllCameras">Stop All</button>
           </div>
-          <div id="cameraStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;">
-            Select a camera above to start streaming
+          <div id="cameraStatus" style="font-size: 11px; color: var(--text-muted); text-align: center;">
+            Select cameras above to display
           </div>
+          <!-- Hidden video element for local webcam stream (used by overlays) -->
+          <video id="webcamFeed" autoplay playsinline muted style="display: none;"></video>
         </div>
 
         <div class="settings-group">
@@ -1603,7 +1687,7 @@
       <div class="control-grid" role="group" aria-labelledby="movementLabel">
         <div style="grid-column: 2"><button class="control-btn" id="btn-up" aria-label="Move forward">↑ FWD</button></div>
         <div style="grid-column: 1"><button class="control-btn" id="btn-left" aria-label="Strafe left">← LEFT</button></div>
-        <div style="grid-column: 2"><canvas id="joystick" width="60" height="60" role="img" aria-label="Virtual joystick for directional control"></canvas></div>
+        <div style="grid-column: 2"><canvas id="joystick" width="60" height="60" role="application" aria-label="Virtual joystick - drag to control direction" tabindex="0"></canvas></div>
         <div style="grid-column: 3"><button class="control-btn" id="btn-right" aria-label="Strafe right">RIGHT →</button></div>
         <div style="grid-column: 2"><button class="control-btn" id="btn-down" aria-label="Move backward">↓ BACK</button></div>
       </div>

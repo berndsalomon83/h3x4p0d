@@ -5,6 +5,8 @@
 const state = {
   connected: false,
   ws: null,
+  wsReconnectAttempts: 0,
+  wsReconnectTimeout: null,
 
   // Map state
   map: null,
@@ -16,11 +18,13 @@ const state = {
   satelliteView: false,
   currentDrawHandler: null,
   firstVertexMarker: null,
+  drawingCancelled: false, // Flag to skip CREATED event if we cancelled
 
   // Position tracking
   hexapodPosition: { lat: 37.7749, lng: -122.4194 }, // Default: San Francisco (will be updated)
   hexapodHeading: 0,
   homePosition: null,
+  lastPosition: null, // Last known position for distance calculation
 
   // Patrol state
   patrolStatus: 'stopped', // 'stopped', 'running', 'paused'
@@ -35,6 +39,8 @@ const state = {
   routes: [],
   selectedRoute: null,
   editingRoute: null,
+  geometryEditRoute: null, // Route currently having geometry edited
+  originalCoordinates: null, // Original coords before geometry edit (for cancel)
   routeSortBy: 'name', // 'name', 'date', 'distance', 'priority'
   routeSortAsc: true,
 
@@ -43,6 +49,7 @@ const state = {
   detectionMarkers: [],
   customTargets: [], // Custom detection targets with YOLO model info
   editingCustomTarget: null, // Track which custom target is being edited
+  selectedDetection: null, // Currently selected detection for modal
   selectedModelFile: null, // Temp storage for model file upload
   detectionCounts: {
     snail: 0,
@@ -52,6 +59,7 @@ const state = {
     package: 0,
     custom: 0
   },
+  lastAlertTime: {}, // Track last alert time per detection type for cooldown
 
   // Settings
   settings: {
@@ -71,13 +79,19 @@ const state = {
       pause: false,
       cooldown: 30
     },
-    schedule: {
-      enabled: false,
-      days: [0, 1, 2, 3, 4, 5, 6],
-      startTime: '06:00',
-      endTime: '20:00',
-      interval: 60
-    }
+    schedules: [] // Array of schedule entries, each with: id, name, enabled, days, startTime, endTime, interval, routeIds, targets
+  },
+  // Default schedule template
+  defaultSchedule: {
+    id: null,
+    name: 'New Schedule',
+    enabled: true,
+    days: [0, 1, 2, 3, 4, 5, 6],
+    startTime: '06:00',
+    endTime: '20:00',
+    interval: 60,
+    routeIds: [], // IDs of routes/zones to patrol
+    targets: ['snail'] // Detection targets for this schedule
   }
 };
 
@@ -88,7 +102,9 @@ const STORAGE_KEYS = {
   homePosition: 'hexapod_home_position',
   detections: 'hexapod_detections',
   satelliteView: 'hexapod_patrol_satellite_view',
-  customTargets: 'hexapod_custom_targets'
+  customTargets: 'hexapod_custom_targets',
+  sortPrefs: 'hexapod_patrol_sort',
+  schedules: 'hexapod_patrol_schedules'
 };
 
 // ========== Initialization ==========
@@ -113,7 +129,7 @@ function loadFromStorage() {
     if (settings) state.settings = { ...state.settings, ...JSON.parse(settings) };
     if (homePosition) {
       state.homePosition = JSON.parse(homePosition);
-      console.log('[Patrol] Loaded home position from storage:', state.homePosition);
+      // Home position loaded from storage
     }
     if (detections) {
       const parsed = JSON.parse(detections);
@@ -124,6 +140,37 @@ function loadFromStorage() {
 
     const customTargets = localStorage.getItem(STORAGE_KEYS.customTargets);
     if (customTargets) state.customTargets = JSON.parse(customTargets);
+
+    const sortPrefs = localStorage.getItem(STORAGE_KEYS.sortPrefs);
+    if (sortPrefs) {
+      const prefs = JSON.parse(sortPrefs);
+      state.routeSortBy = prefs.sortBy || 'name';
+      state.routeSortAsc = prefs.sortAsc !== false;
+    }
+
+    // Load schedules
+    const schedules = localStorage.getItem(STORAGE_KEYS.schedules);
+    if (schedules) {
+      state.settings.schedules = JSON.parse(schedules);
+    }
+    // Migrate old single schedule format if exists
+    if (state.settings.schedule && !state.settings.schedules.length) {
+      const oldSchedule = state.settings.schedule;
+      if (oldSchedule.enabled || oldSchedule.days?.length) {
+        state.settings.schedules.push({
+          id: Date.now(),
+          name: 'Migrated Schedule',
+          enabled: oldSchedule.enabled || false,
+          days: oldSchedule.days || [0, 1, 2, 3, 4, 5, 6],
+          startTime: oldSchedule.startTime || '06:00',
+          endTime: oldSchedule.endTime || '20:00',
+          interval: oldSchedule.interval || 60,
+          routeIds: [],
+          targets: state.settings.detectionTargets || ['snail']
+        });
+      }
+      delete state.settings.schedule;
+    }
   } catch (e) {
     console.error('Failed to load from storage:', e);
   }
@@ -140,9 +187,15 @@ function saveToStorage() {
       detections: state.detections.slice(-100), // Keep last 100
       counts: state.detectionCounts
     }));
+    // Save schedules separately for easier access
+    localStorage.setItem(STORAGE_KEYS.schedules, JSON.stringify(state.settings.schedules));
   } catch (e) {
     console.error('Failed to save to storage:', e);
   }
+}
+
+function saveSchedules() {
+  localStorage.setItem(STORAGE_KEYS.schedules, JSON.stringify(state.settings.schedules));
 }
 
 // ========== Map Initialization ==========
@@ -207,78 +260,131 @@ function initMap() {
     }
   });
 
-  // Track first vertex for visual highlighting
+  // Track vertices for visual highlighting and finish helpers
   state.map.on(L.Draw.Event.DRAWVERTEX, (e) => {
-    // Only create first vertex marker for zone drawing, and only once
-    if (state.currentDrawType !== 'zone') return;
-    if (state.firstVertexMarker) return; // Already created
-
     const layers = e.layers;
-    let firstVertex = null;
+    let lastVertex = null;
+    let vertexCount = 0;
     layers.eachLayer(layer => {
-      if (!firstVertex) firstVertex = layer;
+      lastVertex = layer;
+      vertexCount++;
     });
 
-    if (!firstVertex) return;
+    if (!lastVertex) return;
 
-    const latlng = firstVertex.getLatLng();
+    const latlng = lastVertex.getLatLng();
 
-    // Create pulsing first vertex marker
-    const firstVertexIcon = L.divIcon({
-      className: 'first-vertex-marker',
-      html: '<div class="first-vertex-pulse"></div><div class="first-vertex-inner">1</div>',
-      iconSize: [30, 30],
-      iconAnchor: [15, 15]
-    });
+    if (state.currentDrawType === 'zone') {
+      // For zones: create first vertex marker only once
+      if (state.firstVertexMarker) return;
 
-    state.firstVertexMarker = L.marker(latlng, {
-      icon: firstVertexIcon,
-      interactive: true,
-      zIndexOffset: 1000
-    }).addTo(state.map);
+      let firstVertex = null;
+      layers.eachLayer(layer => {
+        if (!firstVertex) firstVertex = layer;
+      });
 
-    // Click on first vertex to complete polygon
-    state.firstVertexMarker.on('click', (evt) => {
-      L.DomEvent.stopPropagation(evt);
-      if (state.currentDrawHandler && state.currentDrawHandler._markers && state.currentDrawHandler._markers.length >= 3) {
-        state.currentDrawHandler.completeShape();
-      } else {
-        addLog('Need at least 3 points to complete zone');
+      if (!firstVertex) return;
+
+      const firstLatlng = firstVertex.getLatLng();
+
+      // Create pulsing first vertex marker
+      const firstVertexIcon = L.divIcon({
+        className: 'first-vertex-marker',
+        html: '<div class="first-vertex-pulse"></div><div class="first-vertex-inner">1</div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+
+      state.firstVertexMarker = L.marker(firstLatlng, {
+        icon: firstVertexIcon,
+        interactive: true,
+        zIndexOffset: 1000
+      }).addTo(state.map);
+
+      // Click on first vertex to complete polygon
+      state.firstVertexMarker.on('click', (evt) => {
+        L.DomEvent.stopPropagation(evt);
+        if (state.currentDrawHandler && state.currentDrawHandler._markers && state.currentDrawHandler._markers.length >= 3) {
+          state.currentDrawHandler.completeShape();
+        } else {
+          addLog('Need at least 3 points to complete zone');
+        }
+      });
+
+      addLog('First point placed - continue adding points, then click the red "1" to close');
+
+    } else if (state.currentDrawType === 'route') {
+      // For routes: show finish marker after at least 2 points
+      if (vertexCount >= 2) {
+        // Remove existing finish marker if any
+        if (state.firstVertexMarker) {
+          state.map.removeLayer(state.firstVertexMarker);
+        }
+
+        // Create finish marker at last point
+        const finishIcon = L.divIcon({
+          className: 'first-vertex-marker',
+          html: '<div class="route-finish-pulse"></div><div class="route-finish-inner">✓</div>',
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        });
+
+        state.firstVertexMarker = L.marker(latlng, {
+          icon: finishIcon,
+          interactive: true,
+          zIndexOffset: 1000
+        }).addTo(state.map);
+
+        // Click on finish marker to complete polyline
+        state.firstVertexMarker.on('click', (evt) => {
+          L.DomEvent.stopPropagation(evt);
+          if (state.currentDrawHandler && state.currentDrawHandler._markers && state.currentDrawHandler._markers.length >= 2) {
+            state.currentDrawHandler.completeShape();
+          }
+        });
+
+        if (vertexCount === 2) {
+          addLog('Route started - add more waypoints or click the green ✓ to finish');
+        }
       }
-    });
-
-    addLog('First point placed - continue adding points, then click the red "1" to close');
+    }
   });
 
   // Clean up first vertex marker when drawing stops
+  // NOTE: DRAWSTOP fires BEFORE CREATED, so don't reset currentDrawType here
+  // The CREATED event or cancelDrawing will reset it properly
   state.map.on(L.Draw.Event.DRAWSTOP, () => {
     if (state.firstVertexMarker) {
       state.map.removeLayer(state.firstVertexMarker);
       state.firstVertexMarker = null;
     }
     state.currentDrawHandler = null;
-    state.currentDrawType = null;
+    // Don't reset currentDrawType here - CREATED event needs it!
     // Re-enable double-click zoom
     state.map.doubleClickZoom.enable();
     // Hide cancel button
     updateDrawingUI(false);
   });
 
-  state.map.on(L.Draw.Event.CREATED, () => {
+  // Draw events - main CREATED handler
+  state.map.on(L.Draw.Event.CREATED, (e) => {
+    // Clean up first vertex marker and draw handler
     if (state.firstVertexMarker) {
       state.map.removeLayer(state.firstVertexMarker);
       state.firstVertexMarker = null;
     }
     state.currentDrawHandler = null;
-    // Re-enable double-click zoom
     state.map.doubleClickZoom.enable();
-    // Hide cancel button
     updateDrawingUI(false);
-  });
-
-  // Draw events
-  state.map.on(L.Draw.Event.CREATED, (e) => {
     const layer = e.layer;
+
+    // If drawing was cancelled, remove the layer and don't create a route
+    if (state.drawingCancelled) {
+      if (layer) {
+        state.map.removeLayer(layer);
+      }
+      return;
+    }
 
     if (state.editingRoute) {
       // Update existing route
@@ -381,10 +487,7 @@ function initMap() {
 
   // Create home marker if set
   if (state.homePosition) {
-    console.log('[Patrol] Creating home marker at:', state.homePosition);
     createHomeMarker(state.homePosition);
-  } else {
-    console.log('[Patrol] No home position to restore');
   }
 
   // Center map on content: prefer routes, fall back to home position
@@ -438,7 +541,6 @@ function createHomeMarker(position) {
   }).addTo(state.map);
 
   state.homeMarker.bindPopup('<strong>Home Position</strong>');
-  console.log('[Patrol] Home marker created at:', position.lat, position.lng);
 }
 
 function getLayerCoordinates(layer) {
@@ -527,10 +629,17 @@ function updateRouteOnMap(route) {
 }
 
 function saveRoutes() {
-  // Save routes without the layer reference (non-serializable)
+  // Save routes with only serializable properties (exclude layer, waypointMarkers, etc.)
   const routesForStorage = state.routes.map(r => ({
-    ...r,
-    layer: undefined
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    color: r.color,
+    priority: r.priority,
+    type: r.type,
+    coordinates: r.coordinates,
+    createdAt: r.createdAt,
+    visible: r.visible
   }));
   localStorage.setItem(STORAGE_KEYS.routes, JSON.stringify(routesForStorage));
 }
@@ -600,45 +709,14 @@ function initEventListeners() {
     saveToStorage();
   });
 
-  // Schedule enabled
-  document.getElementById('scheduleEnabled').addEventListener('change', (e) => {
-    state.settings.schedule.enabled = e.target.checked;
-    document.getElementById('scheduleSettings').style.opacity = e.target.checked ? '1' : '0.5';
-    document.getElementById('scheduleSettings').style.pointerEvents = e.target.checked ? 'auto' : 'none';
-    saveToStorage();
-  });
+  // Add Schedule button
+  const addScheduleBtn = document.getElementById('addScheduleBtn');
+  if (addScheduleBtn) {
+    addScheduleBtn.addEventListener('click', () => openScheduleModal());
+  }
 
-  // Schedule days
-  document.querySelectorAll('.schedule-day').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.classList.toggle('active');
-      const day = parseInt(btn.dataset.day);
-      const idx = state.settings.schedule.days.indexOf(day);
-      if (idx >= 0) {
-        state.settings.schedule.days.splice(idx, 1);
-      } else {
-        state.settings.schedule.days.push(day);
-        state.settings.schedule.days.sort();
-      }
-      saveToStorage();
-    });
-  });
-
-  // Schedule times
-  document.getElementById('scheduleStart').addEventListener('change', (e) => {
-    state.settings.schedule.startTime = e.target.value;
-    saveToStorage();
-  });
-
-  document.getElementById('scheduleEnd').addEventListener('change', (e) => {
-    state.settings.schedule.endTime = e.target.value;
-    saveToStorage();
-  });
-
-  document.getElementById('scheduleInterval').addEventListener('change', (e) => {
-    state.settings.schedule.interval = parseInt(e.target.value);
-    saveToStorage();
-  });
+  // Initial render of schedule list
+  renderScheduleList();
 
   // Color options
   document.querySelectorAll('.color-option').forEach(opt => {
@@ -646,6 +724,20 @@ function initEventListeners() {
       document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
       opt.classList.add('selected');
     });
+  });
+
+  // Modal backdrop click-to-close
+  document.getElementById('routeModal').addEventListener('click', (e) => {
+    if (e.target.id === 'routeModal') closeRouteModal();
+  });
+  document.getElementById('detectionModal').addEventListener('click', (e) => {
+    if (e.target.id === 'detectionModal') closeDetectionModal();
+  });
+  document.getElementById('customDetectionModal').addEventListener('click', (e) => {
+    if (e.target.id === 'customDetectionModal') closeCustomDetectionModal();
+  });
+  document.getElementById('scheduleModal').addEventListener('click', (e) => {
+    if (e.target.id === 'scheduleModal') closeScheduleModal();
   });
 
   // Keyboard shortcuts
@@ -656,15 +748,39 @@ function initEventListeners() {
       if (e.key !== 'Escape') return;
     }
 
-    // Escape to cancel drawing or close help
+    // Escape to cancel drawing, geometry edit, close modals, or close help
     if (e.key === 'Escape') {
-      if (state.currentDrawHandler) {
+      // Check for open modals first
+      const routeModal = document.getElementById('routeModal');
+      const detectionModal = document.getElementById('detectionModal');
+      const customDetectionModal = document.getElementById('customDetectionModal');
+
+      if (routeModal.classList.contains('visible')) {
+        closeRouteModal();
+        e.preventDefault();
+      } else if (detectionModal.classList.contains('visible')) {
+        closeDetectionModal();
+        e.preventDefault();
+      } else if (customDetectionModal.classList.contains('visible')) {
+        closeCustomDetectionModal();
+        e.preventDefault();
+      } else if (state.geometryEditRoute) {
+        cancelGeometryEdit();
+        e.preventDefault();
+        e.stopImmediatePropagation(); // Prevent Leaflet's handler from also running
+      } else if (state.currentDrawHandler) {
         cancelDrawing();
         e.preventDefault();
+        e.stopImmediatePropagation(); // Prevent Leaflet's handler from also running
       } else if (document.getElementById('keyboardHelp').style.display !== 'none') {
         toggleKeyboardHelp();
         e.preventDefault();
       }
+    }
+    // Enter to save geometry edit
+    if (e.key === 'Enter' && state.geometryEditRoute && !e.target.matches('input, textarea, select')) {
+      saveGeometryEdit();
+      e.preventDefault();
     }
     // Ctrl+S to save routes
     if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
@@ -720,14 +836,26 @@ function toggleKeyboardHelp() {
 
 // ========== WebSocket Connection ==========
 function connectWebSocket() {
+  // Clear any existing reconnect timeout
+  if (state.wsReconnectTimeout) {
+    clearTimeout(state.wsReconnectTimeout);
+    state.wsReconnectTimeout = null;
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws`;
 
-  state.ws = new WebSocket(wsUrl);
+  try {
+    state.ws = new WebSocket(wsUrl);
+  } catch (e) {
+    console.error('Failed to create WebSocket:', e);
+    scheduleReconnect();
+    return;
+  }
 
   state.ws.onopen = () => {
-    console.log('WebSocket connected');
     state.connected = true;
+    state.wsReconnectAttempts = 0; // Reset on successful connection
     updateConnectionStatus(true);
 
     // Request initial position
@@ -735,12 +863,9 @@ function connectWebSocket() {
   };
 
   state.ws.onclose = () => {
-    console.log('WebSocket disconnected');
     state.connected = false;
     updateConnectionStatus(false);
-
-    // Reconnect after delay
-    setTimeout(connectWebSocket, 3000);
+    scheduleReconnect();
   };
 
   state.ws.onerror = (error) => {
@@ -755,6 +880,37 @@ function connectWebSocket() {
       console.error('Failed to parse message:', e);
     }
   };
+}
+
+function scheduleReconnect() {
+  const maxAttempts = 10; // Stop after ~17 minutes of retrying
+
+  // Check if we've exceeded max attempts
+  if (state.wsReconnectAttempts >= maxAttempts) {
+    updateConnectionStatus(false, 'Connection failed - server unavailable');
+    addLog('Connection failed after maximum retries. Click connection status to retry.');
+    return;
+  }
+
+  // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+  const baseDelay = 1000;
+  const maxDelay = 30000;
+  const delay = Math.min(baseDelay * Math.pow(2, state.wsReconnectAttempts), maxDelay);
+
+  state.wsReconnectAttempts++;
+
+  state.wsReconnectTimeout = setTimeout(connectWebSocket, delay);
+}
+
+function retryConnection() {
+  // Reset reconnect attempts and try again
+  state.wsReconnectAttempts = 0;
+  if (state.wsReconnectTimeout) {
+    clearTimeout(state.wsReconnectTimeout);
+    state.wsReconnectTimeout = null;
+  }
+  addLog('Manually retrying connection...');
+  connectWebSocket();
 }
 
 function sendCommand(type, data = {}) {
@@ -841,6 +997,8 @@ function updatePosition(data) {
   }
 }
 
+const MAX_DETECTIONS = 100; // Limit to prevent memory leak
+
 function handleDetection(data) {
   const detection = {
     id: 'det_' + Date.now(),
@@ -852,8 +1010,11 @@ function handleDetection(data) {
     imageUrl: data.imageUrl || null
   };
 
-  // Add to detections
+  // Add to detections (limit array size to prevent memory leak)
   state.detections.unshift(detection);
+  if (state.detections.length > MAX_DETECTIONS) {
+    state.detections.pop(); // Remove oldest detection
+  }
   state.detectionCounts[detection.type] = (state.detectionCounts[detection.type] || 0) + 1;
   state.patrolDetections++;
 
@@ -902,9 +1063,29 @@ function addDetectionMarker(detection) {
   `);
 
   state.detectionMarkers.push(marker);
+
+  // Limit markers to prevent memory leak
+  if (state.detectionMarkers.length > MAX_DETECTIONS) {
+    const oldMarker = state.detectionMarkers.shift();
+    state.map.removeLayer(oldMarker);
+  }
 }
 
 function triggerAlerts(detection) {
+  // Check cooldown - skip alerts if within cooldown period for this detection type
+  const now = Date.now();
+  const lastTime = state.lastAlertTime[detection.type] || 0;
+  const cooldownMs = (state.settings.alerts.cooldown || 30) * 1000;
+
+  if (now - lastTime < cooldownMs) {
+    // Within cooldown, skip alert sounds/notifications but still log
+    addLog(`Detection: ${detection.type} (${Math.round(detection.confidence * 100)}% confidence) [cooldown active]`);
+    return;
+  }
+
+  // Update last alert time
+  state.lastAlertTime[detection.type] = now;
+
   // Sound alert
   if (state.settings.alerts.sound) {
     playAlertSound();
@@ -913,6 +1094,12 @@ function triggerAlerts(detection) {
   // Browser notification
   if (state.settings.alerts.notification) {
     showNotification(detection);
+  }
+
+  // Pause patrol on detection if enabled
+  if (state.settings.alerts.pause && state.patrolStatus === 'running') {
+    pausePatrol();
+    addLog('Patrol paused due to detection');
   }
 
   // Log
@@ -937,7 +1124,7 @@ function playAlertSound() {
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.5);
   } catch (e) {
-    console.log('Could not play alert sound:', e);
+    // Sound playback failed (usually autoplay restrictions)
   }
 }
 
@@ -1017,6 +1204,8 @@ function startPatrol() {
   state.patrolDistance = 0;
   state.patrolDetections = 0;
   state.currentWaypointIndex = 0;
+  state.lastPosition = null; // Reset for fresh distance tracking
+  state.lastAlertTime = {}; // Reset alert cooldowns for new patrol
 
   updatePatrolUI();
   addLog(`Started patrol: ${route.name}`);
@@ -1040,6 +1229,7 @@ function stopPatrol() {
   sendCommand('patrol_stop');
   state.patrolStatus = 'stopped';
   state.activeRoute = null;
+  state.lastPosition = null; // Reset for next patrol
   updatePatrolUI();
   addLog('Patrol stopped');
 }
@@ -1166,6 +1356,9 @@ function handlePatrolComplete(data) {
 function updatePatrolUI() {
   const statusEl = document.getElementById('patrolStatus');
   const statusTextEl = document.getElementById('patrolStatusText');
+  const routeInfoEl = document.getElementById('patrolRouteInfo');
+  const routeColorEl = document.getElementById('patrolRouteColor');
+  const routeTypeEl = document.getElementById('patrolRouteType');
   const routeNameEl = document.getElementById('patrolRouteName');
 
   // Update status panel
@@ -1179,12 +1372,23 @@ function updatePatrolUI() {
     statusTextEl.textContent = 'Stopped';
   }
 
-  // Update route name
+  // Update route info
   if (state.activeRoute) {
     const route = state.routes.find(r => r.id === state.activeRoute);
-    routeNameEl.textContent = route ? route.name : 'Unknown route';
+    if (route) {
+      routeInfoEl.style.display = 'flex';
+      routeColorEl.style.background = route.color || '#4caf50';
+      const isZone = route.type === 'polygon' || route.type === 'rectangle';
+      routeTypeEl.textContent = isZone ? '⬡ Zone:' : '📍 Route:';
+      routeNameEl.textContent = route.name;
+    } else {
+      routeInfoEl.style.display = 'flex';
+      routeTypeEl.textContent = '';
+      routeNameEl.textContent = 'Unknown route';
+      routeColorEl.style.background = '#666';
+    }
   } else {
-    routeNameEl.textContent = 'No route selected';
+    routeInfoEl.style.display = 'none';
   }
 
   // Update buttons
@@ -1264,7 +1468,7 @@ function closeRouteModal() {
 }
 
 function createRoute() {
-  const name = document.getElementById('routeName').value;
+  const name = document.getElementById('routeName').value.trim();
   if (!name) {
     alert('Please enter a route name');
     return;
@@ -1296,10 +1500,12 @@ function createRoute() {
     return;
   }
 
-  // Save draw type BEFORE closing modal (which resets it to null)
+  // Save draw type for drawing - don't call closeRouteModal() yet as it resets currentDrawType
   const drawType = state.currentDrawType === 'zone' ? 'polygon' : 'polyline';
 
-  closeRouteModal();
+  // Just hide the modal visually - don't reset state.currentDrawType
+  // The CREATED event handler will reset it after successful drawing
+  document.getElementById('routeModal').classList.remove('visible');
 
   // Enable drawing mode on map for new routes
 
@@ -1327,7 +1533,7 @@ function createRoute() {
       }
     });
     state.currentDrawHandler.enable();
-    addLog(`Drawing route: Click to add waypoints. Double-click last point to finish. Press Escape to cancel.`);
+    addLog(`Drawing route: Click to add waypoints. Click the green ✓ marker or double-click to finish. Press Escape to cancel.`);
   }
 
   // Show cancel button
@@ -1360,12 +1566,12 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
 
 // formatDistance is defined once in Utility Functions section
 
-function estimatePatrolTime(distanceMeters, speedPercent) {
-  // Assume max speed is about 0.5 m/s for the hexapod
-  const maxSpeed = 0.5; // m/s
-  const actualSpeed = maxSpeed * (speedPercent / 100);
-  const timeSeconds = distanceMeters / actualSpeed;
-  const minutes = Math.round(timeSeconds / 60);
+function estimatePatrolTime(distanceMeters, speedPercent, waypointCount = 0, waypointPauseSeconds = 0) {
+  // Uses estimatePatrolTimeRaw for base calculation, adds waypoint pauses, and formats result
+  const movementTimeSeconds = estimatePatrolTimeRaw(distanceMeters, speedPercent);
+  const pauseTimeSeconds = waypointCount * waypointPauseSeconds;
+  const totalTimeSeconds = movementTimeSeconds + pauseTimeSeconds;
+  const minutes = Math.round(totalTimeSeconds / 60);
   if (minutes < 60) {
     return `~${minutes}min`;
   }
@@ -1523,8 +1729,162 @@ function editRoute(routeId) {
   document.getElementById('routeModal').classList.add('visible');
 }
 
+function editRouteGeometry(routeId) {
+  const route = state.routes.find(r => r.id === routeId);
+  if (!route || !route.layer) return;
+
+  // Exit any existing geometry edit first
+  if (state.geometryEditRoute) {
+    cancelGeometryEdit();
+  }
+
+  // Store original coordinates for cancel
+  state.originalCoordinates = JSON.parse(JSON.stringify(route.coordinates));
+  state.geometryEditRoute = route;
+  state.selectedRoute = routeId;
+
+  // Enable editing on this layer
+  if (route.layer.editing) {
+    route.layer.editing.enable();
+  }
+
+  // Center on the route
+  if (route.layer.getBounds) {
+    state.map.fitBounds(route.layer.getBounds(), { padding: [50, 50] });
+  }
+
+  // Show geometry edit toolbar
+  showGeometryEditToolbar(route);
+
+  // Update UI
+  renderRoutesList();
+  addLog(`Editing geometry: ${route.name}`);
+}
+
+function showGeometryEditToolbar(route) {
+  // Remove existing toolbar if any
+  hideGeometryEditToolbar();
+
+  const toolbar = document.createElement('div');
+  toolbar.id = 'geometryEditToolbar';
+  toolbar.className = 'geometry-edit-toolbar';
+  toolbar.innerHTML = `
+    <div class="geometry-edit-info">
+      <span class="geometry-edit-icon">✏️</span>
+      <span>Editing: <strong>${route.name}</strong></span>
+      <span class="geometry-edit-hint">Drag vertices to move • Click vertex to delete • Click edge to add</span>
+    </div>
+    <div class="geometry-edit-actions">
+      <button class="btn btn-primary" onclick="saveGeometryEdit()">
+        💾 Save Changes
+      </button>
+      <button class="btn btn-secondary" onclick="cancelGeometryEdit()">
+        ✖ Cancel
+      </button>
+    </div>
+  `;
+  document.body.appendChild(toolbar);
+}
+
+function hideGeometryEditToolbar() {
+  const toolbar = document.getElementById('geometryEditToolbar');
+  if (toolbar) {
+    toolbar.remove();
+  }
+}
+
+function saveGeometryEdit() {
+  if (!state.geometryEditRoute || !state.geometryEditRoute.layer) return;
+
+  const route = state.geometryEditRoute;
+
+  // Disable editing
+  if (route.layer.editing) {
+    route.layer.editing.disable();
+  }
+
+  // Get updated coordinates
+  route.coordinates = getLayerCoordinates(route.layer);
+
+  // Refresh waypoint markers
+  addWaypointMarkersForRoute(route);
+
+  // Save and update UI
+  saveRoutes();
+  renderRoutesList();
+
+  addLog(`Geometry saved: ${route.name}`);
+
+  // Clear state
+  state.geometryEditRoute = null;
+  state.originalCoordinates = null;
+
+  hideGeometryEditToolbar();
+}
+
+function cancelGeometryEdit() {
+  if (!state.geometryEditRoute || !state.geometryEditRoute.layer) {
+    state.geometryEditRoute = null;
+    state.originalCoordinates = null;
+    hideGeometryEditToolbar();
+    return;
+  }
+
+  const route = state.geometryEditRoute;
+
+  // Disable editing
+  if (route.layer.editing) {
+    route.layer.editing.disable();
+  }
+
+  // Restore original coordinates
+  if (state.originalCoordinates) {
+    route.coordinates = state.originalCoordinates;
+
+    // Rebuild the layer with original coordinates
+    const layerOptions = {
+      color: route.color,
+      weight: 4,
+      opacity: 0.8
+    };
+
+    // Remove old layer
+    state.drawnItems.removeLayer(route.layer);
+
+    // Create new layer with original coordinates
+    const latLngs = route.coordinates.map(c => L.latLng(c[0], c[1]));
+    if (route.type === 'polygon') {
+      route.layer = L.polygon(latLngs, layerOptions);
+    } else {
+      route.layer = L.polyline(latLngs, layerOptions);
+    }
+
+    state.drawnItems.addLayer(route.layer);
+
+    // Refresh waypoint markers
+    addWaypointMarkersForRoute(route);
+  }
+
+  addLog(`Geometry edit cancelled: ${route.name}`);
+
+  // Clear state
+  state.geometryEditRoute = null;
+  state.originalCoordinates = null;
+
+  hideGeometryEditToolbar();
+  renderRoutesList();
+}
+
 function deleteRoute(routeId) {
-  if (!confirm('Delete this route?')) return;
+  // Check if this route is currently being patrolled
+  if (state.activeRoute === routeId && state.patrolStatus !== 'stopped') {
+    if (!confirm('This route is currently being patrolled! Stop patrol and delete?')) {
+      return;
+    }
+    stopPatrol();
+  } else if (!confirm('Delete this route?')) {
+    return;
+  }
 
   const routeIndex = state.routes.findIndex(r => r.id === routeId);
   if (routeIndex >= 0) {
@@ -1658,7 +2018,8 @@ function renderRoutesList() {
       timeInfo = zoneTime;
     } else if (route.type === 'polyline' && route.coordinates && route.coordinates.length >= 2) {
       const distance = calculateRouteDistance(route.coordinates);
-      const time = estimatePatrolTime(distance, state.settings.patrolSpeed);
+      const waypointCount = route.coordinates.length;
+      const time = estimatePatrolTime(distance, state.settings.patrolSpeed, waypointCount, state.settings.waypointPause);
       sizeInfo = formatDistance(distance);
       timeInfo = time;
     }
@@ -1688,7 +2049,10 @@ function renderRoutesList() {
           <button class="route-action-btn" onclick="event.stopPropagation(); duplicateRoute('${route.id}')" title="Duplicate">
             📋
           </button>
-          <button class="route-action-btn" onclick="event.stopPropagation(); editRoute('${route.id}')" title="Edit">
+          <button class="route-action-btn geometry ${state.geometryEditRoute?.id === route.id ? 'active' : ''}" onclick="event.stopPropagation(); editRouteGeometry('${route.id}')" title="Edit geometry on map">
+            📐
+          </button>
+          <button class="route-action-btn" onclick="event.stopPropagation(); editRoute('${route.id}')" title="Edit name/settings">
             ✏️
           </button>
           <button class="route-action-btn delete" onclick="event.stopPropagation(); deleteRoute('${route.id}')" title="Delete">
@@ -1864,6 +2228,37 @@ function importRoutes(event) {
       let addedCount = 0;
 
       data.routes.forEach(importedRoute => {
+        // Validate required fields
+        if (!importedRoute.name || typeof importedRoute.name !== 'string') {
+          addLog(`Skipped route: missing or invalid name`);
+          return;
+        }
+
+        // Validate coordinates
+        if (!importedRoute.coordinates || !Array.isArray(importedRoute.coordinates)) {
+          addLog(`Skipped "${importedRoute.name}": missing coordinates`);
+          return;
+        }
+
+        // Check minimum coordinates
+        const isZone = importedRoute.type === 'polygon' || importedRoute.type === 'rectangle';
+        const minCoords = isZone ? 3 : 2;
+        if (importedRoute.coordinates.length < minCoords) {
+          addLog(`Skipped "${importedRoute.name}": needs at least ${minCoords} points`);
+          return;
+        }
+
+        // Validate each coordinate is [lat, lng]
+        const validCoords = importedRoute.coordinates.every(c =>
+          Array.isArray(c) && c.length >= 2 &&
+          typeof c[0] === 'number' && typeof c[1] === 'number' &&
+          c[0] >= -90 && c[0] <= 90 && c[1] >= -180 && c[1] <= 180
+        );
+        if (!validCoords) {
+          addLog(`Skipped "${importedRoute.name}": invalid coordinate format`);
+          return;
+        }
+
         // Check for duplicate names
         const existingName = state.routes.find(r => r.name === importedRoute.name);
         if (existingName) {
@@ -1876,7 +2271,6 @@ function importRoutes(event) {
         importedRoute.visible = true;
 
         // Create layer
-        const isZone = importedRoute.type === 'polygon' || importedRoute.type === 'rectangle';
         if (isZone) {
           importedRoute.layer = L.polygon(importedRoute.coordinates, {
             color: importedRoute.color,
@@ -1926,6 +2320,12 @@ function sortRoutes(sortBy) {
     state.routeSortBy = sortBy;
     state.routeSortAsc = true;
   }
+
+  // Save sort preferences
+  localStorage.setItem(STORAGE_KEYS.sortPrefs, JSON.stringify({
+    sortBy: state.routeSortBy,
+    sortAsc: state.routeSortAsc
+  }));
 
   renderRoutesList();
   updateSortButtons();
@@ -2519,14 +2919,14 @@ function renderDetectionLog() {
   };
 
   container.innerHTML = state.detections.slice(0, 20).map(det => `
-    <div class="detection-entry ${det.type}">
+    <div class="detection-entry ${det.type}" onclick="showDetectionModal('${det.id}')" style="cursor: pointer;" title="Click for details">
       <div class="detection-thumbnail">
         ${det.imageUrl ? `<img src="${det.imageUrl}" alt="${det.type}">` : icons[det.type] || '❓'}
       </div>
       <div class="detection-info">
         <div class="detection-type">${icons[det.type] || '❓'} ${det.type.charAt(0).toUpperCase() + det.type.slice(1)}</div>
         <div class="detection-time">${new Date(det.timestamp).toLocaleString()}</div>
-        <div class="detection-location" onclick="goToDetectionLocation(${det.lat}, ${det.lng})">
+        <div class="detection-location" onclick="event.stopPropagation(); goToDetectionLocation(${det.lat}, ${det.lng})">
           📍 ${det.lat.toFixed(6)}, ${det.lng.toFixed(6)}
         </div>
       </div>
@@ -2599,7 +2999,19 @@ function centerOnMyLocation() {
 }
 
 function cancelDrawing() {
+  // Set flag to ignore any CREATED event that may fire from disable()
+  state.drawingCancelled = true;
+
   if (state.currentDrawHandler) {
+    // Remove any internal layers the handler may have created
+    // Polyline handlers store partial drawing in _poly
+    if (state.currentDrawHandler._poly) {
+      state.map.removeLayer(state.currentDrawHandler._poly);
+    }
+    // Also check for marker groups
+    if (state.currentDrawHandler._markerGroup) {
+      state.map.removeLayer(state.currentDrawHandler._markerGroup);
+    }
     state.currentDrawHandler.disable();
     state.currentDrawHandler = null;
   }
@@ -2610,6 +3022,19 @@ function cancelDrawing() {
   state.currentDrawType = null;
   state.map.doubleClickZoom.enable();
   updateDrawingUI(false);
+
+  // Clean up any orphan layers in drawnItems that aren't in state.routes
+  // This handles edge cases where a layer got added but not tracked
+  const routeLayerIds = new Set(state.routes.map(r => r.layer?._leaflet_id).filter(id => id !== undefined));
+  state.drawnItems.eachLayer(layer => {
+    if (!routeLayerIds.has(layer._leaflet_id)) {
+      state.drawnItems.removeLayer(layer);
+    }
+  });
+
+  // Reset the flag after a short delay (in case CREATED fires async)
+  setTimeout(() => { state.drawingCancelled = false; }, 100);
+
   addLog('Drawing cancelled');
 }
 
@@ -2624,12 +3049,8 @@ function setHomePosition() {
   // Use center of current map view (more intuitive for setting home manually)
   const center = state.map.getCenter();
   state.homePosition = { lat: center.lat, lng: center.lng };
-  console.log('[Patrol] Setting home position:', state.homePosition);
   createHomeMarker(state.homePosition);
   saveToStorage();
-  // Verify it was saved
-  const saved = localStorage.getItem(STORAGE_KEYS.homePosition);
-  console.log('[Patrol] Saved home position to localStorage:', saved);
   addLog(`Home position set: ${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}`);
 }
 
@@ -2683,10 +3104,18 @@ function toggleSection(header) {
   section.classList.toggle('collapsed');
 }
 
-function updateConnectionStatus(connected) {
+function updateConnectionStatus(connected, message = null) {
   const statusEl = document.getElementById('connectionStatus');
-  statusEl.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
-  statusEl.querySelector('span').textContent = connected ? 'Connected' : 'Disconnected';
+  if (message) {
+    // Custom message (e.g., failed state)
+    statusEl.className = 'connection-status failed';
+    statusEl.querySelector('span').textContent = message;
+    statusEl.title = 'Click to retry connection';
+  } else {
+    statusEl.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
+    statusEl.querySelector('span').textContent = connected ? 'Connected' : 'Disconnected';
+    statusEl.title = connected ? 'Connected to server' : 'Click to retry connection';
+  }
 }
 
 function updateUI() {
@@ -2728,12 +3157,11 @@ function updateUI() {
   renderDetectionLog();
   updatePatrolUI();
   updateSatelliteButtonState();
+  updateSortButtons();
 }
 
 function addLog(message) {
-  console.log(`[Patrol] ${message}`);
-
-  // Show toast notification
+  // Show toast notification to user
   showToast(message);
 }
 
@@ -2763,15 +3191,8 @@ function showToast(message, duration = 4000) {
 
 // ========== Utility Functions ==========
 function calculateDistance(pos1, pos2) {
-  // Haversine formula for distance in meters
-  const R = 6371000; // Earth radius in meters
-  const dLat = (pos2.lat - pos1.lat) * Math.PI / 180;
-  const dLng = (pos2.lng - pos1.lng) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(pos1.lat * Math.PI / 180) * Math.cos(pos2.lat * Math.PI / 180) *
-            Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+  // Wrapper around haversineDistance for object-based positions
+  return haversineDistance(pos1.lat, pos1.lng, pos2.lat, pos2.lng);
 }
 
 function formatDistance(meters) {
@@ -2793,6 +3214,353 @@ function formatTime(ms) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Debounced version of filterRoutes for search input (150ms delay)
+const debouncedFilterRoutes = debounce((query) => filterRoutes(query), 150);
+
 function closeDetectionModal() {
   document.getElementById('detectionModal').classList.remove('visible');
+  state.selectedDetection = null;
 }
+
+function showDetectionModal(detectionId) {
+  const detection = state.detections.find(d => d.id === detectionId);
+  if (!detection) return;
+
+  state.selectedDetection = detection;
+
+  const icons = {
+    snail: '🐌',
+    person: '🧑',
+    animal: '🐕',
+    vehicle: '🚗',
+    package: '📦',
+    custom: '🎯'
+  };
+
+  const icon = icons[detection.type] || '❓';
+  const typeLabel = detection.type.charAt(0).toUpperCase() + detection.type.slice(1);
+  const timestamp = new Date(detection.timestamp).toLocaleString();
+  const confidence = detection.confidence ? `${Math.round(detection.confidence * 100)}%` : 'N/A';
+
+  document.getElementById('detectionModalContent').innerHTML = `
+    <div class="detection-modal-body">
+      <div class="detection-modal-icon">${icon}</div>
+      <div class="detection-modal-type">${typeLabel}</div>
+      ${detection.imageUrl ? `
+        <div class="detection-modal-image">
+          <img src="${detection.imageUrl}" alt="${detection.type} detection">
+        </div>
+      ` : ''}
+      <div class="detection-modal-details">
+        <div class="detection-detail-row">
+          <span class="detail-label">Time:</span>
+          <span class="detail-value">${timestamp}</span>
+        </div>
+        <div class="detection-detail-row">
+          <span class="detail-label">Location:</span>
+          <span class="detail-value">${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}</span>
+        </div>
+        <div class="detection-detail-row">
+          <span class="detail-label">Confidence:</span>
+          <span class="detail-value">${confidence}</span>
+        </div>
+        ${detection.route ? `
+          <div class="detection-detail-row">
+            <span class="detail-label">Route:</span>
+            <span class="detail-value">${detection.route}</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('detectionModal').classList.add('visible');
+}
+
+function goToDetection() {
+  if (!state.selectedDetection) {
+    closeDetectionModal();
+    return;
+  }
+
+  const { lat, lng } = state.selectedDetection;
+  state.map.setView([lat, lng], 19);
+  closeDetectionModal();
+}
+
+// ========== Schedule Management ==========
+let editingScheduleId = null;
+
+function renderScheduleList() {
+  const container = document.getElementById('scheduleList');
+  if (!container) return;
+
+  if (!state.settings.schedules.length) {
+    container.innerHTML = `
+      <div class="schedule-empty">
+        <span>📅</span>
+        <p>No schedules configured</p>
+        <p class="hint">Click "Add Schedule" to create automated patrol schedules</p>
+      </div>
+    `;
+    return;
+  }
+
+  const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  container.innerHTML = state.settings.schedules.map(schedule => {
+    const daysStr = schedule.days.map(d => dayNames[d]).join(', ');
+    const routeNames = schedule.routeIds
+      .map(id => state.routes.find(r => r.id === id)?.name || 'Unknown')
+      .join(', ') || 'All routes';
+    const targetIcons = {
+      snail: '🐌', person: '🚶', animal: '🐕', vehicle: '🚗', package: '📦', custom: '⚙️'
+    };
+    const targetsStr = schedule.targets.map(t => targetIcons[t] || t).join(' ') || 'All';
+
+    return `
+      <div class="schedule-item ${schedule.enabled ? 'enabled' : 'disabled'}" data-id="${schedule.id}">
+        <div class="schedule-item-header">
+          <div class="schedule-item-toggle">
+            <label class="toggle small">
+              <input type="checkbox" ${schedule.enabled ? 'checked' : ''} onchange="toggleScheduleEnabled(${schedule.id}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="schedule-item-name">${schedule.name}</div>
+          <div class="schedule-item-actions">
+            <button class="btn-icon" onclick="openScheduleModal(${schedule.id})" title="Edit">✏️</button>
+            <button class="btn-icon danger" onclick="deleteSchedule(${schedule.id})" title="Delete">🗑️</button>
+          </div>
+        </div>
+        <div class="schedule-item-details">
+          <div class="schedule-detail">
+            <span class="schedule-detail-icon">🕐</span>
+            <span>${schedule.startTime} - ${schedule.endTime}</span>
+          </div>
+          <div class="schedule-detail">
+            <span class="schedule-detail-icon">📆</span>
+            <span>${daysStr}</span>
+          </div>
+          <div class="schedule-detail">
+            <span class="schedule-detail-icon">🔄</span>
+            <span>Every ${schedule.interval} min</span>
+          </div>
+          <div class="schedule-detail">
+            <span class="schedule-detail-icon">📍</span>
+            <span title="${routeNames}">${schedule.routeIds.length ? `${schedule.routeIds.length} route(s)` : 'All routes'}</span>
+          </div>
+          <div class="schedule-detail">
+            <span class="schedule-detail-icon">🎯</span>
+            <span>${targetsStr}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleScheduleEnabled(id, enabled) {
+  const schedule = state.settings.schedules.find(s => s.id === id);
+  if (schedule) {
+    schedule.enabled = enabled;
+    saveSchedules();
+    renderScheduleList();
+  }
+}
+
+function openScheduleModal(scheduleId = null) {
+  editingScheduleId = scheduleId;
+  const modal = document.getElementById('scheduleModal');
+  if (!modal) return;
+
+  // Populate route checkboxes
+  const routeCheckboxes = document.getElementById('scheduleRouteCheckboxes');
+  if (routeCheckboxes) {
+    routeCheckboxes.innerHTML = state.routes.map(route => {
+      const isZone = route.type === 'polygon' || route.type === 'rectangle';
+      const icon = isZone ? '⬡' : '📍';
+      return `
+        <label class="schedule-route-option">
+          <input type="checkbox" value="${route.id}" data-route-id="${route.id}">
+          <span class="route-color" style="background: ${route.color || '#4caf50'}"></span>
+          <span>${icon} ${route.name}</span>
+        </label>
+      `;
+    }).join('') || '<p class="hint">No routes/zones created yet</p>';
+  }
+
+  // Populate detection target checkboxes
+  const targetCheckboxes = document.getElementById('scheduleTargetCheckboxes');
+  if (targetCheckboxes) {
+    const targets = [
+      { id: 'snail', icon: '🐌', name: 'Snails' },
+      { id: 'person', icon: '🚶', name: 'People' },
+      { id: 'animal', icon: '🐕', name: 'Animals' },
+      { id: 'vehicle', icon: '🚗', name: 'Vehicles' },
+      { id: 'package', icon: '📦', name: 'Packages' },
+      { id: 'custom', icon: '⚙️', name: 'Custom' }
+    ];
+    targetCheckboxes.innerHTML = targets.map(t => `
+      <label class="schedule-target-option">
+        <input type="checkbox" value="${t.id}" data-target-id="${t.id}">
+        <span class="target-icon">${t.icon}</span>
+        <span>${t.name}</span>
+      </label>
+    `).join('');
+  }
+
+  if (scheduleId) {
+    // Editing existing schedule
+    const schedule = state.settings.schedules.find(s => s.id === scheduleId);
+    if (!schedule) return;
+
+    document.getElementById('scheduleModalTitle').textContent = 'Edit Schedule';
+    document.getElementById('scheduleName').value = schedule.name;
+    document.getElementById('scheduleStartTime').value = schedule.startTime;
+    document.getElementById('scheduleEndTime').value = schedule.endTime;
+    document.getElementById('scheduleIntervalInput').value = schedule.interval;
+
+    // Set day buttons
+    document.querySelectorAll('#scheduleModal .schedule-day').forEach(btn => {
+      const day = parseInt(btn.dataset.day);
+      btn.classList.toggle('active', schedule.days.includes(day));
+    });
+
+    // Set route checkboxes
+    document.querySelectorAll('#scheduleRouteCheckboxes input[type="checkbox"]').forEach(cb => {
+      cb.checked = schedule.routeIds.includes(parseInt(cb.dataset.routeId) || cb.dataset.routeId);
+    });
+
+    // Set target checkboxes
+    document.querySelectorAll('#scheduleTargetCheckboxes input[type="checkbox"]').forEach(cb => {
+      cb.checked = schedule.targets.includes(cb.dataset.targetId);
+    });
+  } else {
+    // Creating new schedule
+    document.getElementById('scheduleModalTitle').textContent = 'Add Schedule';
+    document.getElementById('scheduleName').value = '';
+    document.getElementById('scheduleStartTime').value = '06:00';
+    document.getElementById('scheduleEndTime').value = '20:00';
+    document.getElementById('scheduleIntervalInput').value = '60';
+
+    // Set all days active by default
+    document.querySelectorAll('#scheduleModal .schedule-day').forEach(btn => {
+      btn.classList.add('active');
+    });
+
+    // Uncheck all routes (means all routes)
+    document.querySelectorAll('#scheduleRouteCheckboxes input[type="checkbox"]').forEach(cb => {
+      cb.checked = false;
+    });
+
+    // Check snail target by default
+    document.querySelectorAll('#scheduleTargetCheckboxes input[type="checkbox"]').forEach(cb => {
+      cb.checked = cb.dataset.targetId === 'snail';
+    });
+  }
+
+  modal.classList.add('visible');
+}
+
+function closeScheduleModal() {
+  const modal = document.getElementById('scheduleModal');
+  if (modal) {
+    modal.classList.remove('visible');
+  }
+  editingScheduleId = null;
+}
+
+function saveScheduleFromModal() {
+  const name = document.getElementById('scheduleName').value.trim() || 'Unnamed Schedule';
+  const startTime = document.getElementById('scheduleStartTime').value;
+  const endTime = document.getElementById('scheduleEndTime').value;
+  const interval = parseInt(document.getElementById('scheduleIntervalInput').value) || 60;
+
+  // Get selected days
+  const days = [];
+  document.querySelectorAll('#scheduleModal .schedule-day.active').forEach(btn => {
+    days.push(parseInt(btn.dataset.day));
+  });
+  days.sort();
+
+  // Get selected routes
+  const routeIds = [];
+  document.querySelectorAll('#scheduleRouteCheckboxes input[type="checkbox"]:checked').forEach(cb => {
+    const id = cb.dataset.routeId;
+    routeIds.push(isNaN(parseInt(id)) ? id : parseInt(id));
+  });
+
+  // Get selected targets
+  const targets = [];
+  document.querySelectorAll('#scheduleTargetCheckboxes input[type="checkbox"]:checked').forEach(cb => {
+    targets.push(cb.dataset.targetId);
+  });
+
+  if (editingScheduleId) {
+    // Update existing schedule
+    const schedule = state.settings.schedules.find(s => s.id === editingScheduleId);
+    if (schedule) {
+      schedule.name = name;
+      schedule.startTime = startTime;
+      schedule.endTime = endTime;
+      schedule.interval = interval;
+      schedule.days = days;
+      schedule.routeIds = routeIds;
+      schedule.targets = targets;
+    }
+    showToast(`Schedule "${name}" updated`);
+  } else {
+    // Create new schedule
+    const newSchedule = {
+      id: Date.now(),
+      name,
+      enabled: true,
+      days,
+      startTime,
+      endTime,
+      interval,
+      routeIds,
+      targets
+    };
+    state.settings.schedules.push(newSchedule);
+    showToast(`Schedule "${name}" created`);
+  }
+
+  saveSchedules();
+  renderScheduleList();
+  closeScheduleModal();
+}
+
+function deleteSchedule(id) {
+  const schedule = state.settings.schedules.find(s => s.id === id);
+  if (!schedule) return;
+
+  if (!confirm(`Delete schedule "${schedule.name}"?`)) return;
+
+  state.settings.schedules = state.settings.schedules.filter(s => s.id !== id);
+  saveSchedules();
+  renderScheduleList();
+  showToast(`Schedule "${schedule.name}" deleted`);
+}
+
+// Initialize schedule day buttons in modal
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#scheduleModal .schedule-day').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+    });
+  });
+});

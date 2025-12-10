@@ -1,4 +1,13 @@
 (function(){
+  // ========== Constants ==========
+  const CAMERA_MIN_DISTANCE = 100;
+  const CAMERA_MAX_DISTANCE = 700;
+  const CAMERA_DEFAULT_DISTANCE = 550;
+  const JOYSTICK_SCALE = 25;          // Pixels to joystick unit conversion
+  const JOYSTICK_DEADZONE = 0.1;      // Minimum joystick movement to register
+  const CALIBRATION_SWEEP_RANGE = 15; // Degrees for servo sweep test
+  const CALIBRATION_ANGLE_LIMIT = 45; // Max angle deviation for calibration
+
   // Three.js 3D simulator
   const canvas = document.getElementById('c');
   const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
@@ -10,9 +19,9 @@
   const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
 
   // Simple camera controls
-  let cameraDistance = 300;
+  let cameraDistance = CAMERA_DEFAULT_DISTANCE;
   let cameraAngleY = Math.PI;  // Start at back view (180° rotated from front)
-  let cameraAngleX = Math.PI / 6;  // Slight downward angle
+  let cameraAngleX = Math.PI / 4;  // Isometric angle (45° from horizontal)
   let isDragging = false;
   let lastMouseX = 0;
   let lastMouseY = 0;
@@ -59,7 +68,7 @@
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     cameraDistance += e.deltaY * 0.1;
-    cameraDistance = Math.max(100, Math.min(500, cameraDistance));
+    cameraDistance = Math.max(CAMERA_MIN_DISTANCE, Math.min(CAMERA_MAX_DISTANCE, cameraDistance));
     updateCameraPosition();
   });
 
@@ -120,26 +129,28 @@
     footRadius: 4
   };
 
-  const DEFAULT_CAMERA_VIEWS = [
+  // Unified camera configuration - combines source + display settings
+  const DEFAULT_CAMERAS = [
     {
       id: 'front',
-      label: 'Front',
+      name: 'Front Camera',
       enabled: true,
-      position: 'front',
-      sourceType: 'local',
-      sourceUrl: '',
-      hardwareCameraId: '',
-      displayMode: 'pane'  // 'pane' = floating window, 'overlay' = 3D scene overlay
+      // Source
+      sourceType: 'browser',  // browser, usb, csi, rtsp, http
+      sourceAddress: '',
+      resolution: '1280x720',
+      fps: 30,
+      // Display
+      displayMode: 'dock',    // dock (floating pane) or overlay (3D scene)
+      position: 'front'       // front, left, right, rear, floating
     }
   ];
 
   // Array of configs, one per leg (all legs share same dimensions from backend)
   let legConfigs = Array(6).fill(null).map(() => ({...DEFAULT_LEG_CONFIG}));
 
-  let cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
-
-  // Hardware cameras from configuration
-  let hardwareCameras = [];
+  // Unified camera list
+  let cameras = DEFAULT_CAMERAS.map(c => ({...c}));
 
   // ============================================================================
   // ARCHITECTURE NOTE: All IK (Inverse Kinematics) calculations are performed
@@ -160,201 +171,359 @@
     tibia: (120 - 90) * Math.PI / 180  // Knee bends ~30° toward the ground
   };
 
-  function normalizeCameraView(view, index = 0) {
-    const fallback = DEFAULT_CAMERA_VIEWS[0];
-    return {
-      id: view?.id || `camera-${index}`,
-      label: view?.label || `Camera ${index + 1}`,
-      enabled: view?.enabled !== undefined ? !!view.enabled : fallback.enabled,
-      position: view?.position || fallback.position,
-      sourceType: view?.source_type || view?.sourceType || fallback.sourceType,
-      sourceUrl: view?.source_url || view?.sourceUrl || fallback.sourceUrl,
-      hardwareCameraId: view?.hardware_camera_id || view?.hardwareCameraId || fallback.hardwareCameraId,
-      displayMode: view?.display_mode || view?.displayMode || fallback.displayMode,
-    };
-  }
+  // Normalize camera from config (supports both new unified format and legacy formats)
+  function normalizeCamera(cam, index = 0) {
+    const fallback = DEFAULT_CAMERAS[0];
 
-  // Resolve hardware camera details for a camera view
-  function getResolvedCameraSource(view) {
-    if (view.sourceType === 'hardware' && view.hardwareCameraId) {
-      const hwCam = hardwareCameras.find(c => c.id === view.hardwareCameraId);
-      if (hwCam) {
-        // Return resolved source info based on hardware camera type
-        return {
-          type: hwCam.type,
-          address: hwCam.address,
-          resolution: hwCam.resolution,
-          fps: hwCam.fps,
-          name: hwCam.name
-        };
-      } else {
-        // Hardware camera not found - log warning
-        console.warn(`Hardware camera not found: ${view.hardwareCameraId}. Available:`, hardwareCameras.map(c => c.id));
-        return {
-          type: 'not_found',
-          address: '',
-          resolution: null,
-          fps: null,
-          name: view.label,
-          error: `Hardware camera "${view.hardwareCameraId}" not configured`
-        };
-      }
+    // Handle legacy camera_views format
+    if (cam?.label !== undefined || cam?.sourceUrl !== undefined || cam?.hardwareCameraId !== undefined) {
+      return {
+        id: cam?.id || `cam-${index}`,
+        name: cam?.label || cam?.name || `Camera ${index + 1}`,
+        enabled: cam?.enabled !== undefined ? !!cam.enabled : fallback.enabled,
+        sourceType: mapLegacySourceType(cam?.source_type || cam?.sourceType || 'browser'),
+        sourceAddress: cam?.source_url || cam?.sourceUrl || cam?.sourceAddress || '',
+        resolution: cam?.resolution || fallback.resolution,
+        fps: cam?.fps || fallback.fps,
+        displayMode: mapLegacyDisplayMode(cam?.display_mode || cam?.displayMode || 'dock'),
+        position: cam?.position || fallback.position,
+        deviceId: cam?.device_id || cam?.deviceId || null,
+        deviceLabel: cam?.device_label || cam?.deviceLabel || null,
+      };
     }
-    // Return view's own source info
+
     return {
-      type: view.sourceType,
-      address: view.sourceUrl,
-      resolution: null,
-      fps: null,
-      name: view.label
+      id: cam?.id || `cam-${index}`,
+      name: cam?.name || `Camera ${index + 1}`,
+      enabled: cam?.enabled !== undefined ? !!cam.enabled : fallback.enabled,
+      sourceType: cam?.source_type || cam?.sourceType || fallback.sourceType,
+      sourceAddress: cam?.source_address || cam?.sourceAddress || '',
+      resolution: cam?.resolution || fallback.resolution,
+      fps: cam?.fps || fallback.fps,
+      displayMode: cam?.display_mode || cam?.displayMode || fallback.displayMode,
+      position: cam?.position || fallback.position,
+      deviceId: cam?.device_id || cam?.deviceId || null,
+      deviceLabel: cam?.device_label || cam?.deviceLabel || null,
     };
   }
 
-  // Populate the camera select dropdown with configured camera views
+  // Map legacy source types to new format
+  // 'local' = browser webcam via getUserMedia
+  // 'hardware' = USB/V4L2 camera (not browser webcam)
+  function mapLegacySourceType(type) {
+    if (type === 'local') return 'browser';
+    if (type === 'hardware') return 'usb'; // Legacy hardware refs = USB cameras
+    return type || 'browser';
+  }
+
+  // Map legacy display modes to new format
+  function mapLegacyDisplayMode(mode) {
+    if (mode === 'pane') return 'dock';
+    return mode || 'dock';
+  }
+
+  // Get camera source info for display/streaming
+  function getCameraSource(cam) {
+    return {
+      type: cam.sourceType,
+      address: cam.sourceAddress,
+      resolution: cam.resolution,
+      fps: cam.fps,
+      name: cam.name
+    };
+  }
+
+  // Populate the camera checkbox list with configured cameras
   function populateCameraSelect() {
-    const select = document.getElementById('activeCameraSelect');
-    if (!select) return;
+    const container = document.getElementById('cameraCheckboxList');
+    if (!container) return;
 
-    // Store current selection
-    const currentValue = select.value;
+    // Clear and rebuild
+    container.innerHTML = '';
 
-    // Clear and rebuild options
-    select.innerHTML = '<option value="">-- None --</option>';
-
-    let firstEnabledId = null;
-    cameraViews.forEach(view => {
-      const option = document.createElement('option');
-      option.value = view.id;
-      option.textContent = view.label;
-      if (view.enabled && !firstEnabledId) {
-        firstEnabledId = view.id;
-        option.selected = true;
-      }
-      select.appendChild(option);
-    });
-
-    // Restore selection if still valid, otherwise use first enabled
-    let selectedId = null;
-    if (currentValue && cameraViews.some(v => v.id === currentValue)) {
-      select.value = currentValue;
-      selectedId = currentValue;
-    } else if (firstEnabledId) {
-      select.value = firstEnabledId;
-      selectedId = firstEnabledId;
+    if (cameras.length === 0) {
+      container.innerHTML = '<div style="color: var(--text-muted); font-size: 11px;">No cameras configured</div>';
+      updateCameraControlUI();
+      return;
     }
 
-    // Set activeCameraId to match dropdown selection (without stopping any camera)
-    if (selectedId && activeCameraId !== selectedId) {
-      activeCameraId = selectedId;
+    cameras.forEach(cam => {
+      const item = document.createElement('div');
+      item.className = 'camera-checkbox-item';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `camera-check-${cam.id}`;
+      checkbox.checked = cam.enabled || false;
+      checkbox.addEventListener('change', () => handleCameraToggle(cam.id, checkbox.checked));
+
+      // Build source info string
+      const sourceType = cam.sourceType || 'browser';
+      let sourceInfo = '';
+      switch (sourceType) {
+        case 'browser':
+          sourceInfo = 'Browser Webcam';
+          if (cam.deviceId && cam.deviceLabel) {
+            sourceInfo = cam.deviceLabel.substring(0, 20) + (cam.deviceLabel.length > 20 ? '...' : '');
+          }
+          break;
+        case 'usb':
+          sourceInfo = cam.sourceAddress ? `USB: ${cam.sourceAddress}` : 'USB Device';
+          break;
+        case 'csi':
+          sourceInfo = 'Pi Camera (CSI)';
+          break;
+        case 'http':
+          sourceInfo = cam.sourceAddress ? `HTTP: ${cam.sourceAddress.substring(0, 15)}...` : 'HTTP Stream';
+          break;
+        case 'rtsp':
+          sourceInfo = cam.sourceAddress ? `RTSP: ${cam.sourceAddress.substring(0, 15)}...` : 'RTSP Stream';
+          break;
+        default:
+          sourceInfo = sourceType;
+      }
+
+      const label = document.createElement('label');
+      label.htmlFor = `camera-check-${cam.id}`;
+      label.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-weight: 500;">${cam.name}</span>
+          <span style="font-size: 10px; color: var(--text-muted);">${sourceInfo}</span>
+        </div>
+        <span class="camera-position">${cam.position || 'floating'}</span>
+      `;
+
+      item.appendChild(checkbox);
+      item.appendChild(label);
+
+      // For browser webcams, add device selector button
+      if (sourceType === 'browser') {
+        const selectBtn = document.createElement('button');
+        selectBtn.className = 'webcam-btn';
+        selectBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; margin-left: 4px;';
+        selectBtn.textContent = '📷';
+        selectBtn.title = 'Select webcam device';
+        selectBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showDeviceSelector(cam.id);
+        });
+        item.appendChild(selectBtn);
+      }
+
+      container.appendChild(item);
+    });
+
+    updateCameraControlUI();
+  }
+
+  // Show device selector modal for browser webcams
+  async function showDeviceSelector(cameraId) {
+    const cam = cameras.find(c => c.id === cameraId);
+    if (!cam) return;
+
+    // Request permission first (needed to get device labels)
+    try {
+      const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      tempStream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      logMsg('Camera permission denied or no cameras available');
+      return;
+    }
+
+    // Get available video devices
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+    if (videoDevices.length === 0) {
+      logMsg('No webcam devices found');
+      return;
+    }
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8); z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+      background: var(--panel-bg, #1a1a2e); padding: 20px; border-radius: 12px;
+      max-width: 400px; width: 90%; color: #fff;
+    `;
+
+    content.innerHTML = `
+      <h3 style="margin: 0 0 16px 0; font-size: 16px;">Select Webcam for "${cam.name}"</h3>
+      <div class="device-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+        ${videoDevices.map((device, idx) => `
+          <button class="device-option" data-device-id="${device.deviceId}" data-device-label="${device.label || 'Camera ' + (idx + 1)}" style="
+            background: ${cam.deviceId === device.deviceId ? 'var(--accent, #4dabf7)' : 'rgba(255,255,255,0.1)'};
+            border: none; padding: 12px; border-radius: 8px; text-align: left;
+            cursor: pointer; color: #fff; transition: background 0.2s;
+          ">
+            <div style="font-weight: 500;">${device.label || 'Camera ' + (idx + 1)}</div>
+            <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 4px;">
+              ID: ${device.deviceId.substring(0, 16)}...
+            </div>
+            ${cam.deviceId === device.deviceId ? '<div style="font-size: 10px; color: #51cf66; margin-top: 4px;">✓ Currently selected</div>' : ''}
+          </button>
+        `).join('')}
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 16px;">
+        <button id="deviceCancelBtn" style="flex: 1; padding: 10px; background: rgba(255,255,255,0.1); border: none; border-radius: 6px; color: #fff; cursor: pointer;">Cancel</button>
+      </div>
+    `;
+
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    // Handle device selection
+    content.querySelectorAll('.device-option').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const deviceId = btn.dataset.deviceId;
+        const deviceLabel = btn.dataset.deviceLabel;
+
+        // Update camera config
+        cam.deviceId = deviceId;
+        cam.deviceLabel = deviceLabel;
+
+        // If this camera is enabled, restart with the new device
+        if (cam.enabled) {
+          // Stop current stream
+          if (webcamStream) {
+            webcamStream.getTracks().forEach(track => track.stop());
+            webcamStream = null;
+          }
+          // Start new stream with specific device
+          await startWebcamStream(deviceId);
+          refreshLocalCameraVideos();
+          renderCameraDock();
+        }
+
+        // Save to config
+        saveSelectedDevice(cameraId, deviceId, deviceLabel);
+
+        // Update UI
+        populateCameraSelect();
+        modal.remove();
+        logMsg(`Selected: ${deviceLabel}`);
+      });
+
+      btn.addEventListener('mouseenter', () => {
+        if (cam.deviceId !== btn.dataset.deviceId) {
+          btn.style.background = 'rgba(255,255,255,0.2)';
+        }
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = cam.deviceId === btn.dataset.deviceId
+          ? 'var(--accent, #4dabf7)'
+          : 'rgba(255,255,255,0.1)';
+      });
+    });
+
+    // Handle cancel
+    content.querySelector('#deviceCancelBtn').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+  }
+
+  // Save selected device to backend config
+  async function saveSelectedDevice(cameraId, deviceId, deviceLabel) {
+    try {
+      // Find camera index and update
+      const camIndex = cameras.findIndex(c => c.id === cameraId);
+      if (camIndex === -1) return;
+
+      // Send to backend to update config
+      const response = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          [`camera_${camIndex}_device_id`]: deviceId,
+          [`camera_${camIndex}_device_label`]: deviceLabel
+        })
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to save device selection to config');
+      }
+    } catch (err) {
+      console.warn('Error saving device selection:', err);
     }
   }
 
-  // Track active camera for display
-  let activeCameraId = null;
-  let activeCameraStream = null; // Track current camera stream
-
-  // Handle camera selection change
-  function handleCameraSelect(selectedId) {
-    // Stop current camera if switching
-    if (activeCameraId && activeCameraId !== selectedId && activeCameraStream) {
-      stopActiveCamera();
+  // Handle toggling individual camera on/off
+  async function handleCameraToggle(cameraId, enabled) {
+    const cam = cameras.find(c => c.id === cameraId);
+    if (cam) {
+      cam.enabled = enabled;
     }
 
-    activeCameraId = selectedId;
+    // If enabling a local camera, start it with the configured device
+    if (enabled && cam) {
+      const source = getCameraSource(cam);
+      const isLocalCamera = source.type === 'browser' || cam.sourceType === 'browser';
 
-    // Update which camera views are shown
-    cameraViews.forEach(view => {
-      view.enabled = (view.id === selectedId);
-    });
+      if (isLocalCamera) {
+        // Use camera's saved device ID if available
+        await startWebcamStream(cam.deviceId || null);
+      }
+    }
 
-    // Update UI based on selection
+    refreshLocalCameraVideos();
     updateCameraControlUI();
-
     renderCameraDock();
     renderCameraOverlays();
   }
 
+  // Track active camera stream for local webcam
+  let activeCameraStream = null;
+
   // Update camera control UI based on current state
   function updateCameraControlUI() {
-    const cameraInfo = document.getElementById('cameraInfo');
-    const cameraTypeLabel = document.getElementById('cameraTypeLabel');
     const cameraStatus = document.getElementById('cameraStatus');
-    const startBtn = document.getElementById('startWebcam');
-    const stopBtn = document.getElementById('stopWebcam');
+    const startAllBtn = document.getElementById('startAllCameras');
+    const stopAllBtn = document.getElementById('stopAllCameras');
 
-    if (!activeCameraId) {
-      if (cameraInfo) cameraInfo.style.display = 'none';
-      if (cameraStatus) cameraStatus.textContent = 'Select a camera above to start streaming';
-      if (startBtn) startBtn.disabled = true;
-      if (stopBtn) stopBtn.disabled = true;
-      return;
+    const enabledCameras = cameras.filter(c => c.enabled);
+    const enabledCount = enabledCameras.length;
+    const totalCount = cameras.length;
+
+    // Check if any enabled camera needs the local webcam stream
+    const needsLocalStream = enabledCameras.some(c => {
+      const source = getCameraSource(c);
+      return source.type === 'browser' || source.type === 'local';
+    });
+
+    // Update buttons
+    if (startAllBtn) {
+      startAllBtn.disabled = totalCount === 0;
+    }
+    if (stopAllBtn) {
+      stopAllBtn.disabled = enabledCount === 0 && !webcamStream;
     }
 
-    const view = cameraViews.find(v => v.id === activeCameraId);
-    if (!view) {
-      if (cameraInfo) cameraInfo.style.display = 'none';
-      if (cameraStatus) cameraStatus.textContent = 'Camera not found';
-      return;
-    }
-
-    // Get resolved source info
-    const source = getResolvedCameraSource(view);
-
-    // Show camera type info
-    if (cameraInfo && cameraTypeLabel) {
-      cameraInfo.style.display = 'block';
-      let typeText = '';
-      let hasError = false;
-      switch (source.type) {
-        case 'browser':
-        case 'local':
-          typeText = 'Browser Webcam';
-          break;
-        case 'hardware':
-          typeText = `Hardware: ${source.name || 'Unknown'}`;
-          break;
-        case 'usb':
-          typeText = `USB Camera: ${source.address || 'Unknown'}`;
-          break;
-        case 'csi':
-          typeText = `CSI Camera: ${source.address || 'Default'}`;
-          break;
-        case 'ip':
-        case 'rtsp':
-          typeText = `Stream: ${source.address || 'URL'}`;
-          break;
-        case 'url':
-          typeText = `Stream URL: ${view.sourceUrl || 'Not set'}`;
-          break;
-        case 'not_found':
-          typeText = `⚠️ ${source.error || 'Hardware camera not configured'}`;
-          hasError = true;
-          break;
-        default:
-          typeText = `Type: ${source.type}`;
-      }
-      cameraTypeLabel.textContent = typeText;
-      cameraTypeLabel.style.color = hasError ? 'var(--warning)' : '';
-    }
-
-    // Enable buttons (disabled if camera config has error)
-    const hasConfigError = source.type === 'not_found';
-    if (startBtn) startBtn.disabled = hasConfigError;
-    if (stopBtn) stopBtn.disabled = !activeCameraStream;
-
-    // Update status
+    // Update status text
     if (cameraStatus) {
-      if (activeCameraStream) {
-        cameraStatus.textContent = `Streaming: ${view.label}`;
-        cameraStatus.style.color = 'var(--success)';
-      } else {
-        cameraStatus.textContent = `Ready: ${view.label}`;
+      if (enabledCount === 0) {
+        cameraStatus.textContent = 'Select cameras above to display';
         cameraStatus.style.color = 'var(--text-muted)';
+      } else if (needsLocalStream && webcamStream) {
+        cameraStatus.textContent = `Showing ${enabledCount} camera${enabledCount > 1 ? 's' : ''} (webcam active)`;
+        cameraStatus.style.color = 'var(--success)';
+      } else if (needsLocalStream && !webcamStream) {
+        cameraStatus.textContent = `${enabledCount} camera${enabledCount > 1 ? 's' : ''} selected - click Start All for local cameras`;
+        cameraStatus.style.color = 'var(--warning)';
+      } else {
+        cameraStatus.textContent = `Showing ${enabledCount} camera${enabledCount > 1 ? 's' : ''}`;
+        cameraStatus.style.color = 'var(--success)';
       }
     }
   }
 
-  // Stop the active camera
+  // Stop the active camera stream
   function stopActiveCamera() {
     if (activeCameraStream) {
       activeCameraStream.getTracks().forEach(track => track.stop());
@@ -365,11 +534,9 @@
       webcamStream = null;
     }
 
+    // Clear hidden video element
     const videoElement = document.getElementById('webcamFeed');
     if (videoElement) videoElement.srcObject = null;
-
-    const startBtn = document.getElementById('startWebcam');
-    if (startBtn) startBtn.classList.remove('active');
 
     if (webcamOverlay) {
       webcamOverlay.visible = false;
@@ -384,114 +551,153 @@
   // Store floating camera positions
   const floatingCameraPositions = {};
 
+  // Track cleanup functions for draggable elements to prevent memory leaks
+  const draggableCleanupFunctions = [];
+
   function renderCameraDock() {
     const dock = document.getElementById('cameraDock');
     if (!dock) return;
 
+    // Clean up any existing draggable listeners before rebuilding
+    while (draggableCleanupFunctions.length > 0) {
+      const cleanup = draggableCleanupFunctions.pop();
+      if (typeof cleanup === 'function') cleanup();
+    }
+
     dock.innerHTML = '';
-    // Filter enabled views - only show pane mode cameras
-    const enabledViews = cameraViews.filter(v => {
-      if (!v.enabled) return false;
-      // Only show cameras in 'pane' mode (floating windows)
-      if (v.displayMode === 'overlay') return false;
+    // Filter enabled cameras - only show dock mode cameras
+    const enabledCams = cameras.filter(cam => {
+      if (!cam.enabled) return false;
+      // Only show cameras in 'dock' mode (floating windows)
+      if (cam.displayMode === 'overlay') return false;
 
-      // Resolve hardware cameras to get their actual type
-      const source = getResolvedCameraSource(v);
+      // Get camera source info
+      const source = getCameraSource(cam);
 
-      // Show browser/local cameras when webcam stream is active
-      if ((source.type === 'browser' || source.type === 'local' || v.sourceType === 'local') && !webcamStream) return false;
+      // Show browser cameras when webcam stream is active
+      if (source.type === 'browser' && !webcamStream) return false;
       // Show URL cameras when they have a source URL
-      if ((source.type === 'url' || source.type === 'ip' || source.type === 'rtsp') && !source.address) return false;
-      // Hide cameras with broken hardware references
+      if ((source.type === 'rtsp' || source.type === 'http') && !source.address) return false;
+      // Hide cameras with invalid sources
       if (source.type === 'not_found') return false;
 
       return true;
     });
-    dock.style.display = enabledViews.length ? 'grid' : 'none';
+    dock.style.display = enabledCams.length ? 'block' : 'none';
 
-    enabledViews.forEach((view) => {
-      const pane = document.createElement('div');
-      pane.className = `camera-pane position-${view.position || 'floating'}`;
-      pane.dataset.cameraId = view.id;
+    // Group cameras by position
+    const positionGroups = {
+      front: [],
+      left: [],
+      right: [],
+      rear: [],
+      floating: []
+    };
 
-      const header = document.createElement('div');
-      header.className = 'camera-pane-header';
-      header.innerHTML = `<span>${view.label}</span><span style="font-size: 10px; color: #666;">${view.position}</span>`;
-      pane.appendChild(header);
+    enabledCams.forEach(cam => {
+      const pos = cam.position || 'floating';
+      if (positionGroups[pos]) {
+        positionGroups[pos].push(cam);
+      } else {
+        positionGroups.floating.push(cam);
+      }
+    });
 
-      // Resolve hardware camera to get actual source type
-      const source = getResolvedCameraSource(view);
+    // Create position group containers and add cameras
+    Object.entries(positionGroups).forEach(([position, cams]) => {
+      if (cams.length === 0) return;
 
-      let hasVideo = false;
-      if (source.type === 'browser' || source.type === 'local' || view.sourceType === 'local') {
-        // Browser webcam - use webcamStream
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.muted = true;
-        video.playsInline = true;
-        video.loop = true;
-        video.dataset.sourceType = 'local';
-        video.dataset.cameraId = view.id;
-        if (webcamStream) {
-          video.srcObject = webcamStream;
+      // Create group container
+      const group = document.createElement('div');
+      group.className = `camera-position-group group-${position}`;
+
+      cams.forEach((cam) => {
+        const pane = document.createElement('div');
+        pane.className = `camera-pane position-${position}`;
+        pane.dataset.cameraId = cam.id;
+
+        const header = document.createElement('div');
+        header.className = 'camera-pane-header';
+        header.innerHTML = `<span>${cam.name}</span><span style="font-size: 10px; color: #666;">${position}</span>`;
+        pane.appendChild(header);
+
+        // Get camera source info
+        const source = getCameraSource(cam);
+
+        let hasVideo = false;
+        if (source.type === 'browser') {
+          // Browser webcam - use webcamStream
+          const video = document.createElement('video');
+          video.autoplay = true;
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = true;
+          video.dataset.sourceType = 'browser';
+          video.dataset.cameraId = cam.id;
+          if (webcamStream) {
+            video.srcObject = webcamStream;
+            hasVideo = true;
+          }
+          pane.appendChild(video);
+        } else if (source.type === 'rtsp' || source.type === 'http') {
+          // URL-based stream
+          const video = document.createElement('video');
+          video.autoplay = true;
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = true;
+          video.src = source.address;
+          video.dataset.sourceType = 'url';
+          video.dataset.cameraId = cam.id;
+          pane.appendChild(video);
           hasVideo = true;
-        }
-        pane.appendChild(video);
-      } else if (source.type === 'url' || source.type === 'ip' || source.type === 'rtsp') {
-        // URL-based stream
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.muted = true;
-        video.playsInline = true;
-        video.loop = true;
-        video.src = source.address || view.sourceUrl;
-        video.dataset.sourceType = 'url';
-        video.dataset.cameraId = view.id;
-        pane.appendChild(video);
-        hasVideo = true;
-      } else if (source.type === 'usb' || source.type === 'csi') {
-        // Hardware camera via backend stream
-        const video = document.createElement('video');
-        video.autoplay = true;
-        video.muted = true;
-        video.playsInline = true;
-        video.loop = true;
-        if (source.address) {
-          video.src = `/api/stream/${encodeURIComponent(source.address)}`;
-          hasVideo = true;
-        }
-        video.dataset.sourceType = 'hardware';
-        video.dataset.cameraId = view.id;
-        pane.appendChild(video);
-      }
-
-      if (!hasVideo) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'camera-placeholder';
-        placeholder.textContent = (source.type === 'browser' || source.type === 'local' || view.sourceType === 'local')
-          ? 'Click "Start Camera" to view this feed.'
-          : 'Configure camera address to preview.';
-        pane.appendChild(placeholder);
-      }
-
-      // Make floating panes draggable
-      if (view.position === 'floating') {
-        // Restore saved position or use default
-        const savedPos = floatingCameraPositions[view.id];
-        if (savedPos) {
-          pane.style.left = savedPos.x + 'px';
-          pane.style.top = savedPos.y + 'px';
-          pane.style.bottom = 'auto';
-        } else {
-          // Default position for new floating cameras
-          pane.style.right = '20px';
-          pane.style.top = '80px';
+        } else if (source.type === 'usb' || source.type === 'csi') {
+          // Hardware camera via backend stream
+          const video = document.createElement('video');
+          video.autoplay = true;
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = true;
+          if (source.address) {
+            video.src = `/api/stream/${encodeURIComponent(source.address)}`;
+            hasVideo = true;
+          }
+          video.dataset.sourceType = 'hardware';
+          video.dataset.cameraId = cam.id;
+          pane.appendChild(video);
         }
 
-        makeDraggable(pane, header, view.id);
-      }
+        if (!hasVideo) {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'camera-placeholder';
+          placeholder.textContent = source.type === 'browser'
+            ? 'Click "Start Camera" to view this feed.'
+            : 'Configure camera address to preview.';
+          pane.appendChild(placeholder);
+        }
 
-      dock.appendChild(pane);
+        // Make floating panes draggable
+        if (position === 'floating') {
+          // Restore saved position or use default
+          const savedPos = floatingCameraPositions[cam.id];
+          if (savedPos) {
+            pane.style.left = savedPos.x + 'px';
+            pane.style.top = savedPos.y + 'px';
+            pane.style.bottom = 'auto';
+          } else {
+            // Default position for new floating cameras - offset by index
+            const idx = cams.indexOf(cam);
+            pane.style.right = '20px';
+            pane.style.top = (80 + idx * 180) + 'px';
+          }
+
+          makeDraggable(pane, header, cam.id);
+        }
+
+        group.appendChild(pane);
+      });
+
+      dock.appendChild(group);
     });
   }
 
@@ -566,6 +772,20 @@
       document.removeEventListener('touchmove', drag);
       document.removeEventListener('touchend', stopDrag);
     }
+
+    // Return cleanup function to remove all listeners
+    function cleanup() {
+      handle.removeEventListener('mousedown', startDrag);
+      handle.removeEventListener('touchstart', startDrag);
+      // Also remove document listeners in case drag is in progress
+      document.removeEventListener('mousemove', drag);
+      document.removeEventListener('mouseup', stopDrag);
+      document.removeEventListener('touchmove', drag);
+      document.removeEventListener('touchend', stopDrag);
+    }
+
+    // Register cleanup function for later use
+    draggableCleanupFunctions.push(cleanup);
   }
 
   // Load config from backend API
@@ -617,16 +837,19 @@
         console.log('No hardware cameras in config');
       }
 
-      // Camera layout persistence - load from config
-      if (Array.isArray(config.camera_views)) {
-        cameraViews = config.camera_views.map((view, idx) => normalizeCameraView(view, idx));
-        console.log('Loaded camera views:', cameraViews);
+      // Load cameras from unified config
+      if (Array.isArray(config.cameras)) {
+        cameras = config.cameras.map((cam, idx) => normalizeCamera(cam, idx));
+        console.log('Loaded cameras:', cameras);
+      } else if (Array.isArray(config.camera_views)) {
+        // Legacy format migration
+        cameras = config.camera_views.map((view, idx) => normalizeCamera(view, idx));
+        console.log('Migrated legacy camera_views to cameras:', cameras);
       } else {
-        cameraViews = DEFAULT_CAMERA_VIEWS.map(v => ({...v}));
-        console.log('Using default camera views');
+        cameras = DEFAULT_CAMERAS.map(c => ({...c}));
+        console.log('Using default cameras');
       }
       populateCameraSelect();
-      console.log('Active camera ID after populateCameraSelect:', activeCameraId);
       updateCameraControlUI(); // Initialize camera control state
       renderCameraDock();
       renderCameraOverlays();
@@ -840,7 +1063,7 @@
     const maxSpeed = parseFloat(speedSlider.value) / 100;
     const distance = Math.sqrt(x*x + y*y);
 
-      if (distance > 0.1) {
+      if (distance > JOYSTICK_DEADZONE) {
         currentSpeed = Math.min(distance, 1.0) * maxSpeed;
         currentHeading = Math.atan2(x, y) * 180 / Math.PI;
 
@@ -876,8 +1099,8 @@
       const rect = joystickCanvas.getBoundingClientRect();
       const centerX = joystickCanvas.width / 2;
       const centerY = joystickCanvas.height / 2;
-      const x = ((e.clientX - rect.left) - centerX) / 25;
-      const y = -((e.clientY - rect.top) - centerY) / 25;
+      const x = ((e.clientX - rect.left) - centerX) / JOYSTICK_SCALE;
+      const y = -((e.clientY - rect.top) - centerY) / JOYSTICK_SCALE;
 
       // Clamp to unit circle
       const dist = Math.sqrt(x*x + y*y);
@@ -914,8 +1137,8 @@
       const centerX = joystickCanvas.width / 2;
       const centerY = joystickCanvas.height / 2;
       const touch = e.touches[0];
-      const x = ((touch.clientX - rect.left) - centerX) / 25;
-      const y = -((touch.clientY - rect.top) - centerY) / 25;
+      const x = ((touch.clientX - rect.left) - centerX) / JOYSTICK_SCALE;
+      const y = -((touch.clientY - rect.top) - centerY) / JOYSTICK_SCALE;
 
       const dist = Math.sqrt(x*x + y*y);
       if (dist > 1) {
@@ -941,6 +1164,13 @@
     if(log.textContent.split('\n').length > 10){
       log.textContent = log.textContent.split('\n').slice(0,10).join('\n');
     }
+  }
+
+  // Consistent error handling - logs to console and UI
+  function logError(context, error) {
+    const errorMsg = error && error.message ? error.message : String(error);
+    console.error(`[${context}]`, error);
+    logMsg(`Error: ${context} - ${errorMsg}`);
   }
 
   // WebSocket connection with auto-reconnection
@@ -1000,8 +1230,13 @@
               groundContactStates[i] = !!m.ground_contacts[i];
             }
           }
-          // Update walking state for body animation
-          walking = m.running || false;
+          // Update walking state from backend and sync UI
+          const backendWalking = m.running || false;
+          if (walking !== backendWalking) {
+            walking = backendWalking;
+            runBtn.textContent = walking ? 'Stop Walking' : 'Start Walking';
+            updateRunButtonTheme();
+          }
 
           // Update status display with gauges
           if (m.temperature_c !== undefined) {
@@ -1276,13 +1511,19 @@
     defaultBodyY = height;
     document.getElementById('bodyHeightValue').textContent = height + 'mm';
 
-    // Update body visual position
-    body.position.y = height;
+    // Update body visual position (with null check)
+    if (body) {
+      body.position.y = height;
+    }
 
     // Update all leg visual positions (Y position only - leg angles come from backend)
-    legs.forEach((leg, i) => {
-      leg.group.position.y = height;
-    });
+    if (legs && legs.length > 0) {
+      legs.forEach((leg) => {
+        if (leg && leg.group) {
+          leg.group.position.y = height;
+        }
+      });
+    }
 
     // Send body height to backend via WebSocket
     // Backend calculates IK and sends angles back via telemetry
@@ -1492,9 +1733,11 @@
     }
 
     // Keep body stable - no bobbing to avoid disturbing movement
-    body.position.y = defaultBodyY;
-    body.rotation.x = 0;
-    body.rotation.z = 0;
+    if (body) {
+      body.position.y = defaultBodyY;
+      body.rotation.x = 0;
+      body.rotation.z = 0;
+    }
 
     // Update webcam overlay texture if active
     if (webcamOverlay && webcamOverlay.visible) {
@@ -1712,13 +1955,25 @@
   }
 
   function applyTheme(values, skipSave = false) {
-    activeTheme = {...activeTheme, ...values};
-    Object.entries(activeTheme).forEach(([key, value]) => {
-      document.documentElement.style.setProperty(key, value);
+    // Only update CSS properties that have actually changed
+    const changedKeys = [];
+    Object.entries(values).forEach(([key, value]) => {
+      if (activeTheme[key] !== value) {
+        changedKeys.push(key);
+        document.documentElement.style.setProperty(key, value);
+      }
     });
+    activeTheme = {...activeTheme, ...values};
 
-    updateRunButtonTheme();
-    drawJoystick();
+    // Only redraw if relevant colors changed
+    const needsRedraw = changedKeys.some(k =>
+      k === '--accent' || k === '--panel-strong' || k === '--panel-border' ||
+      k === '--text-muted' || k === '--success' || k === '--danger'
+    );
+    if (needsRedraw || changedKeys.length === Object.keys(activeTheme).length) {
+      updateRunButtonTheme();
+      drawJoystick();
+    }
 
     if (!skipSave) {
       localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify({preset: document.getElementById('themePreset')?.value || 'aurora', values: activeTheme}));
@@ -2331,6 +2586,71 @@
   // Webcam variables (declared before use in renderCameraDock)
   let webcamStream = null;
   let webcamOverlay = null;
+  let webcamInitializing = false; // Lock to prevent concurrent initialization
+
+  /**
+   * Start the browser webcam stream with race condition protection.
+   * @param {string} deviceId - Optional specific device ID to use
+   * Returns the stream if successful, null if failed or already initializing.
+   */
+  async function startWebcamStream(deviceId = null) {
+    // If requesting a specific device and current stream uses different device, stop it
+    if (deviceId && webcamStream) {
+      const currentTrack = webcamStream.getVideoTracks()[0];
+      const currentDeviceId = currentTrack?.getSettings()?.deviceId;
+      if (currentDeviceId !== deviceId) {
+        // Stop current stream to switch devices
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+      }
+    }
+
+    // Return existing stream if already running and no specific device requested
+    if (webcamStream && !deviceId) {
+      return webcamStream;
+    }
+
+    // Prevent concurrent initialization attempts
+    if (webcamInitializing) {
+      logMsg('Webcam initialization already in progress...');
+      // Wait for the existing initialization to complete
+      let attempts = 0;
+      while (webcamInitializing && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+      return webcamStream;
+    }
+
+    webcamInitializing = true;
+
+    try {
+      // Build constraints - use specific device if provided
+      const videoConstraints = deviceId
+        ? { deviceId: { exact: deviceId } }
+        : { facingMode: 'user' };
+      const constraints = { video: videoConstraints, audio: false };
+
+      webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+      activeCameraStream = webcamStream;
+
+      // Assign stream to hidden video element for overlay support
+      const videoElement = document.getElementById('webcamFeed');
+      if (videoElement) {
+        videoElement.srcObject = webcamStream;
+        // Ensure video starts playing (needed for VideoTexture)
+        await videoElement.play().catch(() => {});
+      }
+
+      logMsg('Webcam started');
+      return webcamStream;
+    } catch (err) {
+      logError('Webcam', err);
+      return null;
+    } finally {
+      webcamInitializing = false;
+    }
+  }
 
   // Track camera overlay meshes for 3D scene (keyed by camera id)
   const cameraOverlayMeshes = {};
@@ -2342,81 +2662,212 @@
     return 1.0 - (sliderVal / 100);  // Inverted: 0% slider = opaque
   }
 
+  // Create a placeholder texture for cameras without feed
+  function createPlaceholderTexture(label, position) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+
+    // Dark background
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Border
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+
+    // Camera icon (simple representation)
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.roundRect(110, 70, 100, 70, 8);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(160, 105, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath();
+    ctx.arc(160, 105, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // "No Feed" text
+    ctx.fillStyle = '#888';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No Feed', canvas.width / 2, 165);
+
+    // Camera label
+    ctx.fillStyle = '#aaa';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(label || 'Camera', canvas.width / 2, 190);
+
+    // Position indicator
+    ctx.fillStyle = '#666';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(position || 'front', canvas.width / 2, 210);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  // Position an overlay mesh based on camera position setting
+  // Overlays are positioned around the hexapod and angled to face the typical camera view
+  function positionOverlayMesh(mesh, position, idx) {
+    switch (position) {
+      case 'front':
+        // Front: in front of hexapod, facing backward toward camera
+        mesh.position.set(0, 100, 250);
+        mesh.rotation.set(0, 0, 0);
+        break;
+      case 'rear':
+        // Rear: on the ground, behind the hexapod
+        mesh.position.set(0, 10, -150);
+        mesh.rotation.set(-Math.PI / 2, 0, Math.PI);  // Lay flat, flipped 180°
+        break;
+      case 'left':
+        // Left: positioned at 45° angle, leaning toward center pane
+        mesh.position.set(-200, 100, 200);
+        mesh.rotation.set(0, -Math.PI / 4, 0);  // -45° leaning toward front
+        break;
+      case 'right':
+        // Right: positioned at 45° angle, leaning toward center pane
+        mesh.position.set(200, 100, 200);
+        mesh.rotation.set(0, Math.PI / 4, 0);  // 45° leaning toward front
+        break;
+      case 'floating':
+      default:
+        // Floating: stacked in front
+        mesh.position.set(0, 100 + (idx * 20), 200 + (idx * 30));
+        mesh.rotation.set(0, 0, 0);
+        break;
+    }
+  }
+
   // Render camera overlays in the 3D scene for cameras with displayMode === 'overlay'
   function renderCameraOverlays() {
-    // Get cameras that should be overlays
-    const overlayViews = cameraViews.filter(v => {
-      if (!v.enabled) return false;
-      if (v.displayMode !== 'overlay') return false;
-      // Only show local camera overlays when webcam stream is active
-      if (v.sourceType === 'local' && !webcamStream) return false;
-      // Only show URL cameras when they have a source URL
-      if (v.sourceType !== 'local' && !v.sourceUrl) return false;
+    // Get cameras that should be overlays (show all enabled overlay cameras)
+    const overlayCams = cameras.filter(cam => {
+      if (!cam.enabled) return false;
+      if (cam.displayMode !== 'overlay') return false;
+
+      // Get camera source info
+      const source = getCameraSource(cam);
+
+      // Hide cameras with invalid sources
+      if (source.type === 'not_found') return false;
+
       return true;
     });
 
     // Remove overlays that are no longer needed
     Object.keys(cameraOverlayMeshes).forEach(id => {
-      if (!overlayViews.find(v => v.id === id)) {
+      if (!overlayCams.find(cam => cam.id === id)) {
         const mesh = cameraOverlayMeshes[id];
         if (mesh) {
           scene.remove(mesh);
           if (mesh.material.map) mesh.material.map.dispose();
           mesh.material.dispose();
           mesh.geometry.dispose();
+          // Clean up video element if it was created
+          if (mesh.userData.videoElement) {
+            mesh.userData.videoElement.pause();
+            mesh.userData.videoElement.src = '';
+          }
         }
         delete cameraOverlayMeshes[id];
       }
     });
 
     // Create or update overlays for active overlay cameras
-    overlayViews.forEach((view, idx) => {
-      if (!cameraOverlayMeshes[view.id]) {
+    overlayCams.forEach((cam, idx) => {
+      // Get camera source info
+      const source = getCameraSource(cam);
+      const isBrowserCamera = source.type === 'browser';
+
+      // Check if feed is available
+      const hasFeed = isBrowserCamera ? !!webcamStream : !!source.address;
+
+      if (!cameraOverlayMeshes[cam.id]) {
         // Create new overlay
-        let videoElement;
-        if (view.sourceType === 'local') {
-          videoElement = document.getElementById('webcamFeed');
+        let texture;
+        let videoElement = null;
+
+        if (hasFeed) {
+          if (isBrowserCamera) {
+            videoElement = document.getElementById('webcamFeed');
+          } else {
+            // For URL sources, create a hidden video element
+            videoElement = document.createElement('video');
+            videoElement.autoplay = true;
+            videoElement.muted = true;
+            videoElement.playsInline = true;
+            videoElement.loop = true;
+            videoElement.crossOrigin = 'anonymous';
+            videoElement.src = source.address;
+            videoElement.play().catch(() => {});
+          }
+          texture = new THREE.VideoTexture(videoElement);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
         } else {
-          // For URL sources, we need to create a hidden video element
-          videoElement = document.createElement('video');
-          videoElement.autoplay = true;
-          videoElement.muted = true;
-          videoElement.playsInline = true;
-          videoElement.loop = true;
-          videoElement.crossOrigin = 'anonymous';
-          videoElement.src = view.sourceUrl;
-          videoElement.play().catch(() => {});
+          // No feed - show placeholder
+          texture = createPlaceholderTexture(cam.name, cam.position);
         }
 
-        if (videoElement) {
-          const videoTexture = new THREE.VideoTexture(videoElement);
-          videoTexture.minFilter = THREE.LinearFilter;
-          videoTexture.magFilter = THREE.LinearFilter;
-          const overlayGeom = new THREE.PlaneGeometry(200, 150);
-          const overlayMat = new THREE.MeshBasicMaterial({
-            map: videoTexture,
-            transparent: true,
-            opacity: getOverlayOpacity(),
-            side: THREE.DoubleSide
-          });
-          const overlayMesh = new THREE.Mesh(overlayGeom, overlayMat);
+        const overlayGeom = new THREE.PlaneGeometry(200, 150);
+        const overlayMat = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          opacity: getOverlayOpacity(),
+          side: THREE.DoubleSide
+        });
+        const overlayMesh = new THREE.Mesh(overlayGeom, overlayMat);
 
-          // Position overlays at different depths so they don't z-fight
-          // First overlay at z=150, each subsequent one slightly further back
-          overlayMesh.position.set(0, 80, 150 + (idx * 5));
-          scene.add(overlayMesh);
-          cameraOverlayMeshes[view.id] = overlayMesh;
+        // Position overlay based on configured camera position
+        positionOverlayMesh(overlayMesh, cam.position || 'front', idx);
 
-          // Store reference to video element for URL sources
-          if (view.sourceType !== 'local') {
-            overlayMesh.userData.videoElement = videoElement;
-          }
+        scene.add(overlayMesh);
+        cameraOverlayMeshes[cam.id] = overlayMesh;
+
+        // Store metadata
+        overlayMesh.userData.isBrowserCamera = isBrowserCamera;
+        overlayMesh.userData.hasFeed = hasFeed;
+        if (!isBrowserCamera && videoElement) {
+          overlayMesh.userData.videoElement = videoElement;
         }
       } else {
-        // Update existing overlay opacity
-        const mesh = cameraOverlayMeshes[view.id];
+        // Update existing overlay
+        const mesh = cameraOverlayMeshes[cam.id];
         if (mesh && mesh.material) {
           mesh.material.opacity = getOverlayOpacity();
+
+          // Check if feed status changed (e.g., webcam started/stopped)
+          const hadFeed = mesh.userData.hasFeed;
+          if (hasFeed !== hadFeed) {
+            // Feed status changed - recreate texture
+            if (mesh.material.map) mesh.material.map.dispose();
+
+            if (hasFeed) {
+              let videoElement;
+              if (isBrowserCamera) {
+                videoElement = document.getElementById('webcamFeed');
+              } else {
+                videoElement = mesh.userData.videoElement;
+              }
+              if (videoElement) {
+                const videoTexture = new THREE.VideoTexture(videoElement);
+                videoTexture.minFilter = THREE.LinearFilter;
+                videoTexture.magFilter = THREE.LinearFilter;
+                mesh.material.map = videoTexture;
+              }
+            } else {
+              mesh.material.map = createPlaceholderTexture(cam.name, cam.position);
+            }
+            mesh.material.needsUpdate = true;
+            mesh.userData.hasFeed = hasFeed;
+          }
         }
       }
     });
@@ -2428,7 +2879,7 @@
   // ========== Webcam Settings ==========
 
   function refreshLocalCameraVideos() {
-    document.querySelectorAll('.camera-pane video[data-source-type="local"]').forEach((video) => {
+    document.querySelectorAll('.camera-pane video[data-source-type="browser"]').forEach((video) => {
       if (webcamStream) {
         video.srcObject = webcamStream;
         video.play().catch(() => {});
@@ -2438,95 +2889,77 @@
     });
   }
 
-  // Start camera button - works with currently selected camera
-  document.getElementById('startWebcam').addEventListener('click', async () => {
-    console.log('Start camera clicked, activeCameraId:', activeCameraId);
-    if (!activeCameraId) {
-      logMsg('No camera selected');
-      return;
+  // Start All Cameras button - enables all cameras and starts webcam if needed
+  document.getElementById('startAllCameras')?.addEventListener('click', async () => {
+    console.log('Start All Cameras clicked');
+
+    // Enable all cameras
+    cameras.forEach(cam => {
+      cam.enabled = true;
+      const checkbox = document.getElementById(`camera-check-${cam.id}`);
+      if (checkbox) checkbox.checked = true;
+    });
+
+    // Check if any camera needs browser webcam stream
+    const localCameras = cameras.filter(cam => {
+      const source = getCameraSource(cam);
+      return source.type === 'browser';
+    });
+
+    if (localCameras.length > 0) {
+      // Use the first camera with a configured device ID, or default
+      const camWithDevice = localCameras.find(c => c.deviceId) || localCameras[0];
+      await startWebcamStream(camWithDevice?.deviceId || null);
     }
 
-    const view = cameraViews.find(v => v.id === activeCameraId);
-    console.log('Found camera view:', view);
-    if (!view) {
-      logMsg('Camera not found');
-      return;
-    }
+    refreshLocalCameraVideos();
+    renderCameraDock();
+    renderCameraOverlays();
+    updateCameraControlUI();
 
-    try {
-      const source = getResolvedCameraSource(view);
-      console.log('Resolved camera source:', source);
-      const videoElement = document.getElementById('webcamFeed');
-      if (!videoElement) {
-        throw new Error('Video element not found');
+    const enabledCount = cameras.filter(cam => cam.enabled).length;
+    logMsg(`Enabled ${enabledCount} camera${enabledCount !== 1 ? 's' : ''}`);
+  });
+
+  // Stop All Cameras button - disables all cameras and stops webcam
+  document.getElementById('stopAllCameras')?.addEventListener('click', () => {
+    // Disable all cameras
+    cameras.forEach(cam => {
+      cam.enabled = false;
+      const checkbox = document.getElementById(`camera-check-${cam.id}`);
+      if (checkbox) checkbox.checked = false;
+    });
+
+    // Stop webcam stream
+    stopActiveCamera();
+
+    refreshLocalCameraVideos();
+    renderCameraDock();
+    renderCameraOverlays();
+    updateCameraControlUI();
+
+    logMsg('All cameras stopped');
+  });
+
+  // Webcam overlay toggle
+  document.getElementById('overlayWebcam').addEventListener('change', async (e) => {
+    if (e.target.checked) {
+      // If no webcam stream, try to start it
+      if (!webcamStream) {
+        logMsg('Starting webcam for overlay...');
+        const stream = await startWebcamStream();
+        if (!stream) {
+          e.target.checked = false;
+          return;
+        }
+        refreshLocalCameraVideos();
+        renderCameraDock();
+        updateCameraControlUI();
       }
 
-      // Handle different camera types
-      if (source.type === 'browser' || source.type === 'local') {
-        // Browser webcam - request access
-        const constraints = {
-          video: source.address ? { deviceId: { exact: source.address } } : { facingMode: 'user' },
-          audio: false
-        };
-        activeCameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-        webcamStream = activeCameraStream; // Keep compatibility with existing code
-        videoElement.srcObject = activeCameraStream;
-
-      } else if (source.type === 'usb' || source.type === 'csi') {
-        // Hardware camera via backend stream
-        const streamUrl = source.address ? `/api/stream/${encodeURIComponent(source.address)}` : null;
-        if (streamUrl) {
-          videoElement.src = streamUrl;
-          activeCameraStream = { getTracks: () => [] }; // Placeholder
-        } else {
-          throw new Error('No camera address configured');
-        }
-
-      } else if (source.type === 'url' || source.type === 'ip' || source.type === 'rtsp') {
-        // URL-based stream
-        const streamUrl = source.address || view.sourceUrl;
-        if (streamUrl) {
-          videoElement.src = streamUrl;
-          activeCameraStream = { getTracks: () => [] }; // Placeholder
-        } else {
-          throw new Error('No stream URL configured');
-        }
-
-      } else if (source.type === 'not_found') {
-        // Hardware camera reference is broken
-        throw new Error(source.error || 'Hardware camera not found. Please check configuration.');
-
-      } else if (source.type === 'hardware') {
-        // Hardware camera type not resolved - fallback to local
-        console.warn('Hardware camera type not resolved, falling back to local webcam');
-        activeCameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        webcamStream = activeCameraStream;
-        videoElement.srcObject = activeCameraStream;
-
-      } else {
-        throw new Error(`Unsupported camera type: ${source.type}`);
-      }
-
-      // Wait for video to be ready before playing
-      await new Promise((resolve, reject) => {
-        videoElement.onloadedmetadata = () => {
-          videoElement.play()
-            .then(resolve)
-            .catch(reject);
-        };
-        videoElement.onerror = reject;
-        // Timeout for streams that don't fire loadedmetadata
-        setTimeout(resolve, 3000);
-      });
-
-      document.getElementById('startWebcam').classList.add('active');
-
-      // If overlay checkbox is checked, recreate the overlay with new stream
-      if (document.getElementById('overlayWebcam').checked) {
-        if (webcamOverlay) {
-          scene.remove(webcamOverlay);
-        }
-
+      // Create overlay if needed
+      if (!webcamOverlay || !webcamOverlay.material.map) {
+        const videoElement = document.getElementById('webcamFeed');
         const videoTexture = new THREE.VideoTexture(videoElement);
         const overlayGeom = new THREE.PlaneGeometry(200, 150);
         const sliderVal = parseFloat(document.getElementById('webcamOpacity').value);
@@ -2537,53 +2970,6 @@
           side: THREE.DoubleSide
         });
         webcamOverlay = new THREE.Mesh(overlayGeom, overlayMat);
-        webcamOverlay.position.set(0, 80, 150);
-        scene.add(webcamOverlay);
-        webcamOverlay.visible = true;
-      }
-
-      refreshLocalCameraVideos();
-      renderCameraDock();
-      renderCameraOverlays();
-      updateCameraControlUI();
-
-      logMsg(`Camera started: ${view.label}`);
-    } catch(err) {
-      const errorMsg = err && err.message ? err.message : String(err);
-      logMsg('Camera error: ' + errorMsg);
-      console.error('Camera error:', err);
-      activeCameraStream = null;
-      updateCameraControlUI();
-    }
-  });
-
-  // Stop camera button
-  document.getElementById('stopWebcam').addEventListener('click', () => {
-    if (activeCameraStream || webcamStream) {
-      const view = cameraViews.find(v => v.id === activeCameraId);
-      stopActiveCamera();
-      logMsg(`Camera stopped${view ? ': ' + view.label : ''}`);
-    }
-  });
-
-  // Webcam overlay toggle
-  document.getElementById('overlayWebcam').addEventListener('change', (e) => {
-    if (e.target.checked && webcamStream) {
-      if (!webcamOverlay || !webcamOverlay.material.map) {
-        // Create video texture overlay
-        const videoElement = document.getElementById('webcamFeed');
-        const videoTexture = new THREE.VideoTexture(videoElement);
-        const overlayGeom = new THREE.PlaneGeometry(200, 150);
-        const sliderVal = parseFloat(document.getElementById('webcamOpacity').value);
-        const overlayMat = new THREE.MeshBasicMaterial({
-          map: videoTexture,
-          transparent: true,
-          opacity: 1.0 - (sliderVal / 100), // Inverted: 0% slider = opaque
-          side: THREE.DoubleSide
-        });
-        webcamOverlay = new THREE.Mesh(overlayGeom, overlayMat);
-        // Position in front of hexapod in 3D space (positive Z)
-        // When viewing from behind (camera at negative Z), overlay appears in background
         webcamOverlay.position.set(0, 80, 150);
         scene.add(webcamOverlay);
       }
@@ -2611,17 +2997,6 @@
     });
   });
 
-  // Camera view selector - choose which configured camera to display
-  document.getElementById('activeCameraSelect')?.addEventListener('change', (e) => {
-    const selectedId = e.target.value;
-    handleCameraSelect(selectedId);
-    if (selectedId) {
-      const view = cameraViews.find(v => v.id === selectedId);
-      logMsg(`Camera: ${view?.label || selectedId}`);
-    } else {
-      logMsg('Camera: None');
-    }
-  });
 
   // ========== Advanced Settings ==========
 
@@ -3388,6 +3763,7 @@
 
   const cameraPresets = {
     front: { angleY: 0, angleX: Math.PI / 12 },
+    back: { angleY: Math.PI, angleX: Math.PI / 4 },  // Starting position - back isometric
     side: { angleY: Math.PI / 2, angleX: Math.PI / 8 },
     top: { angleY: 0, angleX: Math.PI / 2 - 0.1 },
     iso: { angleY: Math.PI * 0.75, angleX: Math.PI / 6 }

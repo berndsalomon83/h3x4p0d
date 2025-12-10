@@ -82,6 +82,12 @@
       padding: 6px 12px;
       border-radius: 20px;
       font-size: 0.85em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .connection-status:hover {
+      opacity: 0.8;
     }
 
     .connection-status.connected {
@@ -92,6 +98,11 @@
     .connection-status.disconnected {
       background: rgba(244, 67, 54, 0.2);
       color: #e57373;
+    }
+
+    .connection-status.failed {
+      background: rgba(255, 152, 0, 0.2);
+      color: #ffb74d;
     }
 
     .status-dot {
@@ -330,6 +341,47 @@
       50% { opacity: 0.5; transform: scale(1.2); }
     }
 
+    /* Patrol route info display */
+    .patrol-route-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      margin: 10px 0;
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      border-left: 3px solid #4caf50;
+    }
+
+    .patrol-route-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .patrol-route-type {
+      font-size: 0.9em;
+      color: #888;
+    }
+
+    .patrol-route-name {
+      font-weight: 600;
+      color: #fff;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .patrol-status.paused .patrol-route-info {
+      border-left-color: #ff9800;
+    }
+
+    .patrol-status.stopped .patrol-route-info {
+      border-left-color: #666;
+    }
+
     .patrol-stats {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -520,6 +572,77 @@
     .route-action-btn.play:hover {
       background: rgba(76, 175, 80, 0.2);
       color: #81c784;
+    }
+
+    .route-action-btn.geometry {
+      color: #ff9800;
+    }
+
+    .route-action-btn.geometry:hover {
+      background: rgba(255, 152, 0, 0.2);
+      color: #ffb74d;
+    }
+
+    .route-action-btn.geometry.active {
+      background: rgba(255, 152, 0, 0.3);
+      color: #ffb74d;
+      border: 1px solid #ff9800;
+    }
+
+    /* Geometry Edit Toolbar */
+    .geometry-edit-toolbar {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border: 1px solid #4fc3f7;
+      border-radius: 12px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 20px rgba(79, 195, 247, 0.2);
+      z-index: 10000;
+      animation: slideUp 0.3s ease-out;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
+    .geometry-edit-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+
+    .geometry-edit-icon {
+      font-size: 20px;
+    }
+
+    .geometry-edit-hint {
+      font-size: 12px;
+      color: #888;
+      margin-left: 10px;
+    }
+
+    .geometry-edit-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .geometry-edit-toolbar .btn {
+      padding: 8px 16px;
+      font-size: 14px;
     }
 
     /* Route visibility toggle */
@@ -1283,6 +1406,197 @@
       border-color: #4fc3f7;
     }
 
+    /* Schedule List */
+    .schedule-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .schedule-empty {
+      text-align: center;
+      padding: 20px;
+      color: #888;
+    }
+
+    .schedule-empty span {
+      font-size: 2em;
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    .schedule-empty .hint {
+      font-size: 0.85em;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .schedule-item {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 12px;
+      transition: all 0.2s;
+    }
+
+    .schedule-item.disabled {
+      opacity: 0.6;
+    }
+
+    .schedule-item-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .schedule-item-toggle {
+      flex-shrink: 0;
+      width: 36px;
+    }
+
+    .schedule-item-name {
+      flex: 1;
+      font-weight: 600;
+      color: #e0e0e0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .schedule-item-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .schedule-item-actions .btn-icon {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9em;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    .schedule-item-actions .btn-icon:hover {
+      opacity: 1;
+    }
+
+    .schedule-item-actions .btn-icon.danger:hover {
+      color: #ff5252;
+    }
+
+    .schedule-item-details {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 15px;
+      font-size: 0.85em;
+      color: #888;
+    }
+
+    .schedule-detail {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .schedule-detail-icon {
+      font-size: 0.9em;
+    }
+
+    .add-schedule-btn {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #4fc3f7, #29b6f6);
+      border: none;
+      border-radius: 8px;
+      color: #1a1a2e;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .add-schedule-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(79, 195, 247, 0.3);
+    }
+
+    /* Schedule Modal Styles */
+    .schedule-form-section {
+      margin-bottom: 20px;
+    }
+
+    .schedule-form-section h4 {
+      margin-bottom: 10px;
+      color: #e0e0e0;
+      font-size: 0.95em;
+    }
+
+    .schedule-route-options,
+    .schedule-target-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+      padding: 10px;
+      background: #1a1a2e;
+      border-radius: 8px;
+      border: 1px solid #2a2a4a;
+    }
+
+    .schedule-route-option,
+    .schedule-target-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .schedule-route-option:hover,
+    .schedule-target-option:hover {
+      background: rgba(79, 195, 247, 0.1);
+    }
+
+    .schedule-route-option input,
+    .schedule-target-option input {
+      margin: 0;
+    }
+
+    .schedule-route-option .route-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    .schedule-target-option .target-icon {
+      font-size: 1.1em;
+    }
+
+    .toggle.small {
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .toggle.small .toggle-slider:before {
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+    }
+
+    .toggle.small input:checked + .toggle-slider:before {
+      transform: translateX(16px);
+    }
+
     /* Color picker */
     .color-options {
       display: flex;
@@ -1553,6 +1867,64 @@
       color: #81c784;
     }
 
+    /* Detection Modal Content */
+    .detection-modal-body {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .detection-modal-icon {
+      font-size: 64px;
+      margin-bottom: 10px;
+    }
+
+    .detection-modal-type {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #4fc3f7;
+    }
+
+    .detection-modal-image {
+      margin: 15px 0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .detection-modal-image img {
+      max-width: 100%;
+      max-height: 300px;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    .detection-modal-details {
+      text-align: left;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    .detection-detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2a4a;
+    }
+
+    .detection-detail-row:last-child {
+      border-bottom: none;
+    }
+
+    .detail-label {
+      color: #888;
+    }
+
+    .detail-value {
+      color: #e0e0e0;
+      font-weight: 500;
+    }
+
     .custom-targets-list {
       border-top: 1px solid #2a2a4a;
       margin-top: 15px;
@@ -1734,6 +2106,198 @@
         top: 66px;
         transform: translateX(-50%) scale(0.9);
       }
+
+      .header h1 {
+        font-size: 16px;
+      }
+
+      .header-nav a {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .route-actions {
+        gap: 4px;
+      }
+
+      .route-action-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+      }
+
+      .geometry-edit-toolbar {
+        flex-direction: column;
+        padding: 10px 15px;
+        gap: 10px;
+        width: calc(100% - 30px);
+        max-width: 400px;
+      }
+
+      .geometry-edit-info {
+        flex-direction: column;
+        text-align: center;
+        gap: 5px;
+      }
+
+      .geometry-edit-hint {
+        margin-left: 0;
+        font-size: 11px;
+      }
+
+      .geometry-edit-actions {
+        width: 100%;
+      }
+
+      .geometry-edit-toolbar .btn {
+        flex: 1;
+      }
+
+      .patrol-control-btn {
+        padding: 10px 16px;
+        font-size: 13px;
+      }
+
+      .tabs button {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .section-header h3 {
+        font-size: 14px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header {
+        padding: 8px 12px;
+      }
+
+      .header h1 {
+        font-size: 14px;
+      }
+
+      .header h1 .icon {
+        display: none;
+      }
+
+      .header-nav {
+        gap: 4px;
+      }
+
+      .header-nav a {
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+
+      .sidebar {
+        height: 55%;
+      }
+
+      .map-container {
+        height: 45%;
+      }
+
+      .quick-actions {
+        gap: 4px;
+        transform: translateX(-50%) scale(0.8);
+      }
+
+      .map-controls {
+        transform: scale(0.85);
+        transform-origin: bottom right;
+      }
+
+      .route-item {
+        padding: 8px;
+      }
+
+      .route-name {
+        font-size: 13px;
+      }
+
+      .route-meta {
+        font-size: 10px;
+      }
+
+      .route-action-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+      }
+
+      .geometry-edit-toolbar {
+        bottom: 10px;
+        padding: 8px 12px;
+      }
+
+      .geometry-edit-icon {
+        font-size: 16px;
+      }
+
+      .patrol-controls {
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .patrol-control-btn {
+        width: 100%;
+      }
+
+      .settings-group label {
+        font-size: 12px;
+      }
+
+      .tabs {
+        flex-wrap: wrap;
+      }
+
+      .tabs button {
+        padding: 6px 10px;
+        font-size: 11px;
+        flex: 1;
+        min-width: 60px;
+      }
+
+      .custom-target-item {
+        flex-wrap: wrap;
+      }
+
+      .keyboard-help {
+        width: 90%;
+        max-width: none;
+      }
+    }
+
+    /* Touch-friendly improvements */
+    @media (pointer: coarse) {
+      .route-action-btn {
+        min-width: 36px;
+        min-height: 36px;
+      }
+
+      .route-visibility-btn {
+        min-width: 32px;
+        min-height: 32px;
+      }
+
+      .color-option {
+        width: 36px;
+        height: 36px;
+      }
+
+      .tabs button {
+        min-height: 40px;
+      }
+
+      .btn {
+        min-height: 44px;
+      }
+
+      .settings-group input,
+      .settings-group select {
+        min-height: 40px;
+      }
     }
 
     /* First vertex marker for polygon drawing */
@@ -1790,6 +2354,56 @@
       background: linear-gradient(135deg, #ff8787, #ff6b6b);
       transform: translate(-50%, -50%) scale(1.1);
     }
+
+    /* Green finish marker for routes */
+    .route-finish-inner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, #66bb6a, #4caf50) !important;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 14px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      z-index: 2;
+    }
+
+    .route-finish-pulse {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 30px;
+      height: 30px;
+      background: rgba(76, 175, 80, 0.4);
+      border-radius: 50%;
+      animation: route-finish-pulse 1.5s ease-out infinite;
+      z-index: 1;
+    }
+
+    @keyframes route-finish-pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(2.5);
+        opacity: 0;
+      }
+    }
+
+    .first-vertex-marker:hover .route-finish-inner {
+      background: linear-gradient(135deg, #81c784, #66bb6a) !important;
+      transform: translate(-50%, -50%) scale(1.1);
+    }
   </style>
 </head>
 <body>
@@ -1801,7 +2415,7 @@
       <a href="/config.html">Config</a>
       <a href="/patrol.html" class="active">Patrol</a>
     </nav>
-    <div id="connectionStatus" class="connection-status disconnected">
+    <div id="connectionStatus" class="connection-status disconnected" onclick="retryConnection()" title="Click to retry connection">
       <div class="status-dot"></div>
       <span>Disconnected</span>
     </div>
@@ -1824,7 +2438,11 @@
                 <div class="pulse"></div>
                 <span id="patrolStatusText">Stopped</span>
               </div>
-              <span id="patrolRouteName" style="color: #888; font-size: 0.85em;">No route selected</span>
+            </div>
+            <div id="patrolRouteInfo" class="patrol-route-info" style="display: none;">
+              <div id="patrolRouteColor" class="patrol-route-color"></div>
+              <span id="patrolRouteType" class="patrol-route-type"></span>
+              <span id="patrolRouteName" class="patrol-route-name">No route selected</span>
             </div>
             <div class="patrol-stats">
               <div class="patrol-stat">
@@ -1889,12 +2507,12 @@
 
           <div style="display: flex; gap: 8px; margin-bottom: 10px;">
             <div class="route-search" style="flex: 1;">
-              <input type="text" id="routeSearchInput" placeholder="🔍 Filter routes..." onkeyup="filterRoutes(this.value)">
+              <input type="text" id="routeSearchInput" placeholder="🔍 Filter routes..." oninput="debouncedFilterRoutes(this.value)">
             </div>
-            <button class="btn-icon" onclick="showAllRoutes()" title="Show all routes on map">👁️</button>
-            <button class="btn-icon" onclick="hideAllRoutes()" title="Hide all routes from map">🙈</button>
-            <button class="btn-icon" onclick="exportRoutes()" title="Export routes to JSON">💾</button>
-            <button class="btn-icon" onclick="document.getElementById('importRoutesInput').click()" title="Import routes from JSON">📂</button>
+            <button class="btn-icon" onclick="showAllRoutes()" title="Show all routes on map" aria-label="Show all routes on map">👁️</button>
+            <button class="btn-icon" onclick="hideAllRoutes()" title="Hide all routes from map" aria-label="Hide all routes from map">🙈</button>
+            <button class="btn-icon" onclick="exportRoutes()" title="Export routes to JSON" aria-label="Export routes to JSON">💾</button>
+            <button class="btn-icon" onclick="document.getElementById('importRoutesInput').click()" title="Import routes from JSON" aria-label="Import routes from JSON">📂</button>
             <input type="file" id="importRoutesInput" accept=".json" style="display: none;" onchange="importRoutes(event)">
           </div>
 
@@ -2161,47 +2779,17 @@
           <span class="collapse-icon">▼</span>
         </div>
         <div class="sidebar-section-content">
-          <div class="alert-option">
-            <div class="alert-option-info">
-              <span class="alert-option-icon">⏰</span>
-              <span>Enable Scheduled Patrols</span>
-            </div>
-            <label class="toggle">
-              <input type="checkbox" id="scheduleEnabled">
-              <span class="toggle-slider"></span>
-            </label>
+          <p class="section-hint" style="font-size: 0.85em; color: #888; margin-bottom: 15px;">
+            Create schedules with specific routes, targets, and times for automated patrols.
+          </p>
+
+          <div id="scheduleList" class="schedule-list">
+            <!-- Schedule items rendered by JS -->
           </div>
 
-          <div id="scheduleSettings" style="margin-top: 15px; opacity: 0.5; pointer-events: none;">
-            <div class="form-group">
-              <label>Active Days</label>
-              <div class="schedule-days">
-                <button class="schedule-day active" data-day="0">Su</button>
-                <button class="schedule-day active" data-day="1">Mo</button>
-                <button class="schedule-day active" data-day="2">Tu</button>
-                <button class="schedule-day active" data-day="3">We</button>
-                <button class="schedule-day active" data-day="4">Th</button>
-                <button class="schedule-day active" data-day="5">Fr</button>
-                <button class="schedule-day active" data-day="6">Sa</button>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Start Time</label>
-                <input type="time" id="scheduleStart" value="06:00">
-              </div>
-              <div class="form-group">
-                <label>End Time</label>
-                <input type="time" id="scheduleEnd" value="20:00">
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Patrol Interval (minutes)</label>
-              <input type="number" id="scheduleInterval" value="60" min="15" max="480">
-            </div>
-          </div>
+          <button id="addScheduleBtn" class="add-schedule-btn" style="margin-top: 15px;">
+            ➕ Add Schedule
+          </button>
         </div>
       </section>
     </aside>
@@ -2211,23 +2799,23 @@
       <div id="map"></div>
 
       <!-- Map Controls -->
-      <div class="map-overlay map-controls">
-        <button class="map-control-btn" onclick="centerOnMyLocation()" title="Center on My Location">
+      <div class="map-overlay map-controls" role="toolbar" aria-label="Map controls">
+        <button class="map-control-btn" onclick="centerOnMyLocation()" title="Center on My Location" aria-label="Center on my GPS location">
           📍
         </button>
-        <button class="map-control-btn" onclick="centerOnHexapod()" title="Center on Hexapod">
+        <button class="map-control-btn" onclick="centerOnHexapod()" title="Center on Hexapod" aria-label="Center map on hexapod position">
           🤖
         </button>
-        <button class="map-control-btn" onclick="setHomePosition()" title="Set Home at Map Center">
+        <button class="map-control-btn" onclick="setHomePosition()" title="Set Home at Map Center" aria-label="Set home position at map center">
           🏠
         </button>
-        <button class="map-control-btn" onclick="toggleSatellite()" title="Toggle Satellite View">
+        <button class="map-control-btn" onclick="toggleSatellite()" title="Toggle Satellite View" aria-label="Toggle satellite view">
           🛰️
         </button>
-        <button class="map-control-btn" onclick="fitAllRoutes()" title="Fit All Routes">
+        <button class="map-control-btn" onclick="fitAllRoutes()" title="Fit All Routes" aria-label="Fit all routes in view">
           📐
         </button>
-        <button class="map-control-btn" onclick="toggleKeyboardHelp()" title="Keyboard Shortcuts">
+        <button class="map-control-btn" onclick="toggleKeyboardHelp()" title="Keyboard Shortcuts" aria-label="Show keyboard shortcuts">
           ⌨️
         </button>
       </div>
@@ -2241,7 +2829,11 @@
         <div class="keyboard-help-content">
           <div class="shortcut-row">
             <kbd>Esc</kbd>
-            <span>Cancel drawing</span>
+            <span>Cancel drawing / geometry edit</span>
+          </div>
+          <div class="shortcut-row">
+            <kbd>Enter</kbd>
+            <span>Save geometry edit</span>
           </div>
           <div class="shortcut-row">
             <kbd>Ctrl</kbd>+<kbd>S</kbd>
@@ -2300,24 +2892,24 @@
   </div>
 
   <!-- Quick Actions -->
-  <div class="quick-actions">
-    <button class="quick-action start" id="quickStart" onclick="startPatrol()">
+  <div class="quick-actions" role="toolbar" aria-label="Quick patrol actions">
+    <button class="quick-action start" id="quickStart" onclick="startPatrol()" aria-label="Start patrol">
       <span class="icon">▶️</span>
       <span class="label">Start</span>
     </button>
-    <button class="quick-action pause" id="quickPause" onclick="pausePatrol()" style="display: none;">
+    <button class="quick-action pause" id="quickPause" onclick="pausePatrol()" style="display: none;" aria-label="Pause patrol">
       <span class="icon">⏸️</span>
       <span class="label">Pause</span>
     </button>
-    <button class="quick-action stop" id="quickStop" onclick="stopPatrol()" style="display: none;">
+    <button class="quick-action stop" id="quickStop" onclick="stopPatrol()" style="display: none;" aria-label="Stop patrol">
       <span class="icon">⏹️</span>
       <span class="label">Stop</span>
     </button>
-    <button class="quick-action" onclick="goHome()">
+    <button class="quick-action" onclick="goHome()" aria-label="Return to home position">
       <span class="icon">🏠</span>
       <span class="label">Home</span>
     </button>
-    <button class="quick-action" onclick="emergencyStop()">
+    <button class="quick-action" onclick="emergencyStop()" aria-label="Emergency stop">
       <span class="icon">🛑</span>
       <span class="label">E-Stop</span>
     </button>
@@ -2441,79 +3033,79 @@
             <label>COCO Class Name</label>
             <select id="customCocoClass">
               <option value="">Select a class...</option>
-              <option value="person">person</option>
-              <option value="bicycle">bicycle</option>
-              <option value="car">car</option>
-              <option value="motorcycle">motorcycle</option>
               <option value="airplane">airplane</option>
-              <option value="bus">bus</option>
-              <option value="train">train</option>
-              <option value="truck">truck</option>
-              <option value="boat">boat</option>
-              <option value="bird">bird</option>
-              <option value="cat">cat</option>
-              <option value="dog">dog</option>
-              <option value="horse">horse</option>
-              <option value="sheep">sheep</option>
-              <option value="cow">cow</option>
-              <option value="elephant">elephant</option>
-              <option value="bear">bear</option>
-              <option value="zebra">zebra</option>
-              <option value="giraffe">giraffe</option>
+              <option value="apple">apple</option>
               <option value="backpack">backpack</option>
-              <option value="umbrella">umbrella</option>
-              <option value="handbag">handbag</option>
-              <option value="suitcase">suitcase</option>
+              <option value="banana">banana</option>
+              <option value="baseball bat">baseball bat</option>
+              <option value="bear">bear</option>
+              <option value="bed">bed</option>
+              <option value="bicycle">bicycle</option>
+              <option value="bird">bird</option>
+              <option value="boat">boat</option>
+              <option value="book">book</option>
+              <option value="bottle">bottle</option>
+              <option value="bowl">bowl</option>
+              <option value="broccoli">broccoli</option>
+              <option value="bus">bus</option>
+              <option value="cake">cake</option>
+              <option value="car">car</option>
+              <option value="carrot">carrot</option>
+              <option value="cat">cat</option>
+              <option value="cell phone">cell phone</option>
+              <option value="chair">chair</option>
+              <option value="clock">clock</option>
+              <option value="couch">couch</option>
+              <option value="cow">cow</option>
+              <option value="cup">cup</option>
+              <option value="dining table">dining table</option>
+              <option value="dog">dog</option>
+              <option value="donut">donut</option>
+              <option value="elephant">elephant</option>
+              <option value="fork">fork</option>
               <option value="frisbee">frisbee</option>
+              <option value="giraffe">giraffe</option>
+              <option value="hair drier">hair drier</option>
+              <option value="handbag">handbag</option>
+              <option value="horse">horse</option>
+              <option value="hot dog">hot dog</option>
+              <option value="keyboard">keyboard</option>
+              <option value="kite">kite</option>
+              <option value="knife">knife</option>
+              <option value="laptop">laptop</option>
+              <option value="microwave">microwave</option>
+              <option value="motorcycle">motorcycle</option>
+              <option value="mouse">mouse</option>
+              <option value="orange">orange</option>
+              <option value="oven">oven</option>
+              <option value="person">person</option>
+              <option value="pizza">pizza</option>
+              <option value="potted plant">potted plant</option>
+              <option value="refrigerator">refrigerator</option>
+              <option value="remote">remote</option>
+              <option value="sandwich">sandwich</option>
+              <option value="scissors">scissors</option>
+              <option value="sheep">sheep</option>
+              <option value="sink">sink</option>
+              <option value="skateboard">skateboard</option>
               <option value="skis">skis</option>
               <option value="snowboard">snowboard</option>
-              <option value="sports ball">sports ball</option>
-              <option value="kite">kite</option>
-              <option value="baseball bat">baseball bat</option>
-              <option value="skateboard">skateboard</option>
-              <option value="surfboard">surfboard</option>
-              <option value="tennis racket">tennis racket</option>
-              <option value="bottle">bottle</option>
-              <option value="wine glass">wine glass</option>
-              <option value="cup">cup</option>
-              <option value="fork">fork</option>
-              <option value="knife">knife</option>
               <option value="spoon">spoon</option>
-              <option value="bowl">bowl</option>
-              <option value="banana">banana</option>
-              <option value="apple">apple</option>
-              <option value="sandwich">sandwich</option>
-              <option value="orange">orange</option>
-              <option value="broccoli">broccoli</option>
-              <option value="carrot">carrot</option>
-              <option value="hot dog">hot dog</option>
-              <option value="pizza">pizza</option>
-              <option value="donut">donut</option>
-              <option value="cake">cake</option>
-              <option value="chair">chair</option>
-              <option value="couch">couch</option>
-              <option value="potted plant">potted plant</option>
-              <option value="bed">bed</option>
-              <option value="dining table">dining table</option>
-              <option value="toilet">toilet</option>
-              <option value="tv">tv</option>
-              <option value="laptop">laptop</option>
-              <option value="mouse">mouse</option>
-              <option value="remote">remote</option>
-              <option value="keyboard">keyboard</option>
-              <option value="cell phone">cell phone</option>
-              <option value="microwave">microwave</option>
-              <option value="oven">oven</option>
-              <option value="toaster">toaster</option>
-              <option value="sink">sink</option>
-              <option value="refrigerator">refrigerator</option>
-              <option value="book">book</option>
-              <option value="clock">clock</option>
-              <option value="vase">vase</option>
-              <option value="scissors">scissors</option>
+              <option value="sports ball">sports ball</option>
+              <option value="suitcase">suitcase</option>
+              <option value="surfboard">surfboard</option>
               <option value="teddy bear">teddy bear</option>
-              <option value="hair drier">hair drier</option>
+              <option value="tennis racket">tennis racket</option>
+              <option value="toaster">toaster</option>
+              <option value="toilet">toilet</option>
               <option value="toothbrush">toothbrush</option>
+              <option value="train">train</option>
+              <option value="truck">truck</option>
+              <option value="tv">tv</option>
+              <option value="umbrella">umbrella</option>
+              <option value="vase">vase</option>
+              <option value="wine glass">wine glass</option>
+              <option value="zebra">zebra</option>
             </select>
           </div>
 
@@ -2556,6 +3148,76 @@
 
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeCustomDetectionModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule Modal -->
+  <div class="modal-overlay" id="scheduleModal">
+    <div class="modal" style="max-width: 550px;">
+      <div class="modal-header">
+        <h2 id="scheduleModalTitle">Add Schedule</h2>
+        <button class="modal-close" onclick="closeScheduleModal()">&times;</button>
+      </div>
+
+      <div class="schedule-form-section">
+        <div class="form-group">
+          <label>Schedule Name</label>
+          <input type="text" id="scheduleName" placeholder="e.g., Morning Patrol, Weekend Check">
+        </div>
+      </div>
+
+      <div class="schedule-form-section">
+        <h4>📆 Active Days</h4>
+        <div class="schedule-days">
+          <button type="button" class="schedule-day active" data-day="0">Su</button>
+          <button type="button" class="schedule-day active" data-day="1">Mo</button>
+          <button type="button" class="schedule-day active" data-day="2">Tu</button>
+          <button type="button" class="schedule-day active" data-day="3">We</button>
+          <button type="button" class="schedule-day active" data-day="4">Th</button>
+          <button type="button" class="schedule-day active" data-day="5">Fr</button>
+          <button type="button" class="schedule-day active" data-day="6">Sa</button>
+        </div>
+      </div>
+
+      <div class="schedule-form-section">
+        <h4>🕐 Time Window</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Start Time</label>
+            <input type="time" id="scheduleStartTime" value="06:00">
+          </div>
+          <div class="form-group">
+            <label>End Time</label>
+            <input type="time" id="scheduleEndTime" value="20:00">
+          </div>
+          <div class="form-group">
+            <label>Interval (min)</label>
+            <input type="number" id="scheduleIntervalInput" value="60" min="15" max="480">
+          </div>
+        </div>
+      </div>
+
+      <div class="schedule-form-section">
+        <h4>📍 Routes/Zones to Patrol</h4>
+        <p class="hint" style="font-size: 0.8em; color: #888; margin-bottom: 8px;">
+          Leave all unchecked to patrol all routes
+        </p>
+        <div id="scheduleRouteCheckboxes" class="schedule-route-options">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="schedule-form-section">
+        <h4>🎯 Detection Targets</h4>
+        <div id="scheduleTargetCheckboxes" class="schedule-target-options">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveScheduleFromModal()">Save Schedule</button>
       </div>
     </div>
   </div>
