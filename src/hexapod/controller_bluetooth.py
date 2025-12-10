@@ -4,7 +4,10 @@ Supports BLE device discovery, generic joystick input (via `inputs` library),
 and a keyboard fallback for development. Emits high-level motion commands.
 """
 import asyncio
+import logging
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 try:
     from bleak import BleakScanner
@@ -40,7 +43,7 @@ class GenericController:
 
     async def start(self):
         if not _HAS_INPUTS:
-            print("inputs library not available; falling back to keyboard")
+            logger.info("inputs library not available; falling back to keyboard")
             await self._keyboard_loop()
             return
         self.running = True
@@ -49,25 +52,25 @@ class GenericController:
 
     def _inputs_loop(self):
         """Read gamepad input in blocking loop."""
-        print("🎮 GenericController: Searching for connected gamepads...")
+        logger.info("GenericController: Searching for connected gamepads...")
 
         # Try to list available devices first
         try:
             devices = inputs.devices.gamepads
             if not devices:
-                print("⚠️  No gamepads detected by inputs library!")
-                print("   Make sure your controller is:")
-                print("   1. Paired in System Settings → Bluetooth")
-                print("   2. Connected (not just paired)")
-                print("   3. Try pressing a button to wake it up")
+                logger.warning(
+                    "No gamepads detected by inputs library! "
+                    "Make sure your controller is: "
+                    "1. Paired in System Settings → Bluetooth, "
+                    "2. Connected (not just paired), "
+                    "3. Try pressing a button to wake it up"
+                )
                 return
-            print(f"✓ Found {len(devices)} gamepad(s):")
-            for dev in devices:
-                print(f"  - {dev.name}")
+            logger.info(f"Found {len(devices)} gamepad(s): {[dev.name for dev in devices]}")
         except Exception as e:
-            print(f"⚠️  Error listing gamepads: {e}")
+            logger.error(f"Error listing gamepads: {e}")
 
-        print("🎮 Waiting for controller input (move a stick or press a button)...")
+        logger.info("Waiting for controller input (move a stick or press a button)...")
         try:
             for evt in inputs.get_gamepad():
                 if not self.running:
@@ -101,13 +104,11 @@ class GenericController:
                     elif btn == "BTN_TR" and pressed:
                         self._emit(MotionCommand("gait", mode="tripod"))
         except Exception as e:
-            print(f"❌ Inputs loop error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Inputs loop error: {e}", exc_info=True)
 
     async def _keyboard_loop(self):
         """Fallback: keyboard input for development."""
-        print("GenericController fallback: w/a/s/d=move, space=stop, 1/2/3=gait, q=quit")
+        logger.info("GenericController fallback: w/a/s/d=move, space=stop, 1/2/3=gait, q=quit")
         self.running = True
         loop = asyncio.get_event_loop()
         while self.running:
@@ -141,7 +142,7 @@ class GenericController:
             try:
                 cb(cmd)
             except Exception as e:
-                print(f"Callback error: {e}")
+                logger.error(f"Callback error: {e}")
 
     def stop(self):
         self.running = False
@@ -158,7 +159,7 @@ class BLEDeviceScanner:
 
     async def scan(self, timeout: float = 5.0):
         if not _HAS_BLEAK:
-            print("bleak not installed; BLE scan unavailable")
+            logger.warning("bleak not installed; BLE scan unavailable")
             return []
         try:
             devices = await BleakScanner.discover(timeout=timeout, return_adv=True)
@@ -174,7 +175,7 @@ class BLEDeviceScanner:
                 self._emit(device_info)
             return device_list
         except Exception as e:
-            print(f"BLE scan error: {e}")
+            logger.error(f"BLE scan error: {e}")
             return []
 
     def _emit(self, device_info: dict):
@@ -182,7 +183,7 @@ class BLEDeviceScanner:
             try:
                 cb(device_info)
             except Exception as e:
-                print(f"Device callback error: {e}")
+                logger.error(f"Device callback error: {e}")
 
 
 # backward-compat alias

@@ -5432,7 +5432,7 @@ const DEFAULT_CAMERAS = [
     name: 'Front Camera',
     enabled: true,
     // Source
-    sourceType: 'browser',  // browser, usb, csi, rtsp, http
+    sourceType: 'browser',  // browser, usb, csi, mjpeg, http, rtsp
     sourceAddress: '',
     resolution: '1280x720',
     fps: 30,
@@ -5813,7 +5813,8 @@ function renderCameraList() {
             <option value="browser" ${cam.sourceType === 'browser' ? 'selected' : ''}>Browser Webcam</option>
             <option value="usb" ${cam.sourceType === 'usb' ? 'selected' : ''}>USB / V4L2</option>
             <option value="csi" ${cam.sourceType === 'csi' ? 'selected' : ''}>CSI (Pi Camera)</option>
-            <option value="http" ${cam.sourceType === 'http' ? 'selected' : ''}>HTTP (MJPEG)</option>
+            <option value="mjpeg" ${cam.sourceType === 'mjpeg' ? 'selected' : ''}>MJPEG Stream</option>
+            <option value="http" ${cam.sourceType === 'http' ? 'selected' : ''}>HTTP Video</option>
             <option value="rtsp" ${cam.sourceType === 'rtsp' ? 'selected' : ''}>RTSP Stream</option>
           </select>
         </div>

@@ -276,6 +276,9 @@
         case 'http':
           sourceInfo = cam.sourceAddress ? `HTTP: ${cam.sourceAddress.substring(0, 15)}...` : 'HTTP Stream';
           break;
+        case 'mjpeg':
+          sourceInfo = cam.sourceAddress ? `MJPEG: ${cam.sourceAddress.substring(0, 15)}...` : 'MJPEG Stream';
+          break;
         case 'rtsp':
           sourceInfo = cam.sourceAddress ? `RTSP: ${cam.sourceAddress.substring(0, 15)}...` : 'RTSP Stream';
           break;
@@ -577,7 +580,7 @@
       // Show browser cameras when webcam stream is active
       if (source.type === 'browser' && !webcamStream) return false;
       // Show URL cameras when they have a source URL
-      if ((source.type === 'rtsp' || source.type === 'http') && !source.address) return false;
+      if ((source.type === 'rtsp' || source.type === 'http' || source.type === 'mjpeg') && !source.address) return false;
       // Hide cameras with invalid sources
       if (source.type === 'not_found') return false;
 
@@ -639,8 +642,19 @@
             hasVideo = true;
           }
           pane.appendChild(video);
+        } else if (source.type === 'mjpeg') {
+          // MJPEG stream - use img tag
+          const img = document.createElement('img');
+          img.src = source.address;
+          img.dataset.sourceType = 'mjpeg';
+          img.dataset.cameraId = cam.id;
+          img.style.width = '100%';
+          img.style.height = 'auto';
+          img.style.objectFit = 'cover';
+          pane.appendChild(img);
+          hasVideo = true;
         } else if (source.type === 'rtsp' || source.type === 'http') {
-          // URL-based stream
+          // URL-based video stream
           const video = document.createElement('video');
           video.autoplay = true;
           video.muted = true;
@@ -2722,8 +2736,8 @@
         mesh.rotation.set(0, 0, 0);
         break;
       case 'rear':
-        // Rear: on the ground, behind the hexapod
-        mesh.position.set(0, 10, -150);
+        // Rear: lying flat on the ground behind the hexapod
+        mesh.position.set(0, 0, -150);
         mesh.rotation.set(-Math.PI / 2, 0, Math.PI);  // Lay flat, flipped 180°
         break;
       case 'left':
@@ -2775,6 +2789,17 @@
             mesh.userData.videoElement.pause();
             mesh.userData.videoElement.src = '';
           }
+          // Clean up img element for MJPEG streams
+          if (mesh.userData.imgElement) {
+            // Clear update interval
+            if (mesh.userData.imgElement._updateInterval) {
+              clearInterval(mesh.userData.imgElement._updateInterval);
+            }
+            mesh.userData.imgElement.src = '';
+            if (mesh.userData.imgElement.parentNode) {
+              mesh.userData.imgElement.parentNode.removeChild(mesh.userData.imgElement);
+            }
+          }
         }
         delete cameraOverlayMeshes[id];
       }
@@ -2793,12 +2818,34 @@
         // Create new overlay
         let texture;
         let videoElement = null;
+        let imgElement = null;
 
         if (hasFeed) {
           if (isBrowserCamera) {
             videoElement = document.getElementById('webcamFeed');
+            texture = new THREE.VideoTexture(videoElement);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+          } else if (source.type === 'mjpeg') {
+            // MJPEG stream - use img element with onload for frame updates
+            imgElement = document.createElement('img');
+            imgElement.style.display = 'none';
+            document.body.appendChild(imgElement);
+
+            texture = new THREE.Texture(imgElement);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            // Update texture when each MJPEG frame loads
+            imgElement.onload = () => {
+              texture.needsUpdate = true;
+            };
+
+            // Set src after onload handler to catch first frame
+            imgElement.src = source.address;
           } else {
-            // For URL sources, create a hidden video element
+            // For video URL sources, create a hidden video element
             videoElement = document.createElement('video');
             videoElement.autoplay = true;
             videoElement.muted = true;
@@ -2807,10 +2854,10 @@
             videoElement.crossOrigin = 'anonymous';
             videoElement.src = source.address;
             videoElement.play().catch(() => {});
+            texture = new THREE.VideoTexture(videoElement);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
           }
-          texture = new THREE.VideoTexture(videoElement);
-          texture.minFilter = THREE.LinearFilter;
-          texture.magFilter = THREE.LinearFilter;
         } else {
           // No feed - show placeholder
           texture = createPlaceholderTexture(cam.name, cam.position);
@@ -2833,9 +2880,13 @@
 
         // Store metadata
         overlayMesh.userData.isBrowserCamera = isBrowserCamera;
+        overlayMesh.userData.sourceType = source.type;
         overlayMesh.userData.hasFeed = hasFeed;
         if (!isBrowserCamera && videoElement) {
           overlayMesh.userData.videoElement = videoElement;
+        }
+        if (imgElement) {
+          overlayMesh.userData.imgElement = imgElement;
         }
       } else {
         // Update existing overlay
@@ -3826,6 +3877,58 @@
       }
     });
   });
+
+  // ========== Detection Targets ==========
+
+  // Store active detection targets
+  let detectionTargets = ['snail'];  // Default: snails active
+
+  // Make toggle function globally accessible
+  window.toggleDetectionTarget = function(el) {
+    const target = el.dataset.target;
+
+    // Special handling for "custom" - just toggle for now
+    if (target === 'custom') {
+      el.classList.toggle('active');
+      return;
+    }
+
+    el.classList.toggle('active');
+
+    const idx = detectionTargets.indexOf(target);
+    if (idx >= 0) {
+      detectionTargets.splice(idx, 1);
+    } else {
+      detectionTargets.push(target);
+    }
+
+    // Save to localStorage
+    localStorage.setItem('hexapod_detection_targets', JSON.stringify(detectionTargets));
+  };
+
+  // Load saved detection targets on startup
+  function loadDetectionTargets() {
+    const saved = localStorage.getItem('hexapod_detection_targets');
+    if (saved) {
+      try {
+        detectionTargets = JSON.parse(saved);
+        // Update UI to match saved state
+        document.querySelectorAll('.detection-target').forEach(el => {
+          const target = el.dataset.target;
+          if (detectionTargets.includes(target)) {
+            el.classList.add('active');
+          } else {
+            el.classList.remove('active');
+          }
+        });
+      } catch (e) {
+        console.error('Failed to load detection targets:', e);
+      }
+    }
+  }
+
+  // Initialize detection targets
+  loadDetectionTargets();
 
   // ========== Keyboard Help Modal ==========
 

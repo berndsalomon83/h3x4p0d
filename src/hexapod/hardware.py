@@ -4,9 +4,12 @@ Provides ServoController interface, PCA9685 driver, and sensor readers.
 Supports Raspberry Pi with hardware or stub mode for development.
 """
 
+import logging
 from typing import Dict, Optional, Tuple
 import json
 import os
+
+logger = logging.getLogger(__name__)
 
 try:
     _HAS_PIGPIO = True
@@ -69,7 +72,7 @@ class PCA9685ServoController(ServoController):
             if i2c is None:
                 i2c = busio.I2C(board.SCL, board.SDA)
         except Exception as e:
-            print("Warning: I2C init failed:", e)
+            logger.warning(f"I2C init failed: {e}")
         self.pca = PCA9685(i2c, address=address)
         self.pca.frequency = freq
         self.servos = []

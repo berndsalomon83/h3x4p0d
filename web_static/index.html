@@ -1306,6 +1306,61 @@
     .gauge-fill.good { background: #51cf66; }
     .gauge-fill.warning { background: #ffc107; }
     .gauge-fill.danger { background: #ff6b6b; }
+
+    /* Detection Targets Floating Pane */
+    .detection-pane {
+      position: fixed;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 100;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 15px;
+      width: 180px;
+      box-shadow: var(--shadow-strong);
+    }
+    .detection-pane h3 {
+      font-size: 0.9em;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+      text-align: center;
+    }
+    .detection-targets {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .detection-target {
+      background: var(--control-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 10px 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .detection-target:hover {
+      border-color: var(--accent);
+    }
+    .detection-target.active {
+      background: rgba(0, 210, 255, 0.1);
+      border-color: var(--accent);
+    }
+    .detection-target .icon {
+      font-size: 1.5em;
+      margin-bottom: 4px;
+    }
+    .detection-target .name {
+      font-size: 0.75em;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .detection-target .count {
+      font-size: 0.65em;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -1333,6 +1388,43 @@
     <button class="camera-preset-btn" data-view="side" title="View hexapod from the side" aria-label="Side view">Side</button>
     <button class="camera-preset-btn" data-view="top" title="View hexapod from above" aria-label="Top view">Top</button>
     <button class="camera-preset-btn" data-view="iso" title="Isometric 3D view" aria-label="Isometric view">Iso</button>
+  </div>
+
+  <!-- Detection Targets Pane -->
+  <div class="detection-pane" id="detectionPane">
+    <h3>🎯 Detection Targets</h3>
+    <div class="detection-targets">
+      <div class="detection-target active" data-target="snail" onclick="toggleDetectionTarget(this)">
+        <div class="icon">🐌</div>
+        <div class="name">Snails</div>
+        <div class="count">0 found</div>
+      </div>
+      <div class="detection-target" data-target="person" onclick="toggleDetectionTarget(this)">
+        <div class="icon">🚶</div>
+        <div class="name">People</div>
+        <div class="count">0 found</div>
+      </div>
+      <div class="detection-target" data-target="animal" onclick="toggleDetectionTarget(this)">
+        <div class="icon">🐕</div>
+        <div class="name">Animals</div>
+        <div class="count">0 found</div>
+      </div>
+      <div class="detection-target" data-target="vehicle" onclick="toggleDetectionTarget(this)">
+        <div class="icon">🚗</div>
+        <div class="name">Vehicles</div>
+        <div class="count">0 found</div>
+      </div>
+      <div class="detection-target" data-target="package" onclick="toggleDetectionTarget(this)">
+        <div class="icon">📦</div>
+        <div class="name">Packages</div>
+        <div class="count">0 found</div>
+      </div>
+      <div class="detection-target" data-target="custom" onclick="toggleDetectionTarget(this)">
+        <div class="icon">⚙️</div>
+        <div class="name">Custom</div>
+        <div class="count">Configure</div>
+      </div>
+    </div>
   </div>
 
   <!-- Live camera dock -->
