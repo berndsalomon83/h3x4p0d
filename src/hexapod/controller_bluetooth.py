@@ -14,6 +14,7 @@ try:
     _HAS_BLEAK = True
 except Exception:
     _HAS_BLEAK = False
+    BleakScanner = None  # type: ignore  # Allow monkeypatching in tests
 
 try:
     import inputs

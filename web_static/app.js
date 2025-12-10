@@ -551,6 +551,40 @@
     updateCameraControlUI();
   }
 
+  // Auto-start cameras that are enabled and need local webcam stream
+  async function autoStartEnabledCameras() {
+    const enabledCameras = cameras.filter(c => c.enabled);
+    if (enabledCameras.length === 0) return;
+
+    // Check if any enabled camera needs the local webcam stream
+    const needsLocalStream = enabledCameras.some(c => {
+      const source = getCameraSource(c);
+      return source.type === 'browser' || source.type === 'local';
+    });
+
+    if (needsLocalStream && !webcamStream) {
+      console.log('Auto-starting webcam for enabled cameras...');
+      // Find the first enabled browser camera with a device ID preference
+      const browserCam = enabledCameras.find(c => {
+        const source = getCameraSource(c);
+        return source.type === 'browser' || source.type === 'local';
+      });
+      const preferredDeviceId = browserCam?.deviceId || null;
+
+      try {
+        await startWebcamStream(preferredDeviceId);
+        refreshLocalCameraVideos();
+        renderCameraDock();
+        renderCameraOverlays();
+        updateCameraControlUI();
+        logMsg('Cameras auto-started');
+      } catch (err) {
+        console.warn('Failed to auto-start webcam:', err);
+        // Don't show error - user can manually start if needed
+      }
+    }
+  }
+
   // Store floating camera positions
   const floatingCameraPositions = {};
 
@@ -867,6 +901,9 @@
       updateCameraControlUI(); // Initialize camera control state
       renderCameraDock();
       renderCameraOverlays();
+
+      // Auto-start enabled cameras after a short delay to let UI settle
+      setTimeout(() => autoStartEnabledCameras(), 500);
 
       // Rebuild all legs with new dimensions
       if (typeof rebuildAllLegs === 'function') {
@@ -2727,7 +2764,9 @@
   }
 
   // Position an overlay mesh based on camera position setting
-  // Overlays are positioned around the hexapod and angled to face the typical camera view
+  // Positions are from the USER's perspective (screen-left/right), not hexapod-space.
+  // Since the default view is from behind the hexapod (cameraAngleY = PI),
+  // we swap X coordinates so "left" appears on screen-left and "right" on screen-right.
   function positionOverlayMesh(mesh, position, idx) {
     switch (position) {
       case 'front':
@@ -2741,14 +2780,14 @@
         mesh.rotation.set(-Math.PI / 2, 0, Math.PI);  // Lay flat, flipped 180°
         break;
       case 'left':
-        // Left: positioned at 45° angle, leaning toward center pane
-        mesh.position.set(-200, 100, 200);
-        mesh.rotation.set(0, -Math.PI / 4, 0);  // -45° leaning toward front
-        break;
-      case 'right':
-        // Right: positioned at 45° angle, leaning toward center pane
+        // Left: appears on screen-left (positive X in default back-view)
         mesh.position.set(200, 100, 200);
         mesh.rotation.set(0, Math.PI / 4, 0);  // 45° leaning toward front
+        break;
+      case 'right':
+        // Right: appears on screen-right (negative X in default back-view)
+        mesh.position.set(-200, 100, 200);
+        mesh.rotation.set(0, -Math.PI / 4, 0);  // -45° leaning toward front
         break;
       case 'floating':
       default:

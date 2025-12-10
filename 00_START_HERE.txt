@@ -8,10 +8,10 @@
 
 All components have been implemented, documented, and verified:
 
-  ✅ 8 Python modules (1,000+ lines of production code)
-  ✅ Web UI with 3D simulator (360+ lines HTML/CSS/JS)
-  ✅ Comprehensive documentation (1,100+ lines)
-  ✅ 6/6 unit tests passing
+  ✅ Modular Python codebase (20+ modules)
+  ✅ Web UI with 3D simulator (HTML/CSS/JS)
+  ✅ Comprehensive documentation
+  ✅ 262+ pytest tests passing
   ✅ Ready to deploy to Raspberry Pi
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -67,22 +67,44 @@ See SETUP.md for detailed instructions:
 Core Implementation:
   src/hexapod/
     ├── main.py ...................... Entry point
+    │
+    │   # Configuration (modular)
+    ├── config.py .................... Re-exports for compatibility
+    ├── config_core.py ............... HexapodConfig class
+    ├── config_defaults.py ........... Default values
+    ├── config_profiles.py ........... ProfileManager
+    │
+    │   # Hardware & Input
     ├── hardware.py .................. Servo & sensor drivers
     ├── gait.py ...................... Walking gaits & IK solver
-    ├── controller_bluetooth.py ....... Input handling
-    ├── web.py ....................... FastAPI server
-    ├── calibrate.py ................. Interactive setup tool
-    └── test_runner.py ............... Unit tests (6/6 ✓)
+    ├── controller_bluetooth.py ...... Input handling (logging)
+    │
+    │   # Web Server (modular routers)
+    ├── web.py ....................... FastAPI app + composition
+    ├── web_controller.py ............ HexapodController
+    ├── web_runtime.py ............... RuntimeManager, gait loop
+    ├── web_models.py ................ Pydantic models
+    ├── web_status.py ................ /api/health, /api/status
+    ├── web_gait.py .................. /api/gait, /api/run
+    ├── web_poses.py ................. /api/poses
+    ├── web_profiles.py .............. /api/profiles
+    ├── web_config.py ................ /api/config
+    ├── web_calibration.py ........... /api/calibration
+    ├── web_bluetooth.py ............. /api/bluetooth
+    ├── web_patrol.py ................ /api/patrol
+    │
+    │   # Tools
+    ├── calibrate.py ................. Interactive CLI setup
+    └── cli_api.py ................... hexapod-api tool
 
 Web User Interface:
   web_static/
     ├── index.html ................... Control panel
+    ├── config.html .................. Configuration workspace
     └── app.js ....................... 3D simulator
 
-Configuration & Scripts:
-  ├── pyproject.toml ................. Poetry dependencies
-  ├── start.sh ....................... Quick-start script
-  └── README.md / SETUP.md / docs .... Documentation
+Tests:
+  tests/ ............................. 262+ pytest tests
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -122,17 +144,13 @@ Joystick/Gamepad:
 
 📊 PROJECT STATISTICS
 
-Python Code:           1,000 lines
-HTML/CSS/JavaScript:     364 lines
-Documentation:         1,100 lines
-Total Project:         2,464 lines
-
-Test Coverage:         6/6 tests passing ✓
-Components:            8 modules
+Python Modules:        20+ (modular architecture)
+Tests:                 262+ pytest checks ✓
 Gaits Supported:       3 (tripod, wave, ripple)
 Legs Controlled:       6 (18 servos total)
-Update Loop:           100 Hz
-Telemetry Rate:        20 Hz
+Update Loop:           ~100 Hz
+Telemetry Rate:        ~20 Hz
+Logging:               All modules use proper logging
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -142,6 +160,7 @@ Telemetry Rate:        20 Hz
     - Mock servo controller (testing)
     - PCA9685 I2C driver (real hardware)
     - Sensor reader (temperature, battery)
+    - Proper logging throughout
 
 [✓] Gait Algorithms
     - Tripod: fast, stable (2 leg groups)
@@ -153,17 +172,18 @@ Telemetry Rate:        20 Hz
     - Reachability checking
     - Safety bounds & clamping
 
-[✓] Web Framework
-    - FastAPI REST API
-    - WebSocket real-time updates
-    - Static file serving
-    - Background task loop
+[✓] Web Framework (Modular)
+    - FastAPI with domain-specific routers
+    - WebSocket with improved ConnectionManager
+    - RuntimeManager for background tasks
+    - Pydantic models for validation
+    - Graceful shutdown
 
 [✓] User Interface
     - HTML5 responsive design
     - three.js 3D visualization
     - Live telemetry display
-    - Command logging
+    - Configuration workspace
 
 [✓] Input Handling
     - Keyboard (development)
@@ -171,11 +191,17 @@ Telemetry Rate:        20 Hz
     - Bluetooth discovery
     - Web UI controls
 
+[✓] Configuration System
+    - Modular: defaults, core, profiles
+    - Multi-profile support
+    - Gait params sync on profile switch
+    - Persistent storage
+
 [✓] Tools & Utils
     - Interactive calibration wizard
-    - Unit test suite
-    - Configuration system
-    - Documentation
+    - hexapod-api CLI tool
+    - 262+ pytest tests
+    - Comprehensive documentation
 
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -183,18 +209,21 @@ Telemetry Rate:        20 Hz
 
 To adapt for your robot:
 
-1. Leg Geometry (src/hexapod/gait.py)
-   LEG_COXA_LEN = 30.0    # your leg dimensions
-   LEG_FEMUR_LEN = 60.0
-   LEG_TIBIA_LEN = 80.0
+1. Leg Geometry (~/.hexapod/config.json or web UI)
+   leg_coxa_length = 30.0    # your leg dimensions
+   leg_femur_length = 60.0
+   leg_tibia_length = 80.0
 
-2. Servo Channels (calibration tool)
+2. Servo Channels (calibration tool or web UI)
    Maps each leg/joint to PCA9685 channel
 
-3. Gait Parameters (src/hexapod/web.py)
+3. Gait Parameters (config or profile)
    step_height = 25.0     # customize movement
    step_length = 40.0
    cycle_time = 1.2
+
+4. Profiles (for different configurations)
+   Use ProfileManager or /api/profiles endpoints
 
 ═══════════════════════════════════════════════════════════════════════════════
 

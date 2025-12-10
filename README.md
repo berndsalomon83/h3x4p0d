@@ -244,15 +244,37 @@ hexapod/
 ├── src/hexapod/
 │   ├── __init__.py
 │   ├── main.py                 # Entry point (runs both web servers)
-│   ├── config.py               # Centralized configuration manager
+│   │
+│   │   # Configuration (modular)
+│   ├── config.py               # Config re-exports (backward compatible)
+│   ├── config_core.py          # HexapodConfig class
+│   ├── config_defaults.py      # Default configuration values
+│   ├── config_profiles.py      # ProfileManager for multi-profile support
+│   │
+│   │   # Hardware & Input
 │   ├── hardware.py             # Servo and sensor abstraction
 │   ├── gait.py                 # Gait engine and inverse kinematics
 │   ├── controller_bluetooth.py # Input controller (joystick/keyboard)
-│   ├── web.py                  # Main FastAPI server + WebSocket
+│   │
+│   │   # Web Server (modular routers)
+│   ├── web.py                  # Main FastAPI app + WebSocket + router composition
+│   ├── web_controller.py       # HexapodController and ConnectionManager
+│   ├── web_runtime.py          # RuntimeManager, gait loop, lifespan
+│   ├── web_models.py           # Pydantic request/response models
+│   ├── web_status.py           # /api/health, /api/status, /api/sensors
+│   ├── web_gait.py             # /api/gait, /api/run, /api/stop, body control
+│   ├── web_poses.py            # /api/poses (CRUD, apply, record)
+│   ├── web_profiles.py         # /api/profiles (CRUD, switch, set-default)
+│   ├── web_config.py           # /api/config, servo offsets
+│   ├── web_calibration.py      # /api/calibration, /api/servo/test
+│   ├── web_bluetooth.py        # /api/bluetooth (scan, connect, status)
+│   ├── web_patrol.py           # /api/patrol (routes, start, stop)
+│   │
+│   │   # Tools
 │   ├── calibrate_web.py        # Web-based servo calibration server
 │   ├── calibrate.py            # CLI servo calibration (legacy)
-│   ├── cli_api.py              # Command-line API tool (hexapod-api)
-│   └── test_runner.py          # Legacy test entry point (pytest preferred)
+│   └── cli_api.py              # Command-line API tool (hexapod-api)
+│
 ├── web_static/
 │   ├── index.html              # Main web UI (3D simulator and controls)
 │   ├── config.html             # Configuration web UI (geometry, gaits, profiles)
@@ -261,7 +283,7 @@ hexapod/
 │   ├── calibrate.html          # Servo calibration web UI
 │   ├── app.js                  # 3D simulator and controls (JavaScript)
 │   └── favicon.svg             # Hexapod icon
-└── tests/                      # pytest suite (unit + integration)
+└── tests/                      # pytest suite (262+ tests)
 ```
 
 Key Modules
@@ -282,16 +304,21 @@ Key Modules
 - **`InverseKinematics`**: solves for servo angles given target (x, y, z) foot positions
 - Supports **tripod**, **wave**, and **ripple** gaits with configurable speed/height
 
-### config.py
+### config.py (modular)
 
-- **`HexapodConfig`**: centralized configuration manager
-  - Leg geometry (per-leg customization supported)
-  - Servo calibration offsets
-  - Gait parameters and visualization settings
-  - Safety limits and E-Stop configuration
-  - System settings and logging levels
-  - Persists to `~/.hexapod/config.json`
-- **`get_config()`**: global configuration accessor
+The configuration system is split into focused modules:
+
+- **`config_defaults.py`**: All default values (gaits, poses, patrol settings)
+- **`config_core.py`**: `HexapodConfig` class with servo calibration, geometry, gait, and pose management
+- **`config_profiles.py`**: `ProfileManager` for multi-profile support (create, switch, export)
+- **`config.py`**: Re-exports for backward compatibility (`get_config()`, `HexapodConfig`)
+
+Key features:
+- Leg geometry (per-leg customization supported)
+- Servo calibration offsets
+- Gait parameters with automatic sync on profile switch
+- Safety limits and E-Stop configuration
+- Persists to `~/.hexapod/config.json` and `~/.hexapod/profiles/`
 
 **Key Configuration Categories:**
 
@@ -311,17 +338,23 @@ Key Modules
 - **`MotionCommand`**: structured command events (move, gait, start/stop)
 - **`BLEDeviceScanner`**: optional BLE device discovery
 
-### web.py
+### web.py (modular routers)
 
-- **`HexapodController`**: main coordinator for gait, servo, sensor, and body pose state
-- **`ConnectionManager`**: manages WebSocket clients for telemetry broadcast
-- REST endpoints:
-  - `/api/gait`, `/api/run`, `/api/stop`, `/api/status`, `/api/sensors`
-  - `/api/body_pose` (GET/POST): body pitch, roll, yaw control
-  - `/api/rotation` (POST): rotation in place speed
-  - `/api/emergency_stop` (POST): halt all movement and reset
-- WebSocket: `/ws` for real-time telemetry and servo angles
-- Background loop updates servos and broadcasts state at ~50ms intervals
+The web server is split into domain-specific FastAPI routers:
+
+- **`web_controller.py`**: `HexapodController` (gait/servo/sensor coordinator) and `ConnectionManager` (WebSocket broadcast with error recovery)
+- **`web_runtime.py`**: `RuntimeManager` for background task lifecycle (gait loop at ~100Hz, telemetry at ~20Hz)
+- **`web_models.py`**: Pydantic models for request/response validation
+- **`web_status.py`**: `/api/health`, `/api/status`, `/api/sensors`, `/api/system/info`
+- **`web_gait.py`**: `/api/gait`, `/api/run`, `/api/stop`, `/api/body_height`, `/api/body_pose`, `/api/rotation`
+- **`web_poses.py`**: `/api/poses` (list, create, update, delete, apply, record)
+- **`web_profiles.py`**: `/api/profiles` (list, create, switch, set-default, rename, delete)
+- **`web_config.py`**: `/api/config`, `/api/config/servo_offset`, `/api/config/save`
+- **`web_calibration.py`**: `/api/calibration`, `/api/servo/test`, `/api/servo/angle`
+- **`web_bluetooth.py`**: `/api/bluetooth/status`, `/api/bluetooth/scan`, `/api/bluetooth/connect`
+- **`web_patrol.py`**: `/api/patrol/status`, `/api/patrol/routes`, `/api/patrol/start`, `/api/patrol/stop`
+
+WebSocket: `/ws` for real-time telemetry and servo angles
 
 ### web_static/ (UI)
 
@@ -339,9 +372,10 @@ Testing & Validation
 
 - **Unit + integration tests**: `poetry run pytest tests -v`
   - Covers hardware mocks, sensors, gait generation, IK reachability/solutions, Bluetooth controller events, FastAPI REST/WebSocket endpoints, poses, profiles, and configuration management.
-  - **262 tests** covering all major functionality
+  - **262+ tests** covering all major functionality
 - **Coverage/HTML report**: `./run_tests.sh`
 - **Linting**: `ruff check .` (configuration in `pyproject.toml`)
+- All modules use proper logging (no print statements for diagnostics)
 
 The `tests/README.md` file documents the current test suite, markers, and coverage breakdown if you need more detail.
 

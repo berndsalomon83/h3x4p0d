@@ -29,22 +29,50 @@ hexapod/
 ├── SETUP.md                        # Hardware setup guide
 ├── QUICK_REFERENCE.md              # Quick commands & API
 ├── PROJECT_SUMMARY.md              # Architecture overview
+├── CONFIGURATION_GUIDE.md          # Configuration & calibration guide
 ├── pyproject.toml                  # Poetry dependencies
 ├── start.sh                        # Quick-start script
 │
 ├── src/hexapod/                    # Python package
 │   ├── __init__.py                 # Package init
 │   ├── main.py                     # Entry point (launch server)
-│   ├── hardware.py                 # Servo & sensor drivers
+│   │
+│   │   # Configuration (modular)
+│   ├── config.py                   # Re-exports for backward compatibility
+│   ├── config_core.py              # HexapodConfig class
+│   ├── config_defaults.py          # Default values (gaits, poses, patrol)
+│   ├── config_profiles.py          # ProfileManager for multi-profile support
+│   │
+│   │   # Hardware & Input
+│   ├── hardware.py                 # Servo & sensor drivers (uses logging)
 │   ├── gait.py                     # Walking gaits + IK
-│   ├── config.py                   # Centralized configuration
-│   ├── controller_bluetooth.py     # Input handling
-│   ├── web.py                      # FastAPI server
-│   ├── calibrate.py                # Interactive setup
-│   └── test_runner.py              # Unit tests
+│   ├── controller_bluetooth.py     # Input handling (uses logging)
+│   │
+│   │   # Web Server (modular routers)
+│   ├── web.py                      # FastAPI app + router composition
+│   ├── web_controller.py           # HexapodController, ConnectionManager
+│   ├── web_runtime.py              # RuntimeManager, gait loop, lifespan
+│   ├── web_models.py               # Pydantic request/response models
+│   ├── web_status.py               # /api/health, /api/status, /api/sensors
+│   ├── web_gait.py                 # /api/gait, /api/run, /api/stop
+│   ├── web_poses.py                # /api/poses (CRUD, apply, record)
+│   ├── web_profiles.py             # /api/profiles (CRUD, switch)
+│   ├── web_config.py               # /api/config, servo offsets
+│   ├── web_calibration.py          # /api/calibration, /api/servo/test
+│   ├── web_bluetooth.py            # /api/bluetooth (scan, connect)
+│   ├── web_patrol.py               # /api/patrol (routes, start, stop)
+│   │
+│   │   # Tools
+│   ├── calibrate.py                # Interactive CLI setup
+│   ├── calibrate_web.py            # Web-based calibration server
+│   └── cli_api.py                  # hexapod-api command-line tool
+│
+├── tests/                          # pytest suite (262+ tests)
+│   └── test_*.py                   # Unit & integration tests
 │
 └── web_static/                     # Web UI
     ├── index.html                  # Control panel
+    ├── config.html                 # Configuration workspace
     └── app.js                      # 3D simulator
 ```
 
@@ -123,35 +151,36 @@ All modes configurable with step height, length, and cycle time.
 
 ## CODE STATISTICS
 
-| Component | Lines | Purpose |
-|-----------|-------|---------|
-| hardware.py | 147 | Servo & sensor abstraction |
-| gait.py | 156 | Walking algorithms & IK |
-| controller_bluetooth.py | 165 | Input handling |
-| web.py | 239 | FastAPI server + WebSocket |
-| main.py | 9 | Entry point |
-| calibrate.py | 118 | Interactive setup tool |
-| test_runner.py | 168 | Unit tests (6/6 passing) |
-| **Python Total** | **1,002** | **Core implementation** |
-| **HTML/CSS/JS** | **364** | **Web UI & simulator** |
-| **Documentation** | **1,123** | **Guides & references** |
-| **Total** | **2,490** | **Complete project** |
+| Component | Purpose |
+|-----------|---------|
+| config_*.py | Modular configuration system |
+| hardware.py | Servo & sensor abstraction |
+| gait.py | Walking algorithms & IK |
+| controller_bluetooth.py | Input handling (with logging) |
+| web.py | FastAPI app + router composition |
+| web_*.py (10 modules) | Domain-specific API routers |
+| calibrate.py | Interactive setup tool |
+| cli_api.py | Command-line API tool |
+| **Tests** | **262+ pytest checks** |
 
 ---
 
 ## TEST RESULTS
 
 ```
-HEXAPOD TEST SUITE
+HEXAPOD TEST SUITE (pytest)
 ============================================================
 ✓ MockServoController: basic operation
-✓ SensorReader: mock readings and calibration  
+✓ SensorReader: mock readings and calibration
 ✓ InverseKinematics: reachability and solving
 ✓ GaitEngine: all modes, time progression
-✓ GaitEngine: leg synchronization verified
-✓ Continuous operation: 625 steps over 10.0s
+✓ FastAPI REST endpoints (all routers)
+✓ WebSocket telemetry and commands
+✓ Profile management (CRUD, switch)
+✓ Pose management (CRUD, apply, record)
+✓ Configuration persistence
 
-Results: 6 passed, 0 failed
+Results: 262 passed, 0 failed
 ============================================================
 ```
 

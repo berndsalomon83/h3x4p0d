@@ -30,40 +30,56 @@ hexapod/
 ├── src/hexapod/                # Main Python package
 │   ├── __init__.py             # Package init
 │   ├── main.py                 # Entry point: launches FastAPI server
-│   ├── hardware.py             # Servo & sensor abstraction (380+ lines)
+│   │
+│   │   # Configuration System (modular)
+│   ├── config.py               # Re-exports for backward compatibility
+│   ├── config_core.py          # HexapodConfig class
+│   ├── config_defaults.py      # Default values (gaits, poses, patrol)
+│   ├── config_profiles.py      # ProfileManager for multi-profile support
+│   │
+│   │   # Hardware & Sensors
+│   ├── hardware.py             # Servo & sensor abstraction
 │   │   ├── ServoController (base class)
 │   │   ├── MockServoController (for testing)
 │   │   ├── PCA9685ServoController (real hardware with I2C)
 │   │   └── SensorReader (temperature, battery voltage)
 │   │
-│   ├── gait.py                 # Gait engine & IK solver (160+ lines)
+│   ├── gait.py                 # Gait engine & IK solver
 │   │   ├── GaitEngine (tripod, wave, ripple gaits)
 │   │   └── InverseKinematics (2D 3-link leg solver)
 │   │
-│   ├── controller_bluetooth.py  # Input handler (160+ lines)
+│   │   # Input Handling
+│   ├── controller_bluetooth.py # Input handler (uses logging)
 │   │   ├── GenericController (joystick + keyboard)
 │   │   ├── BLEDeviceScanner (Bluetooth discovery)
 │   │   └── MotionCommand (structured commands)
 │   │
-│   ├── web.py                  # FastAPI server (220+ lines)
-│   │   ├── HexapodController (main coordinator)
-│   │   ├── ConnectionManager (WebSocket broadcast)
-│   │   ├── REST endpoints (/api/gait, /api/run, /api/sensors, etc.)
-│   │   └── Background gait loop (servo updates + telemetry)
+│   │   # Web Server (modular routers)
+│   ├── web.py                  # FastAPI app + router composition
+│   ├── web_controller.py       # HexapodController, ConnectionManager
+│   ├── web_runtime.py          # RuntimeManager, gait loop, lifespan
+│   ├── web_models.py           # Pydantic request/response models
+│   ├── web_status.py           # /api/health, /api/status, /api/sensors
+│   ├── web_gait.py             # /api/gait, /api/run, /api/stop, body control
+│   ├── web_poses.py            # /api/poses (CRUD, apply, record)
+│   ├── web_profiles.py         # /api/profiles (CRUD, switch)
+│   ├── web_config.py           # /api/config, servo offsets
+│   ├── web_calibration.py      # /api/calibration, /api/servo/test
+│   ├── web_bluetooth.py        # /api/bluetooth (scan, connect)
+│   ├── web_patrol.py           # /api/patrol (routes, start, stop)
 │   │
-│   ├── calibrate.py            # Interactive servo calibration (130+ lines)
-│   │   ├── Channel mapping wizard
-│   │   ├── Servo testing at angles
-│   │   └── JSON configuration save/load
-│   │
-│   └── test_runner.py          # Legacy test entry point (pytest recommended)
+│   │   # Tools
+│   ├── calibrate.py            # Interactive servo calibration (CLI)
+│   ├── calibrate_web.py        # Web-based calibration server
+│   └── cli_api.py              # Command-line API tool (hexapod-api)
 │
-├── tests/                      # pytest suite (unit + integration)
+├── tests/                      # pytest suite (262+ tests)
 │   ├── README.md               # coverage breakdown, markers, and usage
-│   └── test_*.py               # hardware, gait, config, controller, and API tests
+│   └── test_*.py               # hardware, gait, config, controller, API tests
 │
 └── web_static/                 # Web UI
-    ├── index.html              # Responsive control panel (HTML5/CSS3)
+    ├── index.html              # Controller interface (HTML5/CSS3)
+    ├── config.html             # Configuration workspace
     └── app.js                  # 3D simulator + WebSocket client (three.js)
 ```
 
@@ -104,11 +120,12 @@ hexapod/
 - **Web UI**: direct browser control
 
 ### 6. Testing & Validation
-- 170+ pytest checks across unit and integration layers
+- 262+ pytest checks across unit and integration layers
 - Servo controller operation (mock + per-leg updates)
 - Sensor reading/calibration workflows and offsets
 - IK solver reachability and gait engine generation for all modes
 - FastAPI REST and WebSocket APIs, controller event handling, and long-running gait loops
+- All modules use proper logging (no print statements for diagnostics)
 
 ---
 
@@ -154,27 +171,33 @@ poetry run python -m hexapod.main
 ## ARCHITECTURE HIGHLIGHTS
 
 ### Modular Design
-- Clear separation of concerns
+- **Configuration**: Split into `config_defaults.py`, `config_core.py`, `config_profiles.py`
+- **Web Server**: Domain-specific FastAPI routers (`web_status.py`, `web_gait.py`, `web_poses.py`, etc.)
+- **Runtime**: Dedicated `web_runtime.py` for background task lifecycle
+- **Models**: Pydantic models in `web_models.py` for request validation
 - Mock implementations for testing without hardware
 - Easy to extend with custom controllers, gaits, sensors
 
 ### Async/Concurrent
 - FastAPI for high-performance web server
-- WebSocket for real-time telemetry
-- Background gait loop runs at 100Hz
+- WebSocket with improved `ConnectionManager` (handles disconnects, broadcast errors)
+- Background gait loop runs at ~100Hz via `RuntimeManager`
 - Non-blocking controller input
+- Graceful shutdown with task cancellation
 
 ### Real-Time Performance
-- 50ms telemetry broadcast to UI
-- 10ms servo update loop
+- 50ms telemetry broadcast to UI (~20Hz)
+- 10ms servo update loop (~100Hz)
 - Proper angle clamping and safety bounds
 - Graceful error handling (non-fatal servo errors)
+- Gait params sync automatically on profile switch
 
 ### Scalability
 - REST API for future mobile apps
 - WebSocket for live streaming
-- Configurable gait parameters
+- Configurable gait parameters per profile
 - Easy to add new walking modes or gaits
+- Multi-profile support with `ProfileManager`
 
 ---
 
@@ -251,7 +274,7 @@ GaitEngine(
 
 ```
 ============================================================
-HEXAPOD TEST SUITE
+HEXAPOD TEST SUITE (pytest)
 ============================================================
 
 ✓ MockServoController: basic operation
@@ -259,10 +282,14 @@ HEXAPOD TEST SUITE
 ✓ InverseKinematics: reachability and solving
 ✓ GaitEngine: all modes, time progression
 ✓ GaitEngine: leg synchronization verified
-✓ Continuous operation: 625 steps over 10.0s (simulated)
+✓ FastAPI REST endpoints (gait, poses, profiles, config)
+✓ WebSocket telemetry and commands
+✓ Profile management (create, switch, delete)
+✓ Pose management (CRUD, apply, record)
+✓ Configuration persistence and validation
 
 ============================================================
-Results: 6 passed, 0 failed
+Results: 262 passed, 0 failed
 ============================================================
 ```
 

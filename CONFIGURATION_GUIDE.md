@@ -293,7 +293,34 @@ curl http://localhost:8000/api/bluetooth/scan | jq
 | Leg Animation | ✅ Fixed | Proper standing/walking poses |
 | Servo Calibration | ✅ Complete | API + backend ready |
 | Bluetooth API | ✅ Complete | Scan/connect/disconnect endpoints |
-| Config System | ✅ Complete | Save/load all settings |
+| Config System | ✅ Complete | Modular: `config_core.py`, `config_defaults.py`, `config_profiles.py` |
+| Web Server | ✅ Complete | Modular routers: `web_status.py`, `web_gait.py`, `web_poses.py`, etc. |
+| Logging | ✅ Complete | All modules use proper logging (no print statements) |
 | Web UI | 🔧 Partial | API ready, visual components pending |
 
-The backend is **production-ready**. You can control everything via API calls. The frontend UI components for calibration and Bluetooth are next on the roadmap!
+The backend is **production-ready** with a clean modular architecture. You can control everything via API calls. The frontend UI components for calibration and Bluetooth are next on the roadmap!
+
+## Architecture Notes
+
+The codebase has been refactored into a modular structure:
+
+### Configuration Modules
+- **`config_defaults.py`**: All default values (gaits, poses, patrol settings)
+- **`config_core.py`**: `HexapodConfig` class with servo calibration, geometry, gait, and pose management
+- **`config_profiles.py`**: `ProfileManager` for multi-profile support
+- **`config.py`**: Re-exports for backward compatibility
+
+### Web Server Modules
+- **`web_controller.py`**: `HexapodController` and `ConnectionManager` classes
+- **`web_runtime.py`**: `RuntimeManager` for background task lifecycle
+- **`web_models.py`**: Pydantic request/response models
+- **`web_status.py`**: Health, status, sensors endpoints
+- **`web_gait.py`**: Gait control and body pose endpoints
+- **`web_poses.py`**: Pose CRUD and apply/record endpoints
+- **`web_profiles.py`**: Profile management endpoints
+- **`web_config.py`**: Configuration and servo offset endpoints
+- **`web_calibration.py`**: Calibration and servo testing endpoints
+- **`web_bluetooth.py`**: Bluetooth scan/connect endpoints
+- **`web_patrol.py`**: Patrol control endpoints
+
+All modules use the Python `logging` module instead of print statements for proper diagnostics.

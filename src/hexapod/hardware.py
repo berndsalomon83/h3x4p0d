@@ -12,11 +12,6 @@ import os
 logger = logging.getLogger(__name__)
 
 try:
-    _HAS_PIGPIO = True
-except Exception:
-    _HAS_PIGPIO = False
-
-try:
     from adafruit_pca9685 import PCA9685
     from adafruit_motor import servo
     _HAS_ADAFRUIT = True
@@ -87,6 +82,12 @@ class PCA9685ServoController(ServoController):
             raise KeyError(f"No calibration for leg {leg_index} joint {joint_index}")
         if channel >= len(self.servos):
             raise ValueError(f"Channel {channel} out of range")
+
+        # Apply config-based servo calibration offsets (same as MockServoController)
+        from .config import get_config
+        config = get_config()
+        angle_deg = config.apply_servo_calibration(leg_index, joint_index, angle_deg)
+
         clamped = max(0, min(180, angle_deg))
         self.servos[channel].angle = clamped
 
