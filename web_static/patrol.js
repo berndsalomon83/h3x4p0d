@@ -178,7 +178,19 @@ function loadFromStorage() {
 
 function saveToStorage() {
   try {
-    localStorage.setItem(STORAGE_KEYS.routes, JSON.stringify(state.routes));
+    // Save routes with only serializable properties (exclude layer, waypointMarkers, etc.)
+    const routesForStorage = state.routes.map(r => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      color: r.color,
+      priority: r.priority,
+      type: r.type,
+      coordinates: r.coordinates,
+      createdAt: r.createdAt,
+      visible: r.visible
+    }));
+    localStorage.setItem(STORAGE_KEYS.routes, JSON.stringify(routesForStorage));
     localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
     if (state.homePosition) {
       localStorage.setItem(STORAGE_KEYS.homePosition, JSON.stringify(state.homePosition));
@@ -3139,18 +3151,7 @@ function updateUI() {
   document.getElementById('alertPause').checked = state.settings.alerts.pause;
   document.getElementById('alertCooldown').value = state.settings.alerts.cooldown;
 
-  document.getElementById('scheduleEnabled').checked = state.settings.schedule.enabled;
-  document.getElementById('scheduleSettings').style.opacity = state.settings.schedule.enabled ? '1' : '0.5';
-  document.getElementById('scheduleSettings').style.pointerEvents = state.settings.schedule.enabled ? 'auto' : 'none';
-
-  document.querySelectorAll('.schedule-day').forEach(btn => {
-    const day = parseInt(btn.dataset.day);
-    btn.classList.toggle('active', state.settings.schedule.days.includes(day));
-  });
-
-  document.getElementById('scheduleStart').value = state.settings.schedule.startTime;
-  document.getElementById('scheduleEnd').value = state.settings.schedule.endTime;
-  document.getElementById('scheduleInterval').value = state.settings.schedule.interval;
+  renderScheduleList();
 
   updateDetectionCounts();
   updateCustomDetectionCount();

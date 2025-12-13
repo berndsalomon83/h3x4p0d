@@ -528,9 +528,7 @@
 
     .route-name {
       font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      word-break: break-word;
     }
 
     .route-meta {
@@ -541,6 +539,7 @@
     .route-actions {
       display: flex;
       gap: 5px;
+      flex-shrink: 0;
     }
 
     .route-action-btn {

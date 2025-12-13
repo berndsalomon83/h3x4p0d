@@ -109,7 +109,8 @@
   // Hexapod preview configuration shared with the configuration UI
   let defaultBodyY = 90;
   // Spider-like leg arrangement: 6 legs evenly distributed around body
-  const ATTACH_POINTS = [
+  // Default values - will be updated from config if available
+  let attachPoints = [
     { x: 55, y: 65, z: 0, angle: 30 },    // Front right - forward, slight right
     { x: 0, y: 80, z: 0, angle: 50 },     // Middle right - forward, angled right
     { x: -55, y: 65, z: 0, angle: 70 },   // Rear right - forward, angled right
@@ -868,6 +869,26 @@
       }));
       console.log('Loaded per-leg config from backend:', legConfigs);
 
+      // Load leg attach points from config
+      const defaultAttachPoints = [
+        { x: 55, y: 65, z: 0, angle: 30 },
+        { x: 0, y: 80, z: 0, angle: 50 },
+        { x: -55, y: 65, z: 0, angle: 70 },
+        { x: -55, y: -65, z: 0, angle: 290 },
+        { x: 0, y: -80, z: 0, angle: 310 },
+        { x: 55, y: -65, z: 0, angle: 330 }
+      ];
+      attachPoints = defaultAttachPoints.map((defaults, legIndex) => ({
+        x: config[`leg_${legIndex}_attach_x`] ?? defaults.x,
+        y: config[`leg_${legIndex}_attach_y`] ?? defaults.y,
+        z: config[`leg_${legIndex}_attach_z`] ?? defaults.z,
+        angle: config[`leg_${legIndex}_attach_angle`] ?? defaults.angle
+      }));
+      console.log('Loaded leg attach points from backend:', attachPoints);
+
+      // Rebuild hexapod model with new attach points
+      rebuildHexapodModel();
+
       // Load hardware cameras from config
       if (Array.isArray(config.hardware_cameras)) {
         hardwareCameras = config.hardware_cameras.map(cam => ({
@@ -1011,7 +1032,7 @@
       leg_coxa_length: legConfigs[0].coxaLength,
       leg_femur_length: legConfigs[0].femurLength,
       leg_tibia_length: legConfigs[0].tibiaLength,
-      leg_attach_points: ATTACH_POINTS
+      leg_attach_points: attachPoints
     };
 
     hexapodModel = Hexapod3D.buildHexapod({

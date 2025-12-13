@@ -2671,6 +2671,34 @@ function updatePreviewFromSlider(key, value) {
 function updatePreview() {
   // Update preview based on current config
   if (state.config.body_height) state.telemetry.bodyHeight = state.config.body_height;
+
+  // Rebuild 3D preview to reflect geometry/leg attach changes
+  if (typeof rebuildHexapodPreview === 'function' && scene && bodyMaterial) {
+    rebuildHexapodPreview();
+  }
+
+  // Update leg attach table values from config
+  updateLegAttachTableFromConfig();
+}
+
+function updateLegAttachTableFromConfig() {
+  const table = document.getElementById('legAttachTable');
+  if (!table) return;
+
+  const rows = table.querySelectorAll('tr');
+  rows.forEach((row, legIndex) => {
+    const inputs = row.querySelectorAll('input[type="number"]');
+    const fields = ['x', 'y', 'z', 'angle'];
+    inputs.forEach((input, fieldIndex) => {
+      const field = fields[fieldIndex];
+      const configKey = `leg_${legIndex}_attach_${field}`;
+      const defaultValue = defaultGeometry.leg_attach_points[legIndex]?.[field];
+      const value = state.config[configKey] ?? defaultValue;
+      if (value !== undefined) {
+        input.value = value;
+      }
+    });
+  });
 }
 
 // Animate pose transition in 3D preview
